@@ -61,12 +61,16 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
 
 (async () => {
   // own process: hooks run through spawnSync, which would freeze an in-process server
-  const server = spawn(process.execPath, ['-e', `
-    const s = require(${JSON.stringify(path.join(__dirname, '..', 'src', 'server.js'))})
-      .createServer({ dataDir: ${JSON.stringify(path.join(tmp, 'server'))}, token: 'secret' });
-    s.listen(0, '127.0.0.1', () => console.log(s.address().port));`], { stdio: ['ignore', 'pipe', 'inherit'] });
-  const port = await new Promise(r => server.stdout.once('data', d => r(String(d).trim())));
-  const url = `http://127.0.0.1:${port}`;
+  const startServer = async (dir, open) => {
+    const proc = spawn(process.execPath, ['-e', `
+      const s = require(${JSON.stringify(path.join(__dirname, '..', 'src', 'server.js'))})
+        .createServer({ dataDir: ${JSON.stringify(path.join(tmp, dir))}, token: 'secret', open: ${open} });
+      s.listen(0, '127.0.0.1', () => console.log(s.address().port));`], { stdio: ['ignore', 'pipe', 'inherit'] });
+    const port = await new Promise(r => proc.stdout.once('data', d => r(String(d).trim())));
+    return { proc, url: `http://127.0.0.1:${port}` };
+  };
+  const { proc: server, url } = await startServer('server', false);
+  const pub = await startServer('public', true);
   const alice = checkout('alice', 1001, url, 'secret');
   const bob = checkout('bob', 2002, url, 'secret');
   const carol = checkout('carol', 3003, url, 'secret'); // no MCP running, so no live sync
@@ -160,6 +164,24 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
     assert.equal(bad.status, 401);
     ok('dashboard is served and a wrong token is rejected');
 
+    // open mode: anyone can create a project, and each project's token only opens that project
+    const mk = async (name) => (await fetch(pub.url + '/api/new', { method: 'POST', body: JSON.stringify({ name }) })).json();
+    const p1 = await mk('My App'), p2 = await mk('other');
+    assert.match(p1.project, /^my-app-[0-9a-f]{6}$/);
+    const st = (proj, tok) => fetch(`${pub.url}/api/p/${proj}/state`, { headers: { authorization: 'Bearer ' + tok } }).then(r => r.status);
+    assert.equal(await st(p1.project, p1.token), 200);
+    assert.equal(await st(p2.project, p1.token), 401);
+    assert.equal(await st('made-up', p1.token), 401);
+    assert.equal(await st(p2.project, 'secret'), 200);
+    assert.equal((await fetch(url + '/api/new', { method: 'POST', body: '{}' })).status, 401);
+    ok("open mode hands out per-project tokens that can't open other projects");
+
+    const joinOut = spawnSync(process.execPath, [CLI, 'new', 'demo', '--server', pub.url], { encoding: 'utf8' }).stdout;
+    const code = joinOut.match(/join (\S+)/)[1];
+    const inv = JSON.parse(Buffer.from(code, 'base64url'));
+    assert.equal(await st(inv.p, inv.t), 200);
+    ok('`huddle new` prints a working invite');
+
     console.log('\nall good');
   } catch (e) {
     console.error(`\n✗ failed after "${step}":`, e);
@@ -167,6 +189,7 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
   } finally {
     alice.stop(); bob.stop();
     server.kill();
+    pub.proc.kill();
     await sleep(200);
     fs.rmSync(tmp, { recursive: true, force: true });
   }

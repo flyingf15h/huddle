@@ -9,13 +9,15 @@ const { loadConfig, identity, Client, relPath, hashFile, formatMessages, ago, CO
 const PKG_DIR = path.resolve(__dirname, '..');
 const INSTALL_DIR = process.env.HUDDLE_HOME || path.join(os.homedir(), '.huddle', 'app');
 const HOOK_MARK = 'huddle-hook';
+const PUBLIC_SERVER = process.env.HUDDLE_PUBLIC_SERVER || 'https://huddle-relay.fly.dev';
 
 const HELP = `huddle — let Claude agents on different machines work on one project together
 
-Host (one person):
-  huddle server [--port 7777] [--tunnel] [--project NAME]
-      Start the relay. --tunnel gives it a public https URL via cloudflared.
-      Prints an invite code to send to everyone else.
+Start a project (one person):
+  huddle new [NAME]             create a project on the public server and print the invite
+  huddle server [--port 7777] [--tunnel] [--project NAME] [--open]
+      Or run your own relay. --tunnel gives it a public https URL via cloudflared,
+      --open lets anyone create projects on it with \`huddle new --server URL\`.
 
 Everyone (in the project folder):
   huddle join <invite> [--name YOUR_NAME]
@@ -70,18 +72,23 @@ async function cmdServer({ flags }) {
   const port = Number(flags.port || process.env.PORT || 7777);
   const dataDir = path.resolve(flags.data || path.join(os.homedir(), '.huddle', 'server'));
   const project = flags.project || path.basename(process.cwd()).replace(/[^\w.-]/g, '-') || 'project';
-  const server = createServer({ dataDir });
+  const server = createServer({ dataDir, open: !!flags.open });
   await new Promise((res, rej) => server.listen(port, flags.host || '0.0.0.0', res).on('error', rej));
   const token = server.huddleToken;
+  const quit = () => { server.huddleFlush(); process.exit(0); };
+  process.on('SIGINT', quit);
+  process.on('SIGTERM', quit);
 
   const show = (url, label) => {
+    if (server.huddleOpen) return console.log(`\n${label}: ${url}\n  anyone can start a project:  huddle new NAME --server ${url}`);
     const code = encodeInvite(url, token, project);
     console.log(`\n${label}: ${url}`);
     console.log(`  dashboard:  ${url}/#invite=${code}`);
     console.log(`  invite:     ${joinCommand(code)}`);
   };
   console.log(`huddle server listening on port ${port} (data in ${dataDir})`);
-  console.log(`project "${project}" (pass --project to change; any number of projects can share one server)`);
+  if (server.huddleOpen) console.log('open mode: every project gets its own token; the admin token in the data dir unlocks all of them, keep it private');
+  else console.log(`project "${project}" (pass --project to change; any number of projects can share one server)`);
   show(`http://localhost:${port}`, 'this machine');
   for (const ip of lanAddresses()) show(`http://${ip}:${port}`, 'same network / tailnet');
   console.log('\nAnyone with the invite code can read and edit the project through huddle; only share it with collaborators.');
@@ -100,7 +107,7 @@ async function cmdServer({ flags }) {
       t.stdout.on('data', scan);
       t.stderr.on('data', scan);
       t.on('exit', (c) => console.log(`cloudflared exited (${c}); the public URL is gone, LAN URLs still work`));
-      const stop = () => { t.kill(); process.exit(0); };
+      const stop = () => { t.kill(); quit(); };
       process.on('SIGINT', stop);
       process.on('SIGTERM', stop);
     }
@@ -199,6 +206,28 @@ function ignoreLocally(root) {
   if (!want.length) return;
   fs.mkdirSync(path.dirname(exclude), { recursive: true });
   fs.appendFileSync(exclude, (cur && !cur.endsWith('\n') ? '\n' : '') + want.join('\n') + '\n');
+}
+
+async function cmdNew({ pos, flags }) {
+  const server = String(flags.server || PUBLIC_SERVER).replace(/\/+$/, '');
+  const name = pos[0] || path.basename(process.cwd());
+  let r;
+  try {
+    const res = await fetch(`${server}/api/new`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) });
+    r = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(r.error || `HTTP ${res.status}`);
+  } catch (e) {
+    need(false, `couldn't create a project on ${server}: ${e.cause ? e.cause.code || e.message : e.message}`);
+  }
+  const code = encodeInvite(server, r.token, r.project);
+  console.log(`created project ${r.project} on ${server}
+
+Send this to your collaborators (and run it yourself in your copy of the project):
+  ${joinCommand(code)}
+
+Live dashboard: ${server}/#invite=${code}
+Anyone with the invite can join and see the project's shared files, so keep it to people you trust.`);
+  if (flags.join) await cmdJoin({ pos: [code], flags });
 }
 
 async function cmdJoin({ pos, flags }) {
@@ -340,7 +369,7 @@ async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
   const args = parseArgs(rest);
   const cmds = {
-    server: cmdServer, join: cmdJoin, leave: cmdLeave, status: cmdStatus, send: cmdSend, inbox: cmdInbox,
+    server: cmdServer, new: cmdNew, join: cmdJoin, leave: cmdLeave, status: cmdStatus, send: cmdSend, inbox: cmdInbox,
     lock: cmdLock, unlock: cmdUnlock, watch: cmdWatch, invite: cmdInvite, open: cmdOpen,
     hook: () => require('./hooks').runHook(args.pos[0]),
     mcp: () => require('./mcp').runMcp(),

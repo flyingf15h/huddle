@@ -13,6 +13,11 @@ const MAX_EVENTS = 2000;
 const MAX_MESSAGES = 2000;
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 const HASH_HISTORY = 100;
+const MAX_FILES = 2000;                    // per project
+const MAX_PROJECT_BYTES = 50 * 1024 * 1024;
+const OPEN_MAX_PROJECTS = 5000;            // open mode limits, so a public server can't be filled up
+const OPEN_IDLE_MS = 30 * 24 * 60 * 60 * 1000;
+const OPEN_CREATES_PER_HOUR = 20;
 
 function sha(s) { return crypto.createHash('sha256').update(s).digest('hex').slice(0, 16); }
 function now() { return Date.now(); }
@@ -26,15 +31,19 @@ class Project {
     this.messages = [];
     this.events = [];
     this.seq = 0;
+    this.tokenHash = null;   // set for projects created in open mode; their own token unlocks them
+    this.lastActive = now();
     this.waiters = new Set();
     if (saved) Object.assign(this, saved, { waiters: new Set() });
+    this.dirty = false;
   }
   toJSON() {
-    const { waiters, ...rest } = this;
+    const { waiters, dirty, ...rest } = this;
     return rest;
   }
   emit(type, data) {
     const ev = { seq: ++this.seq, type, at: now(), ...data };
+    this.dirty = true;
     this.events.push(ev);
     if (this.events.length > MAX_EVENTS) this.events.splice(0, this.events.length - MAX_EVENTS);
     for (const w of [...this.waiters]) w(ev);
@@ -69,6 +78,7 @@ class Project {
     a.checkout = agent.checkout || a.checkout || '';
     a.kind = agent.kind || a.kind || 'agent';
     a.lastSeen = now();
+    this.lastActive = a.lastSeen;
     if (fresh) this.emit('join', { agent: this.publicAgent(a) });
     return a;
   }
@@ -96,6 +106,11 @@ class Project {
   }
 }
 
+function sameSecret(x, y) {
+  const a = Buffer.from(String(x)), b = Buffer.from(String(y));
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
 function httpError(code, msg) { const e = new Error(msg); e.code = code; return e; }
 
 function normPath(p) {
@@ -108,7 +123,9 @@ function normPath(p) {
 function createServer(opts = {}) {
   const dataDir = opts.dataDir || path.join(process.cwd(), 'huddle-data');
   fs.mkdirSync(dataDir, { recursive: true });
-  const stateFile = path.join(dataDir, 'state.json');
+  const projectDir = path.join(dataDir, 'projects');
+  fs.mkdirSync(projectDir, { recursive: true });
+  const open = !!(opts.open || process.env.HUDDLE_OPEN);
   const tokenFile = path.join(dataDir, 'token');
   let token = opts.token || process.env.HUDDLE_TOKEN;
   if (!token) {
@@ -120,33 +137,75 @@ function createServer(opts = {}) {
   }
 
   const projects = new Map();
-  if (fs.existsSync(stateFile)) {
+  const projectFile = (name) => path.join(projectDir, name + '.json');
+  for (const f of fs.readdirSync(projectDir)) {
+    if (!f.endsWith('.json')) continue;
+    try { const name = f.slice(0, -5); projects.set(name, new Project(name, JSON.parse(fs.readFileSync(path.join(projectDir, f), 'utf8')))); }
+    catch (e) { console.error(`huddle: could not load ${f}:`, e.message); }
+  }
+  const legacy = path.join(dataDir, 'state.json'); // single-file format from 0.1
+  if (fs.existsSync(legacy)) {
     try {
-      const saved = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-      for (const [name, p] of Object.entries(saved)) projects.set(name, new Project(name, p));
-    } catch (e) { console.error('huddle: could not load state:', e.message); }
+      for (const [name, p] of Object.entries(JSON.parse(fs.readFileSync(legacy, 'utf8')))) {
+        if (!projects.has(name)) projects.set(name, Object.assign(new Project(name, p), { dirty: true }));
+      }
+      fs.renameSync(legacy, legacy + '.migrated');
+    } catch (e) { console.error('huddle: could not migrate state.json:', e.message); }
   }
-  let saveTimer = null;
-  function save() {
-    if (saveTimer) return;
-    saveTimer = setTimeout(() => {
-      saveTimer = null;
-      const tmp = stateFile + '.tmp';
-      fs.writeFileSync(tmp, JSON.stringify(Object.fromEntries(projects)));
-      fs.renameSync(tmp, stateFile);
-    }, 500);
+  function save(p) { p.dirty = true; }
+  function flush() {
+    for (const p of projects.values()) {
+      if (!p.dirty) continue;
+      p.dirty = false;
+      const file = projectFile(p.name), tmp = file + '.tmp';
+      fs.writeFileSync(tmp, JSON.stringify(p));
+      fs.renameSync(tmp, file);
+    }
   }
-  function project(name) {
+  function project(name, admin) {
     if (!/^[\w.-]{1,64}$/.test(name)) throw httpError(400, 'bad project name');
     let p = projects.get(name);
-    if (!p) { p = new Project(name); projects.set(name, p); }
+    if (!p) {
+      if (!admin) throw httpError(401, 'bad token or no such project');
+      p = new Project(name);
+      p.dirty = true;
+      projects.set(name, p);
+    }
     return p;
   }
 
+  const saver = setInterval(flush, 1000);
+  saver.unref();
   const sweeper = setInterval(() => {
-    for (const p of projects.values()) p.sweep();
+    for (const p of projects.values()) {
+      p.sweep();
+      if (open && p.tokenHash && now() - p.lastActive > OPEN_IDLE_MS) {
+        projects.delete(p.name);
+        fs.rmSync(projectFile(p.name), { force: true });
+      }
+    }
   }, 10 * 1000);
   sweeper.unref();
+
+  const creates = new Map(); // ip -> timestamps of recent project creations
+  function createProject(req, body) {
+    const ip = req.headers['fly-client-ip'] || req.headers['cf-connecting-ip'] ||
+      String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress;
+    const recent = (creates.get(ip) || []).filter(t => now() - t < 3600 * 1000);
+    if (recent.length >= OPEN_CREATES_PER_HOUR) throw httpError(429, 'too many new projects from your address, try again later');
+    if (projects.size >= OPEN_MAX_PROJECTS) throw httpError(503, 'this server is full');
+    recent.push(now());
+    creates.set(ip, recent);
+    const slug = String(body.name || 'project').toLowerCase().replace(/[^a-z0-9.-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'project';
+    let name;
+    do name = `${slug}-${crypto.randomBytes(3).toString('hex')}`; while (projects.has(name));
+    const ptoken = 'hp_' + crypto.randomBytes(24).toString('base64url');
+    const p = new Project(name);
+    p.tokenHash = sha(ptoken + ':' + name);
+    p.dirty = true;
+    projects.set(name, p);
+    return { project: name, token: ptoken };
+  }
 
   const dashboard = fs.readFileSync(path.join(__dirname, 'dashboard.html'), 'utf8');
 
@@ -164,7 +223,7 @@ function createServer(opts = {}) {
     'POST hello': (p, b) => {
       const a = p.touch(b.agent);
       if (b.status !== undefined) a.status = String(b.status).slice(0, 300);
-      save();
+      save(p);
       return { ...p.snapshot(), you: p.publicAgent(a) };
     },
     'GET state': (p) => p.snapshot(),
@@ -175,7 +234,7 @@ function createServer(opts = {}) {
         a.wasOnline = false;
         a.status = '';
         p.emit('leave', { agent: p.publicAgent(a) });
-        save();
+        save(p);
       }
       return { ok: true };
     },
@@ -183,7 +242,7 @@ function createServer(opts = {}) {
       const a = p.touch(b.agent);
       a.status = String(b.status || '').slice(0, 300);
       p.emit('status', { agent: p.publicAgent(a) });
-      save();
+      save(p);
       return { ok: true };
     },
     'POST lock': (p, b) => {
@@ -194,7 +253,7 @@ function createServer(opts = {}) {
       const latest = f ? { hash: f.hash, version: f.version, byName: f.byName, at: f.at,
         known: b.baseHash ? f.hashes.includes(b.baseHash) : false } : null;
       if (cur && cur.holder !== a.id) {
-        save();
+        save(p);
         return { ok: false, lock: cur, latest };
       }
       const lock = p.locks[fp] = {
@@ -208,7 +267,7 @@ function createServer(opts = {}) {
         p.files[fp] = { path: fp, hash: b.baseHash, content: null, by: a.id, byName: a.name,
           at: now(), version: 0, hashes: [b.baseHash], checkout: a.checkout };
       }
-      save();
+      save(p);
       const withContent = f && f.content != null && b.baseHash !== f.hash && b.wantContent;
       return { ok: true, lock, latest, content: withContent ? f.content : undefined };
     },
@@ -224,7 +283,7 @@ function createServer(opts = {}) {
         released.push(fp);
         p.emit('unlock', { path: fp, holder: a.id, holderName: a.name, reason: b.reason || 'released' });
       }
-      save();
+      save(p);
       return { ok: true, released };
     },
     'POST content': (p, b) => {
@@ -241,6 +300,9 @@ function createServer(opts = {}) {
       }
       const hash = sha(b.content);
       const prev = p.files[fp];
+      if (!prev && Object.keys(p.files).length >= MAX_FILES) throw httpError(413, 'project has too many shared files');
+      const total = Object.values(p.files).reduce((n, f) => n + (f.content ? f.content.length : 0), 0);
+      if (total - (prev && prev.content ? prev.content.length : 0) + b.content.length > MAX_PROJECT_BYTES) throw httpError(413, 'project storage is full');
       if (prev && prev.hash === hash && prev.content != null) return { ok: true, version: prev.version, unchanged: true };
       const f = p.files[fp] = {
         path: fp, hash, content: b.content, by: a.id, byName: a.name, at: now(),
@@ -249,7 +311,7 @@ function createServer(opts = {}) {
         checkout: a.checkout,
       };
       p.emit('file', { file: p.fileMeta(f), prevHash: prev ? prev.hash : null, tool: b.tool || '' });
-      save();
+      save(p);
       return { ok: true, version: f.version, hash };
     },
     'GET file': (p, b, q) => {
@@ -267,7 +329,7 @@ function createServer(opts = {}) {
       p.messages.push(m);
       if (p.messages.length > MAX_MESSAGES) p.messages.splice(0, p.messages.length - MAX_MESSAGES);
       m.seq = p.emit('message', { message: m }).seq;
-      save();
+      save(p);
       return { ok: true, message: m };
     },
     'GET messages': (p, b, q) => {
@@ -284,7 +346,7 @@ function createServer(opts = {}) {
         await waitFor(p, ev => ev.type === 'message' && p.relevant(ev.message, a), b.wait * 1000, req);
         msgs = unread();
       }
-      if (!b.peek && msgs.length) { a.readSeq = msgs[msgs.length - 1].seq; save(); }
+      if (!b.peek && msgs.length) { a.readSeq = msgs[msgs.length - 1].seq; save(p); }
       return { messages: msgs };
     },
     'POST wait-unlock': async (p, b, q, req) => {
@@ -328,17 +390,23 @@ function createServer(opts = {}) {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
         return res.end(dashboard);
       }
-      if (url.pathname === '/health') return send(200, { ok: true });
+      if (url.pathname === '/health') return send(200, { ok: true, open });
+      if (url.pathname === '/api/new' && req.method === 'POST') {
+        const body = await readBody(req);
+        if (!open) checkAdmin(req, url);
+        return send(200, createProject(req, body));
+      }
       const m = url.pathname.match(/^\/api\/p\/([^/]+)\/([\w-]+)$/);
       if (url.pathname === '/api/projects') {
-        checkAuth(req, url);
+        checkAdmin(req, url);
         return send(200, { projects: [...projects.keys()] });
       }
       if (!m) return send(404, { error: 'not found' });
-      checkAuth(req, url);
+      const admin = isAdmin(req, url);
+      const p = project(decodeURIComponent(m[1]), admin);
+      if (!admin && !(p.tokenHash && sameSecret(sha(given(req, url) + ':' + p.name), p.tokenHash))) throw httpError(401, 'bad token or no such project');
       const route = routes[`${req.method} ${m[2]}`];
       if (!route) return send(404, { error: 'no such endpoint' });
-      const p = project(decodeURIComponent(m[1]));
       let body = {};
       if (req.method === 'POST') body = await readBody(req);
       const out = await route(p, body, url.searchParams, req, res);
@@ -348,15 +416,17 @@ function createServer(opts = {}) {
     }
   });
 
-  function checkAuth(req, url) {
+  function given(req, url) {
     const h = req.headers.authorization || '';
-    const given = h.startsWith('Bearer ') ? h.slice(7) : url.searchParams.get('token');
-    const a = Buffer.from(String(given || '')), b = Buffer.from(token);
-    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) throw httpError(401, 'bad token');
+    return String((h.startsWith('Bearer ') ? h.slice(7) : url.searchParams.get('token')) || '');
   }
+  function isAdmin(req, url) { return sameSecret(given(req, url), token); }
+  function checkAdmin(req, url) { if (!isAdmin(req, url)) throw httpError(401, 'bad token'); }
 
   server.huddleToken = token;
-  server.on('close', () => clearInterval(sweeper));
+  server.huddleOpen = open;
+  server.huddleFlush = flush;
+  server.on('close', () => { clearInterval(sweeper); clearInterval(saver); flush(); });
   return server;
 }
 
