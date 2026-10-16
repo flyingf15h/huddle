@@ -8,6 +8,7 @@ const crypto = require('crypto');
 
 const ONLINE_MS = 2 * 60 * 1000;          // agent counts as online if seen this recently
 const LOCK_STALE_MS = 5 * 60 * 1000;      // locks of agents unseen this long are dropped
+const FORGET_MS = 24 * 60 * 60 * 1000;   // offline agents drop off the list after a day
 const MAX_EVENTS = 2000;
 const MAX_MESSAGES = 2000;
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
@@ -45,7 +46,7 @@ class Project {
   }
   fileMeta(f) {
     return { path: f.path, hash: f.hash, by: f.by, byName: f.byName, at: f.at,
-      version: f.version, size: f.content.length, checkout: f.checkout };
+      version: f.version, size: f.content == null ? 0 : f.content.length, checkout: f.checkout };
   }
   snapshot() {
     return {
@@ -84,7 +85,9 @@ class Project {
         this.emit('unlock', { path: l.path, holder: l.holder, holderName: l.holderName, reason: 'stale' });
       }
     }
+    const held = new Set(Object.values(this.locks).map(l => l.holder));
     for (const a of Object.values(this.agents)) {
+      if (t - a.lastSeen > FORGET_MS && !held.has(a.id)) { delete this.agents[a.id]; continue; }
       if (a.wasOnline && t - a.lastSeen >= ONLINE_MS) {
         a.wasOnline = false;
         this.emit('leave', { agent: this.publicAgent(a) });
@@ -165,6 +168,17 @@ function createServer(opts = {}) {
       return { ...p.snapshot(), you: p.publicAgent(a) };
     },
     'GET state': (p) => p.snapshot(),
+    'POST bye': (p, b) => {
+      const a = p.agents[b.agent && b.agent.id];
+      if (a) {
+        a.lastSeen = now() - ONLINE_MS; // shows as just gone offline
+        a.wasOnline = false;
+        a.status = '';
+        p.emit('leave', { agent: p.publicAgent(a) });
+        save();
+      }
+      return { ok: true };
+    },
     'POST status': (p, b) => {
       const a = p.touch(b.agent);
       a.status = String(b.status || '').slice(0, 300);

@@ -38,9 +38,11 @@ function loadConfig(start) {
 }
 
 // The Claude Code process this hook / MCP server belongs to. Hooks and the MCP
-// server are both descendants of it, so they agree on identity.
+// server are both descendants of it, so they agree on identity. CLAUDE_PID is
+// only a fallback: an MCP server inherits it from whatever launched Claude, so
+// it's wrong when Claude was started from inside another Claude session.
 function claudePid() {
-  if (process.env.CLAUDE_PID) return process.env.CLAUDE_PID;
+  if (process.env.HUDDLE_SESSION) return process.env.HUDDLE_SESSION;
   let pid = process.ppid;
   for (let i = 0; i < 8 && pid > 1; i++) {
     let comm = '', ppid = 0;
@@ -59,7 +61,7 @@ function claudePid() {
     if (comm === 'claude') return String(pid);
     pid = ppid;
   }
-  return String(process.ppid);
+  return process.env.CLAUDE_PID || String(process.ppid);
 }
 
 function identity(cfg, kind = 'agent') {
@@ -101,7 +103,8 @@ class Client {
       return data;
     } catch (e) {
       if (e.name === 'AbortError') throw new Error(`huddle server timed out (${this.cfg.server})`);
-      if (e.cause && e.cause.code) throw new Error(`can't reach huddle server ${this.cfg.server} (${e.cause.code})`);
+      const code = e.cause && (e.cause.code || (e.cause.errors && e.cause.errors[0] && e.cause.errors[0].code));
+      if (code || e.message === 'fetch failed') throw new Error(`can't reach huddle server ${this.cfg.server}${code ? ` (${code})` : ''}`);
       throw e;
     } finally { clearTimeout(t); }
   }

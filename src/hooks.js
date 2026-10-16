@@ -129,7 +129,7 @@ const handlers = {
 
   async 'session-end'(input, client) {
     await client.post('unlock', { all: true, reason: 'session ended' });
-    await client.post('status', { status: '' });
+    await client.post('bye', {});
     return null;
   },
 };
