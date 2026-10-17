@@ -310,6 +310,19 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
     assert.match(alice.hook('prompt', { prompt: 'x' }).hookSpecificOutput.additionalContext, /you are alice's Claude again/);
     ok('people can name their Claude, it learns the name, and others can send it work by that name');
 
+    // what each Claude is working on reaches the others, and only when it changes
+    alice.hook('prompt', { prompt: 'baseline' });
+    bob.hook('prompt', { prompt: 'add a search box to the parts library panel' });
+    const teamSeen = alice.hook('prompt', { prompt: 'what now' }).hookSpecificOutput.additionalContext;
+    assert.match(teamSeen, /what the other Claudes are doing changed:\n- bob's Claude: asked: “add a search box to the parts library panel”/);
+    assert(!/Claudes are doing/.test((alice.hook('prompt', { prompt: 'and now' }).hookSpecificOutput || {}).additionalContext || ''), 'unchanged team is not repeated');
+    bob.hook('prompt', { prompt: 'yes go ahead' });
+    assert(!/Claudes are doing/.test((alice.hook('prompt', { prompt: 'again' }).hookSpecificOutput || {}).additionalContext || ''), 'a short follow-up keeps the status');
+    await bob.tool('huddle_set_status', { status: 'parts search: filtering by category' });
+    assert.match(alice.hook('prompt', { prompt: 'x' }).hookSpecificOutput.additionalContext, /- bob's Claude: parts search: filtering by category/);
+    assert.match(await alice.tool('huddle_status'), /Recently started work[\s\S]*bob, \d+s ago: asked: “add a search box[\s\S]*bob, \d+s ago: parts search/);
+    ok("each Claude's current work reaches the others as it changes, and only then");
+
     // secrets never leave the machine: no lock, no live copy
     fs.writeFileSync(path.join(alice.root, '.env.local'), 'GEMINI_API_KEY=secret123\n');
     const envEdit = { tool_name: 'Edit', tool_input: { file_path: path.join(alice.root, '.env.local') } };

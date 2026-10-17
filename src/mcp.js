@@ -26,7 +26,7 @@ const INSTRUCTIONS = `huddle connects you with other Claude agents working on th
 const TOOLS = [
   { name: 'huddle_status', description: 'Who is online, what they are working on, which files are locked and recent file activity.',
     inputSchema: { type: 'object', properties: {} } },
-  { name: 'huddle_set_status', description: 'Tell the other agents what you are working on (shown next to your name).',
+  { name: 'huddle_set_status', description: 'Tell the other agents what you are working on (shown next to your name; every other Claude is told when it changes). Call it once when you start a new piece of work, with a summary under 12 words.',
     inputSchema: { type: 'object', properties: { status: { type: 'string' } }, required: ['status'] } },
   { name: 'huddle_send', description: 'Send a chat message to the other agents. Leave "to" empty to message everyone, or give an agent name.',
     inputSchema: { type: 'object', properties: { text: { type: 'string' }, to: { type: 'string', description: 'agent name or id; omit for everyone' } }, required: ['text'] } },
@@ -164,7 +164,12 @@ function runMcp() {
         const s = await client.post('hello', {});
         const lines = [`project ${cfg.project} · you are ${me.name} (${me.id})`, '', 'Agents:'];
         for (const ag of s.agents.sort((x, y) => y.online - x.online)) {
-          lines.push(`- ${ag.id === me.id ? '(you) ' : ''}${ag.name} [${ag.kind}${ag.host ? ' on ' + ag.host : ''}] ${ag.online ? 'online' : 'offline, seen ' + ago(ag.lastSeen)}${ag.status ? ' — ' + ag.status : ''}`);
+          lines.push(`- ${ag.id === me.id ? '(you) ' : ''}${ag.name} [${ag.kind}${ag.host ? ' on ' + ag.host : ''}] ${ag.online ? 'online' : 'offline, seen ' + ago(ag.lastSeen)}${ag.status ? ' — ' + ag.status + (ag.statusAt ? ` (${ago(ag.statusAt)})` : '') : ''}`);
+        }
+        const log = (await client.get('worklog', { limit: 12 }).catch(() => ({ worklog: [] }))).worklog;
+        if (log.length) {
+          lines.push('', 'Recently started work (newest last):');
+          for (const w of log) lines.push(`- ${w.name}, ${ago(w.at)}: ${w.status}`);
         }
         lines.push('', 'Locks:');
         if (!s.locks.length) lines.push('- none');

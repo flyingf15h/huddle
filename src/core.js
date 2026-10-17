@@ -30,6 +30,9 @@ const SNAP_PART = 900 * 1024;       // JSON bytes per uploaded piece of a branch
 const ACTIVITY_TEXT = 4000;
 const STATS_DAYS = 60;              // daily buckets kept per person
 const STATS_MODELS = 20;            // models tracked per person
+const MAX_WORKLOG = 80;             // recent "now working on" changes, newest kept
+// events that change who's doing what; hooks only re-read the team when this count moves
+const TEAM_EVENTS = new Set(['status', 'lock', 'unlock', 'join', 'leave', 'setting']);
 
 function sha(s) { return crypto.createHash('sha256').update(s).digest('hex').slice(0, 16); }
 function now() { return Date.now(); }
@@ -83,6 +86,8 @@ class Project {
     this.settings = {};   // per person: { autopilot: 'off' | 'requests' | 'full', aiName: what they call their Claude }
     this.aliases = {};    // other names a person has used ("Kelly-Wang" -> "Kelly")
     this.stats = {};      // per person: conversations, turns, time with Claude, tokens (see 'POST stats')
+    this.teamVersion = 0; // bumped by TEAM_EVENTS
+    this.worklog = [];    // [{name, status, at}]: what each Claude said it started on
     this.waiters = new Set();
     if (saved) Object.assign(this, saved);
     this.waiters = new Set();
@@ -114,6 +119,7 @@ class Project {
   online(a) { return now() - a.lastSeen < ONLINE_MS || this.isConnected(a.id); }
   emit(type, data) {
     const ev = { seq: ++this.seq, type, at: now(), ...data };
+    if (TEAM_EVENTS.has(type)) this.teamVersion = (this.teamVersion || 0) + 1;
     this.dirty = true;
     this.events.push(ev);
     if (this.events.length > MAX_EVENTS) this.events.splice(0, this.events.length - MAX_EVENTS);
@@ -122,7 +128,7 @@ class Project {
   }
   publicAgent(a) {
     return { id: a.id, name: a.name, host: a.host, checkout: a.checkout, kind: a.kind, branch: a.branch || null, runner: a.runner || null,
-      status: a.status, lastSeen: a.lastSeen, online: this.online(a) };
+      status: a.status, statusAt: a.statusAt || null, lastSeen: a.lastSeen, online: this.online(a) };
   }
   fileMeta(f) {
     return { path: f.path, branch: f.branch || null, hash: f.hash, by: f.by, byName: f.byName, at: f.at,
@@ -137,6 +143,7 @@ class Project {
       files: Object.values(this.files).map(f => this.fileMeta(f)),
       settings: this.settings || {},
       aliases: this.aliases || {},
+      teamVersion: this.teamVersion || 0,
     };
   }
   touch(agent) {
@@ -196,6 +203,7 @@ const routes = {
     return { ...p.snapshot(), you: p.publicAgent(a) };
   },
   'GET state': (p) => p.snapshot(),
+  'GET worklog': (p, b, q) => ({ worklog: (p.worklog || []).slice(-Math.min(Number(q.get('limit')) || 20, MAX_WORKLOG)) }),
   'POST bye': (p, b) => {
     const a = p.agents[b.agent && b.agent.id];
     if (a) {
@@ -221,6 +229,7 @@ const routes = {
     for (const a of Object.values(p.agents)) fix(a, 'name');
     for (const m of p.messages) { fix(m, 'fromName'); fix(m, 'to'); }
     for (const it of p.activity) fix(it, 'name');
+    for (const w of p.worklog || []) fix(w, 'name');
     for (const g of p.board.goals) { fix(g, 'byName'); fix(g, 'to'); fix(g, 'planner'); }
     for (const t of p.board.tasks) { fix(t, 'owner'); fix(t, 'by'); for (const n of t.notes || []) fix(n, 'by'); }
     for (const l of Object.values(p.locks)) fix(l, 'holderName');
@@ -247,7 +256,15 @@ const routes = {
   },
   'POST status': (p, b) => {
     const a = p.touch(b.agent);
-    a.status = String(b.status || '').slice(0, 300);
+    const status = String(b.status || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+    if (status === a.status) return { ok: true };
+    a.status = status;
+    a.statusAt = now();
+    if (status) {
+      p.worklog = p.worklog || [];
+      p.worklog.push({ name: a.name, status, at: a.statusAt, auto: !!b.auto });
+      if (p.worklog.length > MAX_WORKLOG) p.worklog.splice(0, p.worklog.length - MAX_WORKLOG);
+    }
     p.emit('status', { agent: p.publicAgent(a) });
     p.dirty = true;
     return { ok: true };
@@ -363,7 +380,7 @@ const routes = {
       msgs = unread();
     }
     if (!b.peek && msgs.length) { a.readSeq = msgs[msgs.length - 1].seq; p.dirty = true; }
-    return { messages: msgs, sharedVersion: p.shared.version, boardVersion: p.board.version };
+    return { messages: msgs, sharedVersion: p.shared.version, boardVersion: p.board.version, teamVersion: p.teamVersion || 0 };
   },
   'GET shared': (p) => p.shared,
   // ---- git: people publish branches as bundles, everyone fetches them ----

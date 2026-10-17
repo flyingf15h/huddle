@@ -741,7 +741,7 @@ async function cmdStatus() {
   console.log(`${c.cfg.project} @ ${c.cfg.server}\n`);
   for (const a of s.agents.filter(a => a.kind !== 'cli').sort((x, y) => y.online - x.online)) {
     const ai = a.kind === 'agent' && (st.settings[a.name] || {}).aiName;
-    console.log(`${a.online ? '●' : '○'} ${(ai ? `${a.name} (${ai})` : a.name).padEnd(24)} ${a.kind.padEnd(7)} ${a.online ? '' : 'seen ' + ago(a.lastSeen)} ${a.status || ''}`);
+    console.log(`${a.online ? '●' : '○'} ${(ai ? `${a.name} (${ai})` : a.name).padEnd(24)} ${a.kind.padEnd(7)} ${a.online ? '' : 'seen ' + ago(a.lastSeen)} ${a.status || ''}${a.status && a.statusAt ? ` (${ago(a.statusAt)})` : ''}`);
   }
   console.log('\nlocks:' + (s.locks.length ? '' : ' none'));
   for (const l of s.locks) console.log(`  🔒 ${l.path}  ${l.holderName}, ${ago(l.since)}${l.note ? ' — ' + l.note : ''}`);

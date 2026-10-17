@@ -49,6 +49,11 @@ async function inbox(client, cfg, force) {
   const r = await client.post('inbox', {});
   const out = [];
   if (r.messages.length) out.push(`New huddle messages from other agents (reply with the huddle_send tool if useful):\n${formatMessages(r.messages, client.agent)}`);
+  // (a prompt reads the team itself, so only mid-turn checks do it here)
+  if (!force && r.teamVersion !== undefined && st.data.team && r.teamVersion !== st.data.teamVersion) {
+    const delta = teamDelta(await client.get('state'), client.agent, st);
+    if (delta) out.push(delta);
+  }
   // someone changed PROJECT.md, a memory or a skill: refresh the files and tell the agent
   if (r.sharedVersion !== undefined && st.data.shared && r.sharedVersion !== st.data.shared.version) {
     const sh = await client.get('shared');
@@ -243,6 +248,50 @@ function nameLine(s, me) {
   return n ? `${me} named you "${n}". Use that as your name: introduce yourself as ${n} and sign your huddle messages as ${n} (${me}'s Claude). Others can send you work with to="${n}".` : '';
 }
 
+// One line per other Claude: what it's on and the files it holds. Claudes are only told the lines
+// that changed since they last heard (teamDelta), so everyone stays current for a few tokens.
+function teamNow(s, me) {
+  const now = {};
+  for (const a of s.agents) {
+    if (a.id === me.id || !a.online || !['agent', 'autopilot'].includes(a.kind)) continue;
+    const ai = aiNameOf(s, a.name);
+    const who = `${a.name === me.name ? 'your other session' : ai ? `${ai} (${a.name}'s Claude)` : `${a.name}'s Claude`}${a.kind === 'autopilot' ? ' [autopilot]' : ''}${a.branch ? ` on ${a.branch}` : ''}`;
+    const files = s.locks.filter(l => l.holder === a.id).map(l => l.path);
+    now[a.id] = { who, line: `${a.status || 'no status yet'}${files.length ? ' · editing ' + files.slice(0, 6).join(', ') + (files.length > 6 ? ` +${files.length - 6}` : '') : ''}` };
+  }
+  // locks left behind by someone who went away still make files read-only
+  const away = s.locks.filter(l => l.holder !== me.id && !now[l.holder] && !s.agents.some(a => a.id === l.holder && a.online));
+  for (const l of away) {
+    const k = 'away:' + l.holder;
+    now[k] = now[k] || { who: `${l.holderName} (away)`, line: 'still holds' };
+    now[k].line += ' ' + l.path;
+  }
+  return now;
+}
+function teamDelta(s, me, st) {
+  const now = teamNow(s, me), before = st.data.team;
+  st.data.team = now;
+  st.data.teamVersion = s.teamVersion;
+  st.save();
+  if (!before) {
+    const all = Object.values(now).map(x => `- ${x.who}: ${x.line}`);
+    return all.length ? 'huddle: what the other Claudes are doing:\n' + all.join('\n') : '';
+  }
+  const out = [];
+  for (const [id, x] of Object.entries(now)) if (!before[id] || before[id].line !== x.line || before[id].who !== x.who) out.push(`- ${x.who}: ${x.line}`);
+  for (const [id, x] of Object.entries(before)) if (!now[id]) out.push(`- ${x.who}: ${id.startsWith('away:') ? 'released its files' : 'stopped (went offline)'}`);
+  return out.length ? 'huddle: what the other Claudes are doing changed:\n' + out.join('\n') : '';
+}
+
+// A status straight from the person's prompt, so the team sees new work the moment it starts.
+// Short follow-ups ("yes", "go ahead", "now push it") keep the current status.
+function statusFromPrompt(prompt) {
+  const line = prompt.split('\n').map(l => l.trim()).find(Boolean) || '';
+  if (line.length < 25 || line.startsWith('/')) return null;
+  const cut = line.length > 120 ? line.slice(0, 120).replace(/\s+\S*$/, '') + '…' : line;
+  return `asked: “${cut}”`;
+}
+
 function teamSummary(s, me) {
   const others = s.agents.filter(a => a.online && a.id !== me.id && a.kind !== 'watcher');
   const lines = [];
@@ -270,6 +319,8 @@ const handlers = {
     st.data.boardVersion = b.version;
     st.data.boardSeen = board.signature(b);
     st.data.aiName = aiNameOf(s, client.agent.name);
+    st.data.team = teamNow(s, client.agent);
+    st.data.teamVersion = s.teamVersion;
     st.save();
     if (gitx.isRepo(cfg.root)) gitx.fetchAll(client, cfg.root).catch(() => {});
     // shown to the person in their terminal, so they can see this session is in the huddle
@@ -285,7 +336,8 @@ const handlers = {
       (linked ? `The huddle project is the folder ./${path.relative(here, cfg.root)} (work and run git there). Only files inside it are shared with the team; other folders here are yours alone.\n` : '') +
       'Rules: before you edit a file it is locked for you automatically; files other agents are editing are read-only and edits to them will be refused. ' +
       'If that happens, work on something else, message the holder with huddle_send, look at their live copy with huddle_view, or block with huddle_wait. ' +
-      'Set huddle_set_status to say what you are working on, and check huddle_status before starting larger changes so you do not overlap. ' +
+      'When you start a new piece of work, call huddle_set_status once with a short summary of it (under 12 words, e.g. "adding search to the parts library"); huddle pre-fills it from your user\'s prompt, and other Claudes are told whenever it changes. Skip it for follow-ups on the same work. ' +
+      'You are told when another Claude\'s work changes; check huddle_status before larger changes so you do not overlap. ' +
       'Messages from other agents show up in your context automatically.\n' +
       'The team shares knowledge through huddle instead of git: the PROJECT.md brief (huddle_project), memory notes (huddle_remember / huddle_recall) and skills (huddle_save_skill). ' +
       'When you learn something another agent would otherwise have to rediscover (a gotcha, a decision, how to run or test something), save it.\n\n' +
@@ -365,17 +417,18 @@ const handlers = {
       fs.rmSync(path.join(cfg.root, CONFIG_DIR, 'statusline.json'), { force: true });
     } catch {}
     if (!isPrivate && cfg.shareActivity === 'full' && prompt) await client.post('activity', { items: [{ kind: 'prompt', text: prompt }] }).catch(() => {});
+    const auto = !isPrivate && (cfg.shareActivity || 'full') === 'full' ? statusFromPrompt(prompt) : null;
+    if (auto) await client.post('status', { status: auto, auto: true }).catch(() => {});
     const mail = await inbox(client, cfg, true);
     const s = await client.get('state');
+    const now = sessionState(cfg, client.agent); // re-read: inbox() just saved its own changes
     const ai = aiNameOf(s, client.agent.name);
     let renamed = '';
-    if (ai !== (st.data.aiName || null)) {
+    if (ai !== (now.data.aiName || null)) {
       renamed = ai ? `huddle: ${nameLine(s, client.agent.name)}` : `huddle: ${client.agent.name} took your name away; you are ${client.agent.name}'s Claude again.`;
-      st.data.aiName = ai;
-      st.save();
+      now.data.aiName = ai;
     }
-    const theirs = s.locks.filter(l => l.holder !== client.agent.id);
-    const lockLine = theirs.length ? 'huddle: files currently locked by other agents: ' + theirs.map(l => `${l.path} (${l.holderName})`).join(', ') : '';
+    const lockLine = teamDelta(s, client.agent, now);
     const privateNote = isPrivate ? 'This turn is private: huddle is not sharing your user\'s prompt, your replies or your tool calls with the team. Do not put what is discussed here into huddle messages, team memory or PROJECT.md unless the user asks you to. File edits and commits in the project still sync as usual.' : '';
     const asks = await openRequests(client).catch(() => '');
     // whatever the prompt is about, the team's messages and requests come first
