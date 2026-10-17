@@ -12,7 +12,8 @@ const INSTRUCTIONS = `huddle connects you with other Claude agents working on th
 - Before a bigger change, call huddle_status to see who is doing what, and huddle_set_status to say what you're taking on, so work doesn't overlap.
 - Talk to the other agents with huddle_send. Messages to you arrive in your context automatically; huddle_inbox fetches them on demand.
 - If you need a locked file, ask its holder, watch it with huddle_view, or block with huddle_wait.
-- Locks are released when your turn ends. Use huddle_lock with hold=true to reserve files across turns, and huddle_unlock when done.`;
+- Locks are released when your turn ends. Use huddle_lock with hold=true to reserve files across turns, and huddle_unlock when done.
+- Team knowledge lives in huddle, not git: PROJECT.md (goals, conventions, architecture, who owns what; huddle_project), memory notes (huddle_remember / huddle_recall / huddle_forget) and skills (huddle_save_skill). Save anything another agent would otherwise rediscover the hard way: gotchas, decisions and their reasons, how to build/run/test. Keep memories short and specific; put repeatable multi-step procedures in a skill.`;
 
 const TOOLS = [
   { name: 'huddle_status', description: 'Who is online, what they are working on, which files are locked and recent file activity.',
@@ -29,6 +30,18 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: { paths: { type: 'array', items: { type: 'string' } } } } },
   { name: 'huddle_wait', description: 'Block until a file locked by someone else is released, then lock it for you (unless lock=false).',
     inputSchema: { type: 'object', properties: { path: { type: 'string' }, timeout_seconds: { type: 'number', minimum: 1, maximum: 600 }, lock: { type: 'boolean' } }, required: ['path'] } },
+  { name: 'huddle_project', description: "Read the team's shared PROJECT.md (the project brief every agent starts with), or replace it by passing new_text. Pass the base_version you read to avoid overwriting someone else's edit.",
+    inputSchema: { type: 'object', properties: { new_text: { type: 'string', description: 'full new contents; omit to just read' }, base_version: { type: 'number' } } } },
+  { name: 'huddle_remember', description: 'Save a short note to the shared team memory so every agent (now and in future sessions) knows it. Same title updates the existing note.',
+    inputSchema: { type: 'object', properties: { title: { type: 'string', description: 'short, specific, e.g. "tests need DATABASE_URL set"' }, text: { type: 'string', description: 'the fact, plus why it matters' } }, required: ['title', 'text'] } },
+  { name: 'huddle_recall', description: 'Search the shared team memory. Omit query to list everything.',
+    inputSchema: { type: 'object', properties: { query: { type: 'string' } } } },
+  { name: 'huddle_forget', description: 'Delete a shared memory that turned out wrong or outdated (by id or exact title).',
+    inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } },
+  { name: 'huddle_save_skill', description: "Share a skill with every agent: a reusable procedure installed into everyone's .claude/skills/. Same name updates it.",
+    inputSchema: { type: 'object', properties: { name: { type: 'string', description: 'kebab-case' }, description: { type: 'string', description: 'when an agent should use it' }, instructions: { type: 'string', description: 'the SKILL.md body (markdown)' } }, required: ['name', 'description', 'instructions'] } },
+  { name: 'huddle_delete_skill', description: 'Remove a shared skill from every agent.',
+    inputSchema: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] } },
   { name: 'huddle_view', description: "See the live shared version of a file, including another agent's in-progress edits, with who changed it and when.",
     inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] } },
 ];
@@ -108,6 +121,8 @@ function runMcp() {
           lines.push('', 'Recently edited:');
           for (const f of recent) lines.push(`- ${f.path} v${f.version} by ${f.byName}, ${ago(f.at)}`);
         }
+        const sh = await client.get('shared');
+        lines.push('', `Team knowledge: PROJECT.md ${sh.doc ? 'v' + sh.doc.version : 'empty'}, ${sh.memories.length} memories, ${sh.skills.length} skills${sh.skills.length ? ' (' + sh.skills.map(x => x.name).join(', ') + ')' : ''}`);
         const unread = await client.post('inbox', { peek: true });
         if (unread.messages.length) lines.push('', `${unread.messages.length} unread message(s); call huddle_inbox.`);
         return lines.join('\n');
@@ -149,6 +164,36 @@ function runMcp() {
         if (!l.ok) return `${p} was grabbed by ${l.lock.holderName} first`;
         return `${p} is free and now locked by you. Re-read it before editing; it may have changed.`;
       }
+      case 'huddle_project': {
+        if (a.new_text === undefined) {
+          const sh = await client.get('shared');
+          if (!sh.doc || !sh.doc.text.trim()) return 'PROJECT.md is empty. Write one with new_text: goals, conventions, architecture, how to run/test, who is working on what.';
+          return `PROJECT.md v${sh.doc.version}, last edited by ${sh.doc.byName} ${ago(sh.doc.at)} (pass base_version=${sh.doc.version} when you update it)\n\n${sh.doc.text}`;
+        }
+        const r = await client.post('doc', { text: a.new_text, baseVersion: a.base_version });
+        return `PROJECT.md saved as v${r.version}; every agent sees the change.`;
+      }
+      case 'huddle_remember': {
+        const r = await client.post('memory', { title: a.title, text: a.text });
+        return `${r.action === 'add' ? 'saved' : 'updated'} shared memory ${r.id}`;
+      }
+      case 'huddle_recall': {
+        const sh = await client.get('shared');
+        const words = String(a.query || '').toLowerCase().split(/\s+/).filter(Boolean);
+        const hits = sh.memories.filter(m => words.every(w => (m.title + ' ' + m.text).toLowerCase().includes(w)));
+        if (!hits.length) return words.length ? 'no matching memories' : 'shared memory is empty';
+        return hits.map(m => `[${m.id}] ${m.title} (${m.byName}, ${ago(m.at)})\n${m.text}`).join('\n\n');
+      }
+      case 'huddle_forget':
+        await client.post('forget', { id: a.id });
+        return 'forgotten';
+      case 'huddle_save_skill': {
+        const r = await client.post('skill', { name: a.name, description: a.description, body: a.instructions });
+        return `skill "${r.name}" v${r.version} shared; it installs into everyone's .claude/skills/${r.name}/`;
+      }
+      case 'huddle_delete_skill':
+        await client.post('skill-delete', { name: a.name });
+        return `skill "${a.name}" removed for everyone`;
       case 'huddle_view': {
         const p = rel(a.path);
         let f;

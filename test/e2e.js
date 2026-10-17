@@ -169,6 +169,32 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
     assert.equal(bad.status, 401);
     ok('dashboard is served and a wrong token is rejected');
 
+    // shared knowledge: PROJECT.md, memory, skills
+    bob.hook('post', { tool_name: 'Read', tool_input: {} }); // bob has now seen the (empty) shared state
+    assert.match(await alice.tool('huddle_project', { new_text: '# Calc\nUse tabs. Run tests with make test.\n', base_version: 0 }), /v1/);
+    assert.match(await bob.tool('huddle_project', { new_text: 'stale write', base_version: 0 }), /changed since you read it/);
+    assert.match(await alice.tool('huddle_remember', { title: 'tests need FOO=1', text: 'otherwise the db fixture hangs' }), /saved/);
+    assert.match(await alice.tool('huddle_save_skill', { name: 'Release Steps', description: 'Use when cutting a release', instructions: '1. bump version\n2. tag' }), /release-steps/);
+    const skillFile = path.join(bob.root, '.claude', 'skills', 'release-steps', 'SKILL.md');
+    await until(() => fs.existsSync(skillFile), 8000, "skill on bob's disk");
+    assert.match(fs.readFileSync(skillFile, 'utf8'), /^---\nname: release-steps\ndescription: Use when cutting a release\n---/);
+    await until(() => fs.readFileSync(path.join(bob.root, '.huddle', 'shared', 'PROJECT.md'), 'utf8').includes('Use tabs'), 8000, 'PROJECT.md on disk');
+    fs.rmSync(path.join(bob.root, '.huddle', 'sessions'), { recursive: true, force: true }); // skip the inbox throttle
+    bob.hook('session-start', {});
+    await alice.tool('huddle_remember', { title: 'ports', text: 'dev server is on 5173' });
+    const told = bob.hook('post', { tool_name: 'Read', tool_input: {} }).hookSpecificOutput.additionalContext;
+    assert.match(told, /New shared memory from alice: ports: dev server is on 5173/);
+    const brief = carol.hook('session-start', {}).hookSpecificOutput.additionalContext;
+    assert.match(brief, /Use tabs\. Run tests with make test/);
+    assert.match(brief, /tests need FOO=1: otherwise the db fixture hangs/);
+    assert.match(brief, /release-steps: Use when cutting a release/);
+    assert(fs.existsSync(path.join(carol.root, '.claude', 'skills', 'release-steps', 'SKILL.md')));
+    assert.match(await bob.tool('huddle_recall', { query: 'fixture' }), /FOO=1/);
+    await alice.tool('huddle_delete_skill', { name: 'release-steps' });
+    await until(() => !fs.existsSync(skillFile), 8000, 'skill removed from bob');
+    carol.hook('session-end', {});
+    ok('PROJECT.md, memories and skills reach every agent, on disk and in context');
+
     // open mode: anyone can create a project, and each project's token only opens that project
     const mk = async (name) => (await fetch(pub.url + '/api/new', { method: 'POST', body: JSON.stringify({ name }) })).json();
     const p1 = await mk('My App'), p2 = await mk('other');
@@ -183,7 +209,7 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
     }
     ok("open mode hands out per-project tokens that can't open other projects");
 
-    const joinOut = spawnSync(process.execPath, [CLI, 'new', 'demo', '--server', pub.url], { encoding: 'utf8' }).stdout;
+    const joinOut = spawnSync(process.execPath, [CLI, 'new', 'demo', '--server', pub.url, '--no-join'], { encoding: 'utf8' }).stdout;
     const code = joinOut.match(/join (\S+)/)[1];
     const inv = JSON.parse(Buffer.from(code, 'base64url'));
     assert.equal(await st(inv.p, inv.t), 200);

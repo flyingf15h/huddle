@@ -5,6 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const { sha, CONFIG_DIR } = require('./client');
+const { writeShared } = require('./shared');
 
 const GUARD_MS = 2000;
 
@@ -141,10 +142,17 @@ class Sync {
       } catch (e) { this.log(`sync: ${f.path}: ${e.message}`); }
     }
     for (const l of Object.values(this.locks)) if (l.checkout !== this.me) this.protect(l.path);
+    await this.refreshShared();
     this.seq = s.seq;
   }
 
+  async refreshShared() {
+    try { writeShared(this.cfg.root, await this.client.get('shared'), this.log); }
+    catch (e) { this.log('sync: shared knowledge: ' + e.message); }
+  }
+
   async handle(ev) {
+    if (ev.type === 'shared') return this.refreshShared();
     if (ev.type === 'lock') {
       this.locks[ev.lock.path] = ev.lock;
       if (ev.lock.checkout !== this.me) this.protect(ev.lock.path);

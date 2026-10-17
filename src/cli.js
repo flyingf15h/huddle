@@ -13,8 +13,9 @@ const PUBLIC_SERVER = process.env.HUDDLE_PUBLIC_SERVER || 'https://huddle.sage-h
 
 const HELP = `huddle — let Claude agents on different machines work on one project together
 
-Start a project (one person):
-  huddle new [NAME]             create a project on the public server and print the invite
+Start a project (one person, in the project folder):
+  huddle new [NAME]             create a project on the public server, join this folder,
+                                and print the invite for everyone else
   huddle server [--port 7777] [--tunnel] [--project NAME] [--open]
       Or run your own relay. --tunnel gives it a public https URL via cloudflared,
       --open lets anyone create projects on it with \`huddle new --server URL\`.
@@ -23,6 +24,15 @@ Everyone (in the project folder):
   huddle join <invite> [--name YOUR_NAME]
       Set up this folder: config, Claude Code hooks and the huddle MCP tools.
   huddle leave                  remove huddle from this folder
+
+Shared team knowledge (not in git, every agent gets it):
+  huddle project                print PROJECT.md, the brief every agent starts with
+  huddle project --edit         edit it in $EDITOR  (or --set FILE, e.g. --set CLAUDE.md)
+  huddle memory                 list shared memories
+  huddle memory add "title" "text"   /   huddle memory rm ID
+  huddle skill                  list shared skills
+  huddle skill add PATH         share a skill (a SKILL.md or a folder holding one)
+  huddle skill rm NAME
 
 Day to day:
   huddle status                 who's online, locks, recent edits
@@ -227,7 +237,9 @@ Send this to your collaborators (and run it yourself in your copy of the project
 
 Live dashboard: ${server}/#invite=${code}
 Anyone with the invite can join and see the project's shared files, so keep it to people you trust.`);
-  if (flags.join) await cmdJoin({ pos: [code], flags });
+  if (flags['no-join']) return;
+  console.log('');
+  await cmdJoin({ pos: [code], flags });
 }
 
 async function cmdJoin({ pos, flags }) {
@@ -258,8 +270,15 @@ async function cmdJoin({ pos, flags }) {
 joined "${inv.project}" as ${name} in ${root}
   hooks   → .claude/settings.local.json
   tools   → ${mcp ? 'huddle MCP server registered for this folder' : 'see above'}
-Start (or restart) Claude Code in this folder and it will coordinate with the others.
-Live dashboard: ${inv.server}/#invite=${pos[0]}`);
+Live dashboard: ${inv.server}/#invite=${pos[0]}
+
+Next: start (or restart) Claude Code in this folder, then just prompt it as usual.
+It already knows who else is working, what's locked, and the team's PROJECT.md,
+memory and skills. Ask it things like "what is everyone working on?" or
+"remember that the tests need Docker running".${fs.existsSync(path.join(root, 'CLAUDE.md')) ? `
+
+Tip: share your CLAUDE.md with the team without committing anything:
+  huddle project --set CLAUDE.md` : ''}`);
 }
 
 function cmdLeave() {
@@ -351,6 +370,68 @@ async function cmdWatch() {
   await sync.start();
 }
 
+async function cmdProject({ flags }) {
+  const c = humanClient('human');
+  const sh = await c.get('shared');
+  const cur = sh.doc ? sh.doc.text : '';
+  let text = null;
+  if (flags.set) text = fs.readFileSync(path.resolve(flags.set), 'utf8');
+  else if (flags.edit) {
+    const tmp = path.join(os.tmpdir(), `huddle-PROJECT-${process.pid}.md`);
+    fs.writeFileSync(tmp, cur || '# Project\n\nGoals, conventions, architecture, how to run and test, who is working on what.\n');
+    const editor = process.env.VISUAL || process.env.EDITOR || (process.platform === 'win32' ? 'notepad' : 'nano');
+    const r = spawnSync(editor, [tmp], { stdio: 'inherit', shell: true });
+    text = fs.readFileSync(tmp, 'utf8');
+    fs.rmSync(tmp, { force: true });
+    if (r.status !== 0 || text === cur) return console.log('no changes');
+  }
+  if (text === null) {
+    if (!cur.trim()) return console.log('PROJECT.md is empty. Write one with `huddle project --edit` or `huddle project --set CLAUDE.md`.');
+    return console.log(`PROJECT.md v${sh.doc.version}, edited by ${sh.doc.byName} ${ago(sh.doc.at)}\n\n${cur}`);
+  }
+  const r = await c.post('doc', { text, baseVersion: sh.doc ? sh.doc.version : 0 });
+  console.log(`PROJECT.md saved (v${r.version}); every agent sees it`);
+}
+
+async function cmdMemory({ pos }) {
+  const c = humanClient('human');
+  if (pos[0] === 'add') {
+    need(pos[1] && pos[2], 'usage: huddle memory add "title" "text"');
+    const r = await c.post('memory', { title: pos[1], text: pos.slice(2).join(' ') });
+    return console.log(`${r.action === 'add' ? 'saved' : 'updated'} ${r.id}`);
+  }
+  if (pos[0] === 'rm') {
+    need(pos[1], 'usage: huddle memory rm ID');
+    await c.post('forget', { id: pos.slice(1).join(' ') });
+    return console.log('forgotten');
+  }
+  const sh = await c.get('shared');
+  if (!sh.memories.length) return console.log('no shared memories yet');
+  for (const m of sh.memories) console.log(`[${m.id}] ${m.title}  (${m.byName}, ${ago(m.at)})\n    ${m.text.replace(/\n/g, '\n    ')}\n`);
+}
+
+async function cmdSkill({ pos, flags }) {
+  const c = humanClient('human');
+  if (pos[0] === 'add') {
+    need(pos[1], 'usage: huddle skill add PATH  (a SKILL.md or a folder containing one)');
+    let file = path.resolve(pos[1]);
+    if (fs.statSync(file).isDirectory()) file = path.join(file, 'SKILL.md');
+    const body = fs.readFileSync(file, 'utf8');
+    const fm = require('./core').parseFrontmatter(body);
+    const name = flags.name || fm.name || path.basename(path.dirname(file));
+    const r = await c.post('skill', { name, body, description: flags.description });
+    return console.log(`shared skill "${r.name}" (v${r.version})`);
+  }
+  if (pos[0] === 'rm') {
+    need(pos[1], 'usage: huddle skill rm NAME');
+    await c.post('skill-delete', { name: pos[1] });
+    return console.log('removed');
+  }
+  const sh = await c.get('shared');
+  if (!sh.skills.length) return console.log('no shared skills yet');
+  for (const k of sh.skills) console.log(`${k.name}  v${k.version} by ${k.byName}\n    ${k.description}\n`);
+}
+
 function cmdInvite() {
   const cfg = configured();
   const code = encodeInvite(cfg.server, cfg.token, cfg.project);
@@ -371,6 +452,7 @@ async function main() {
   const cmds = {
     server: cmdServer, new: cmdNew, join: cmdJoin, leave: cmdLeave, status: cmdStatus, send: cmdSend, inbox: cmdInbox,
     lock: cmdLock, unlock: cmdUnlock, watch: cmdWatch, invite: cmdInvite, open: cmdOpen,
+    project: cmdProject, memory: cmdMemory, memories: cmdMemory, skill: cmdSkill, skills: cmdSkill,
     hook: () => require('./hooks').runHook(args.pos[0]),
     mcp: () => require('./mcp').runMcp(),
   };

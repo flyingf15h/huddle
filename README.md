@@ -7,27 +7,28 @@ Let several Claude Code agents work on the same project at once, from different 
 - **Chat.** Agents message each other with `huddle_send`. Messages show up in the other agents' context automatically, and an agent that gets a direct message answers it before it stops.
 - **Dashboard.** A web page that shows who's online, what's locked, live file contents and the chat. Humans can post there too.
 
-Zero dependencies. Needs Node 18+ and Claude Code.
+Zero dependencies. Each person needs Claude Code, Node 18+ (22+ recommended) and git (for `npx github:`). Tested on Linux; macOS should work, Windows is untested.
 
 ## Quick start
 
-**1. One person creates a project** on the free public server:
+**1. One person creates a project** on the free public server, from inside their copy of the project:
 
 ```sh
-npx -y github:flyingf15h/huddle new myapp
+cd ~/code/myapp
+npx -y github:flyingf15h/huddle new myapp --name sam
 ```
 
-It prints an invite like:
+That sets up your folder and prints an invite like:
 
 ```
 npx -y github:flyingf15h/huddle join eyJzIjoiaHR0cHM6Ly9...
 ```
 
-**2. Everyone (including you) runs the invite in their copy of the project:**
+**2. Everyone else runs the invite in their copy of the project:**
 
 ```sh
 cd ~/code/myapp
-npx -y github:flyingf15h/huddle join eyJzIjoiaHR0cHM6Ly9... --name sam
+npx -y github:flyingf15h/huddle join eyJzIjoiaHR0cHM6Ly9... --name alex
 ```
 
 That's it. Start Claude Code in that folder and it's in the huddle. Each person uses their own Claude login, from anywhere.
@@ -35,6 +36,31 @@ That's it. Start Claude Code in that folder and it's in the huddle. Each person 
 Everyone needs the same starting code (clone the same repo/branch). huddle keeps files in step while you work, but it doesn't replace git.
 
 The public server is `https://huddle.sage-hill.workers.dev`, running on Cloudflare's free tier. Every project gets its own token, so an invite only opens that one project. Projects untouched for 30 days are deleted. Shared files are capped at 1 MB each and 10 MB per project. If you'd rather not use it, see [Hosting your own server](#hosting-your-own-server).
+
+## Using it with Claude
+
+Everyone uses their own Claude Code with their own subscription (Pro, Max, Team, API key, anything) on their own computer. huddle never touches your Claude account. It plugs into Claude Code through hooks and an MCP server, and those talk to the huddle server over HTTPS. So it doesn't matter whose subscription it is or where they are.
+
+After `join`, open Claude Code in that folder (restart it if it was already open) and prompt it normally. You don't have to mention huddle. At the start of every session Claude is told who else is online and what they're doing, which files are locked, and the team's PROJECT.md, memory and skills. Some prompts that use it directly:
+
+- "What is everyone working on right now?"
+- "Tell sam I'm taking over the auth module" / "Ask the others if anyone is touching the database schema"
+- "Wait until the parser file is free, then add error recovery"
+- "Remember for the team that the tests need Docker running"
+- "Add our deploy steps to the shared PROJECT.md"
+- "Turn how we cut a release into a shared skill"
+
+Check `/mcp` in Claude Code if the tools don't show up: `huddle` should be listed as connected.
+
+## Shared team knowledge
+
+None of this lives in git, so you can use huddle on a repo without committing anything to it.
+
+- **PROJECT.md**: the project brief (goals, conventions, architecture, who owns what). Every agent gets it at session start, like a CLAUDE.md the whole team shares. Edit it with `huddle project --edit`, load an existing file with `huddle project --set CLAUDE.md`, edit it in the dashboard, or have an agent do it with `huddle_project`.
+- **Memory**: short notes like "tests need FOO=1, otherwise the db fixture hangs". Agents save them with `huddle_remember` when they learn something the others would otherwise rediscover, and everyone else sees new ones right away.
+- **Skills**: shared `SKILL.md` procedures, installed into everyone's `.claude/skills/` (and kept out of git through `.git/info/exclude`). Share one with `huddle skill add path/to/skill`, or have an agent use `huddle_save_skill`.
+
+A copy of everything is kept in `.huddle/shared/` in each folder.
 
 ## What the agents get
 
@@ -60,6 +86,9 @@ MCP tools (registered for that folder only):
 | `huddle_lock` / `huddle_unlock` | Reserve files up front, optionally across turns |
 | `huddle_wait` | Block until a locked file is free, then take it |
 | `huddle_view` | See another agent's file mid-edit |
+| `huddle_project` | Read or update the shared PROJECT.md |
+| `huddle_remember` / `huddle_recall` / `huddle_forget` | Shared team memory |
+| `huddle_save_skill` / `huddle_delete_skill` | Shared skills |
 
 ## Commands
 

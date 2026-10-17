@@ -17,7 +17,12 @@ const OPEN_MAX_PROJECTS = 5000;            // open mode limits, so a public serv
 const OPEN_IDLE_MS = 30 * 24 * 60 * 60 * 1000;
 const OPEN_CREATES_PER_HOUR = 20;
 
-const DEFAULT_LIMITS = { fileBytes: MAX_FILE_BYTES, files: MAX_FILES, projectBytes: MAX_PROJECT_BYTES };
+const DEFAULT_LIMITS = { fileBytes: MAX_FILE_BYTES, files: MAX_FILES, projectBytes: MAX_PROJECT_BYTES,
+  sharedBytes: 1536 * 1024 };
+const DOC_BYTES = 64 * 1024;        // PROJECT.md and each skill
+const MEMORY_BYTES = 4 * 1024;      // each memory note
+const MAX_MEMORIES = 300;
+const MAX_SKILLS = 40;
 
 function sha(s) { return crypto.createHash('sha256').update(s).digest('hex').slice(0, 16); }
 function now() { return Date.now(); }
@@ -44,16 +49,19 @@ class Project {
     this.seq = 0;
     this.tokenHash = null;   // set for projects created in open mode; their own token unlocks them
     this.lastActive = now();
+    // knowledge every agent in the project shares: a brief, notes and skills
+    this.shared = { version: 0, doc: null, memories: [], skills: [] };
     this.waiters = new Set();
     if (saved) Object.assign(this, saved);
     this.waiters = new Set();
     this.dirty = false;
     this.changedFiles = new Set();     // paths whose content changed since the last save
+    this.sharedChanged = false;
     this.isConnected = () => false;    // servers with live sockets count those agents as online
     this.limits = { ...DEFAULT_LIMITS };
   }
   toJSON() {
-    const { waiters, dirty, changedFiles, isConnected, limits, ...rest } = this;
+    const { waiters, dirty, changedFiles, sharedChanged, isConnected, limits, ...rest } = this;
     return rest;
   }
   // events after `since`, or null if they've been dropped and the client must resync
@@ -61,6 +69,13 @@ class Project {
     if (since >= this.seq) return [];
     if (!this.events.length || this.events[0].seq > since + 1) return since === 0 && !this.events.length ? [] : null;
     return this.events.filter(ev => ev.seq > since);
+  }
+  sharedSize() { return JSON.stringify(this.shared).length; }
+  changeShared(kind, action, info, by) {
+    if (this.sharedSize() > this.limits.sharedBytes) throw httpError(413, 'shared knowledge is full; delete some memories or skills');
+    this.shared.version++;
+    this.sharedChanged = true;
+    return this.emit('shared', { kind, action, ...info, byName: by.name, version: this.shared.version });
   }
   online(a) { return now() - a.lastSeen < ONLINE_MS || this.isConnected(a.id); }
   emit(type, data) {
@@ -259,7 +274,79 @@ const routes = {
       msgs = unread();
     }
     if (!b.peek && msgs.length) { a.readSeq = msgs[msgs.length - 1].seq; p.dirty = true; }
-    return { messages: msgs };
+    return { messages: msgs, sharedVersion: p.shared.version };
+  },
+  'GET shared': (p) => p.shared,
+  // the project brief; base_version guards against overwriting someone else's edit
+  'POST doc': (p, b) => {
+    const a = p.touch(b.agent);
+    const text = String(b.text == null ? '' : b.text);
+    if (Buffer.byteLength(text) > DOC_BYTES) throw httpError(413, 'PROJECT.md is limited to 64 KB');
+    const cur = p.shared.doc;
+    if (!b.force && b.baseVersion !== undefined && (cur ? cur.version : 0) !== b.baseVersion) {
+      throw httpError(409, `PROJECT.md changed since you read it (now v${cur ? cur.version : 0} by ${cur ? cur.byName : '?'}); read it again and reapply your change`);
+    }
+    const prev = cur ? cur.text : '';
+    p.shared.doc = { text, version: (cur ? cur.version : 0) + 1, by: a.id, byName: a.name, at: now() };
+    p.changeShared('doc', 'update', { docVersion: p.shared.doc.version, summary: diffSummary(prev, text) }, a);
+    return { ok: true, version: p.shared.doc.version };
+  },
+  'POST memory': (p, b) => {
+    const a = p.touch(b.agent);
+    const title = String(b.title || '').trim().slice(0, 120);
+    const text = String(b.text || '').trim();
+    if (!title || !text) throw httpError(400, 'title and text required');
+    if (Buffer.byteLength(text) > MEMORY_BYTES) throw httpError(413, 'keep a memory under 4 KB; split it or put details in PROJECT.md');
+    const list = p.shared.memories;
+    let m = b.id ? list.find(x => x.id === b.id) : list.find(x => x.title.toLowerCase() === title.toLowerCase());
+    const action = m ? 'update' : 'add';
+    if (!m) {
+      if (list.length >= MAX_MEMORIES) throw httpError(413, 'too many memories; forget some first');
+      m = { id: crypto.randomBytes(4).toString('hex'), created: now() };
+      list.push(m);
+    }
+    Object.assign(m, { title, text, by: a.id, byName: a.name, at: now() });
+    p.changeShared('memory', action, { id: m.id, title, text }, a);
+    return { ok: true, id: m.id, action };
+  },
+  'POST forget': (p, b) => {
+    const a = p.touch(b.agent);
+    const i = p.shared.memories.findIndex(x => x.id === b.id || x.title.toLowerCase() === String(b.id || '').toLowerCase());
+    if (i < 0) throw httpError(404, 'no such memory');
+    const [m] = p.shared.memories.splice(i, 1);
+    p.changeShared('memory', 'delete', { id: m.id, title: m.title }, a);
+    return { ok: true };
+  },
+  // a skill is a whole SKILL.md (frontmatter + instructions), synced into .claude/skills/
+  'POST skill': (p, b) => {
+    const a = p.touch(b.agent);
+    const name = String(b.name || '').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64);
+    if (!name) throw httpError(400, 'skill name required');
+    let body = String(b.body || '');
+    if (Buffer.byteLength(body) > DOC_BYTES) throw httpError(413, 'a skill is limited to 64 KB');
+    const fm = parseFrontmatter(body);
+    const description = String(b.description || fm.description || '').trim().slice(0, 1000);
+    if (!description) throw httpError(400, 'a skill needs a description saying when to use it');
+    if (!fm.name) body = `---\nname: ${name}\ndescription: ${description.replace(/\n/g, ' ')}\n---\n\n${body.trim()}\n`;
+    const list = p.shared.skills;
+    let sk = list.find(x => x.name === name);
+    const action = sk ? 'update' : 'add';
+    if (!sk) {
+      if (list.length >= MAX_SKILLS) throw httpError(413, 'too many shared skills');
+      sk = { name, version: 0 };
+      list.push(sk);
+    }
+    Object.assign(sk, { description, body, version: sk.version + 1, by: a.id, byName: a.name, at: now() });
+    p.changeShared('skill', action, { name, description }, a);
+    return { ok: true, name, version: sk.version };
+  },
+  'POST skill-delete': (p, b) => {
+    const a = p.touch(b.agent);
+    const i = p.shared.skills.findIndex(x => x.name === b.name);
+    if (i < 0) throw httpError(404, 'no such skill');
+    p.shared.skills.splice(i, 1);
+    p.changeShared('skill', 'delete', { name: b.name }, a);
+    return { ok: true };
   },
   'POST wait-unlock': async (p, b, q, ctx) => {
     const a = p.touch(b.agent);
@@ -279,6 +366,27 @@ const routes = {
   },
 };
 
+function parseFrontmatter(text) {
+  const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
+  const out = {};
+  if (m) for (const line of m[1].split(/\r?\n/)) {
+    const kv = /^([\w-]+):\s*(.*)$/.exec(line);
+    if (kv) out[kv[1]] = kv[2].replace(/^["']|["']$/g, '');
+  }
+  return out;
+}
+
+// "+3 -1 lines" style summary so other agents know roughly what changed
+function diffSummary(a, b) {
+  const x = a.split('\n'), y = b.split('\n');
+  let i = 0, j = 0;
+  while (i < x.length && i < y.length && x[i] === y[i]) i++;
+  while (j < x.length - i && j < y.length - i && x[x.length - 1 - j] === y[y.length - 1 - j]) j++;
+  const added = y.slice(i, y.length - j).filter(l => l.trim());
+  const removed = x.length - i - j;
+  return { added: y.length - i - j, removed, firstAdded: added.slice(0, 6).join('\n').slice(0, 600) };
+}
+
 function waitOn(p, pred, timeoutMs, onAbort) {
   return new Promise(resolve => {
     const done = (v) => { clearTimeout(timer); p.waiters.delete(w); resolve(v); };
@@ -289,5 +397,5 @@ function waitOn(p, pred, timeoutMs, onAbort) {
   });
 }
 
-module.exports = { Project, routes, waitOn, sha, now, httpError, sameSecret, normPath,
+module.exports = { Project, routes, waitOn, parseFrontmatter, sha, now, httpError, sameSecret, normPath,
   ONLINE_MS, MAX_FILE_BYTES, OPEN_IDLE_MS, OPEN_MAX_PROJECTS, OPEN_CREATES_PER_HOUR };

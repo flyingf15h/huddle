@@ -4,6 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const { loadConfig, identity, Client, relPath, hashFile, sha, formatMessages, ago, CONFIG_DIR } = require('./client');
+const shared = require('./shared');
 
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 const INBOX_EVERY_MS = 10 * 1000;
@@ -36,8 +37,18 @@ async function inbox(client, cfg, force) {
   st.data.inboxAt = Date.now();
   st.save();
   const r = await client.post('inbox', {});
-  if (!r.messages.length) return '';
-  return `New huddle messages from other agents (reply with the huddle_send tool if useful):\n${formatMessages(r.messages, client.agent)}`;
+  const out = [];
+  if (r.messages.length) out.push(`New huddle messages from other agents (reply with the huddle_send tool if useful):\n${formatMessages(r.messages, client.agent)}`);
+  // someone changed PROJECT.md, a memory or a skill: refresh the files and tell the agent
+  if (r.sharedVersion !== undefined && st.data.shared && r.sharedVersion !== st.data.shared.version) {
+    const sh = await client.get('shared');
+    shared.writeShared(cfg.root, sh);
+    const change = shared.describeChanges(st.data.shared, sh);
+    if (change) out.push(change);
+    st.data.shared = shared.signature(sh);
+    st.save();
+  }
+  return out.join('\n\n');
 }
 
 function teamSummary(s, me) {
@@ -52,14 +63,22 @@ function teamSummary(s, me) {
 }
 
 const handlers = {
-  async 'session-start'(input, client) {
+  async 'session-start'(input, client, cfg) {
     const s = await client.post('hello', {});
+    const sh = await client.get('shared');
+    shared.writeShared(cfg.root, sh);
+    const st = sessionState(cfg, client.agent);
+    st.data.shared = shared.signature(sh);
+    st.save();
     return ctx('SessionStart',
       `You are "${client.agent.name}" in huddle project "${client.cfg.project}", shared with other Claude agents working in the same codebase from other machines.\n` +
       'Rules: before you edit a file it is locked for you automatically; files other agents are editing are read-only and edits to them will be refused. ' +
       'If that happens, work on something else, message the holder with huddle_send, look at their live copy with huddle_view, or block with huddle_wait. ' +
       'Set huddle_set_status to say what you are working on, and check huddle_status before starting larger changes so you do not overlap. ' +
-      'Messages from other agents show up in your context automatically.\n' + teamSummary(s, client.agent));
+      'Messages from other agents show up in your context automatically.\n' +
+      'The team shares knowledge through huddle instead of git: the PROJECT.md brief (huddle_project), memory notes (huddle_remember / huddle_recall) and skills (huddle_save_skill). ' +
+      'When you learn something another agent would otherwise have to rediscover (a gotcha, a decision, how to run or test something), save it.\n\n' +
+      teamSummary(s, client.agent) + '\n\n' + shared.briefing(sh));
   },
 
   async pre(input, client, cfg) {

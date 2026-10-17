@@ -20,7 +20,7 @@
 body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, sans-serif; }
 header { display: flex; gap: 12px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
 header h1 { font-size: 16px; margin: 0; }
-header .grow { flex: 1; }
+.grow { flex: 1; }
 #conn { font-size: 12px; color: var(--muted); }
 button, input, select { font: inherit; color: inherit; }
 button { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
@@ -39,6 +39,16 @@ h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: v
 .lock { color: var(--lock); }
 #viewer { display: flex; flex-direction: column; background: var(--panel); }
 #vhead { padding: 10px 14px; border-bottom: 1px solid var(--line); }
+#tabs { display: flex; gap: 2px; padding: 8px 10px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+#tabs button { background: transparent; color: var(--muted); border-radius: 6px 6px 0 0; padding: 6px 12px; }
+#tabs button.on { color: var(--ink); background: var(--bg); font-weight: 600; }
+#team { flex: 1; overflow: auto; padding: 14px; }
+#team textarea { width: 100%; min-height: 50vh; font: 12.5px/1.5 ui-monospace, Menlo, Consolas, monospace; background: var(--code); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 10px; }
+#team .card { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; background: var(--bg); }
+#team .card pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0 0; font: 12.5px/1.5 ui-monospace, Menlo, Consolas, monospace; }
+#team .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+#team .row input { flex: 1; min-width: 140px; }
+.linkbtn { background: none; color: var(--muted); padding: 0 4px; font-size: 12px; }
 #code { margin: 0; flex: 1; overflow: auto; background: var(--code); font: 12.5px/1.5 ui-monospace, Menlo, Consolas, monospace; }
 #code .ln { display: flex; }
 #code .ln span:first-child { width: 48px; flex: none; text-align: right; padding-right: 10px; color: var(--muted); user-select: none; }
@@ -87,8 +97,15 @@ h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: v
       <h2>Shared files</h2><div id="files"></div>
     </section>
     <section id="viewer">
+      <div id="tabs">
+        <button data-tab="file" class="on">Live file</button>
+        <button data-tab="doc">PROJECT.md</button>
+        <button data-tab="memory">Memory</button>
+        <button data-tab="skills">Skills</button>
+      </div>
       <div id="vhead" class="sub">Pick a file to watch it live.</div>
       <pre id="code"></pre>
+      <div id="team" hidden></div>
     </section>
     <section>
       <h2>Chat &amp; activity</h2>
@@ -120,7 +137,59 @@ function decodeInvite(code) {
   } catch { return null; }
 }
 
-const S = { agents: {}, locks: {}, files: {}, sel: null, content: {}, seq: 0 };
+const S = { agents: {}, locks: {}, files: {}, sel: null, content: {}, seq: 0, tab: 'file', shared: null, editing: false };
+
+// ---- shared team knowledge ----
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('[data-tab]');
+  if (!t) return;
+  S.tab = t.dataset.tab;
+  S.editing = false;
+  for (const b of document.querySelectorAll('#tabs button')) b.classList.toggle('on', b === t);
+  showTab();
+});
+async function loadShared() { S.shared = await api('shared'); if (S.tab !== 'file' && !S.editing) showTab(); }
+function showTab() {
+  const file = S.tab === 'file';
+  $('vhead').hidden = $('code').hidden = !file;
+  $('team').hidden = file;
+  if (file || !S.shared) return;
+  const sh = S.shared, el = $('team');
+  if (S.tab === 'doc') {
+    const d = sh.doc;
+    if (S.editing) return;
+    el.innerHTML = `<div class="row"><span class="sub">${d ? `v${d.version} · last edited by ${esc(d.byName)} ${ago(d.at)}` : 'empty'} · the brief every agent starts with</span>
+      <span class="grow"></span><button id="docedit">Edit</button></div>
+      <div class="card"><pre>${esc(d && d.text.trim() ? d.text : 'Nothing yet. Add goals, conventions, architecture, how to run and test, who is working on what.')}</pre></div>`;
+    $('docedit').onclick = () => {
+      S.editing = true;
+      const base = d ? d.version : 0;
+      el.innerHTML = `<textarea id="doctext"></textarea><div class="row"><button id="docsave">Save</button><button class="ghost" id="doccancel">Cancel</button><span id="docmsg" class="sub"></span></div>`;
+      $('doctext').value = d ? d.text : '';
+      $('doccancel').onclick = () => { S.editing = false; showTab(); };
+      $('docsave').onclick = async () => {
+        try { await api('doc', { text: $('doctext').value, baseVersion: base }); S.editing = false; await loadShared(); }
+        catch (err) { $('docmsg').textContent = err.message; }
+      };
+    };
+  } else if (S.tab === 'memory') {
+    el.innerHTML = `<div class="row"><input id="mtitle" placeholder="title, e.g. tests need FOO=1"></div>
+      <div class="row"><input id="mtext" placeholder="what everyone should know, and why"><button id="madd">Remember</button></div>
+      ${sh.memories.slice().reverse().map(m => `<div class="card"><b>${esc(m.title)}</b> <span class="sub">${esc(m.byName)} · ${ago(m.at)}</span>
+        <button class="linkbtn" data-forget="${esc(m.id)}">delete</button><pre>${esc(m.text)}</pre></div>`).join('') || '<p class="sub">No shared memories yet.</p>'}`;
+    $('madd').onclick = async () => {
+      const title = $('mtitle').value.trim(), text = $('mtext').value.trim();
+      if (title && text) { await api('memory', { title, text }).catch(e => alertMsg(e)); }
+    };
+    for (const b of el.querySelectorAll('[data-forget]')) b.onclick = () => api('forget', { id: b.dataset.forget }).catch(alertMsg);
+  } else if (S.tab === 'skills') {
+    el.innerHTML = (sh.skills.map(k => `<div class="card"><b>${esc(k.name)}</b> <span class="sub">v${k.version} by ${esc(k.byName)} · ${ago(k.at)}</span>
+      <button class="linkbtn" data-skilldel="${esc(k.name)}">delete</button><div class="sub">${esc(k.description)}</div><pre>${esc(k.body)}</pre></div>`).join('')
+      || '<p class="sub">No shared skills yet. Agents add them with huddle_save_skill, or run <code>huddle skill add PATH</code>.</p>');
+    for (const b of el.querySelectorAll('[data-skilldel]')) b.onclick = () => api('skill-delete', { name: b.dataset.skilldel }).catch(alertMsg);
+  }
+}
+function alertMsg(e) { addChat(`<div class="ev">${esc(e.message || e)}</div>`); }
 const me = () => ({ id: 'human:' + auth.name, name: auth.name, kind: 'human', host: 'dashboard' });
 const api = (ep, body) => fetch(`/api/p/${encodeURIComponent(auth.project)}/${ep}`, {
   method: body ? 'POST' : 'GET',
@@ -203,6 +272,12 @@ function addChat(html) {
 }
 function onEvent(ev) {
   switch (ev.type) {
+    case 'shared': {
+      const what = ev.kind === 'doc' ? 'PROJECT.md' : ev.kind === 'memory' ? `memory “${esc(ev.title)}”` : `skill “${esc(ev.name)}”`;
+      addChat(`<div class="ev">📚 ${esc(ev.byName)} ${ev.action === 'delete' ? 'deleted' : ev.action === 'add' ? 'added' : 'updated'} ${what}</div>`);
+      loadShared().catch(() => {});
+      break;
+    }
     case 'join': case 'leave': case 'status':
       S.agents[ev.agent.id] = ev.agent;
       if (ev.type === 'status' && ev.agent.status) addChat(`<div class="ev">${esc(ev.agent.name)} is now: ${esc(ev.agent.status)}</div>`);
@@ -239,6 +314,7 @@ async function start() {
   store.set('huddle.token', auth.token); store.set('huddle.project', auth.project); store.set('huddle.name', auth.name);
   $('login').hidden = true; $('app').hidden = false;
   $('pname').textContent = auth.project + ' · you are ' + auth.name;
+  loadShared().catch(() => {});
   const hist = await api('messages?limit=100');
   for (const m of hist.messages) onEvent({ type: 'message', message: m });
   connect();
