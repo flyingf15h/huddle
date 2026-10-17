@@ -6,441 +6,688 @@
 <title>huddle</title>
 <style>
 :root {
-  --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a66; --line: #e3e1dc;
-  --accent: #2f6fde; --lock: #c2410c; --ok: #15803d; --hl: #fff4c2; --code: #fbfaf8;
+  --bg: #ffffff; --surface: #f3f4f6; --raised: #ffffff; --ink: #0f1419; --muted: #3d4651; --faint: #5b6470;
+  --line: #d4d8de; --accent: #1d5bd6; --accent-ink: #ffffff; --accent-soft: #e6eefc;
+  --ok: #0f7a43; --ok-soft: #e3f4ea; --warn: #9a4a00; --warn-soft: #fdf0e1; --bad: #b42323; --bad-soft: #fbe7e7;
+  --code: #f6f7f9; --hl: #fff1b8; --shadow: 0 1px 2px rgba(15, 20, 25, .06), 0 4px 16px rgba(15, 20, 25, .06);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #161615; --panel: #1f1f1d; --ink: #ecebe7; --muted: #9a9892; --line: #34332f;
-    --accent: #6b9bf0; --lock: #f0864f; --ok: #4ade80; --hl: #3b3412; --code: #1a1a18;
+    --bg: #0e1116; --surface: #161a21; --raised: #1b2029; --ink: #f2f4f7; --muted: #c3cad4; --faint: #a3acb8;
+    --line: #2e3540; --accent: #79a6ff; --accent-ink: #0b1220; --accent-soft: #1a2740;
+    --ok: #5fd394; --ok-soft: #12291d; --warn: #f2b05e; --warn-soft: #2b2112; --bad: #ff8a8a; --bad-soft: #2d1616;
+    --code: #12161c; --hl: #4a3f0f; --shadow: 0 1px 2px rgba(0, 0, 0, .4);
   }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1116; --surface: #161a21; --raised: #1b2029; --ink: #f2f4f7; --muted: #c3cad4; --faint: #a3acb8;
+  --line: #2e3540; --accent: #79a6ff; --accent-ink: #0b1220; --accent-soft: #1a2740;
+  --ok: #5fd394; --ok-soft: #12291d; --warn: #f2b05e; --warn-soft: #2b2112; --bad: #ff8a8a; --bad-soft: #2d1616;
+  --code: #12161c; --hl: #4a3f0f; --shadow: 0 1px 2px rgba(0, 0, 0, .4);
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, sans-serif; }
-header { display: flex; gap: 12px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
-header h1 { font-size: 16px; margin: 0; }
-.grow { flex: 1; }
-#conn { font-size: 12px; color: var(--muted); }
-button, input, select { font: inherit; color: inherit; }
-button { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
-button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--line); }
-input, select { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
-main { display: grid; grid-template-columns: 260px 1fr 320px; height: calc(100vh - 53px); }
-section { border-right: 1px solid var(--line); overflow: auto; min-width: 0; }
-section:last-child { border-right: 0; display: flex; flex-direction: column; }
-h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 14px 14px 6px; }
-.item { padding: 6px 14px; cursor: default; }
-.item.clickable { cursor: pointer; }
-.item.clickable:hover, .item.sel { background: var(--bg); }
-.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); margin-right: 6px; }
-.dot.on { background: var(--ok); }
-.sub { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
-.lock { color: var(--lock); }
-#viewer { display: flex; flex-direction: column; background: var(--panel); }
-#vhead { padding: 10px 14px; border-bottom: 1px solid var(--line); }
-#askbar { display: flex; gap: 6px; padding: 10px; border-bottom: 1px solid var(--line); flex-wrap: wrap; background: var(--bg); }
-#askbar input { flex: 1; min-width: 180px; }
-#askmsg { font-size: 12px; color: var(--muted); width: 100%; }
-.goal { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; background: var(--bg); }
-.goal .gt { white-space: pre-wrap; overflow-wrap: anywhere; margin: 4px 0 8px; }
-.task { display: flex; gap: 8px; align-items: baseline; padding: 4px 0; border-top: 1px dashed var(--line); flex-wrap: wrap; }
-.pill { font-size: 11px; border-radius: 999px; padding: 1px 8px; border: 1px solid var(--line); color: var(--muted); }
-.pill.doing { color: var(--accent); border-color: var(--accent); }
-.pill.done { color: var(--ok); border-color: var(--ok); }
-.pill.blocked { color: var(--lock); border-color: var(--lock); }
-#tabs { display: flex; gap: 2px; padding: 8px 10px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-#tabs button { background: transparent; color: var(--muted); border-radius: 6px 6px 0 0; padding: 6px 12px; }
-#tabs button.on { color: var(--ink); background: var(--bg); font-weight: 600; }
-#team { flex: 1; overflow: auto; padding: 14px; }
-#team textarea { width: 100%; min-height: 50vh; font: 12.5px/1.5 ui-monospace, Menlo, Consolas, monospace; background: var(--code); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 10px; }
-#team .card { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; background: var(--bg); }
-#team .card pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0 0; font: 12.5px/1.5 ui-monospace, Menlo, Consolas, monospace; }
-#team .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
-#team .row input { flex: 1; min-width: 140px; }
-.act { padding: 6px 0; border-bottom: 1px solid var(--line); }
-.act .who { font-size: 12px; color: var(--muted); }
-.act.prompt .body { font-weight: 600; }
-.act.prompt .body::before { content: '❯ '; color: var(--accent); }
-.act.tool .body { font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace; color: var(--muted); }
-.act.end .body { font-size: 12px; color: var(--muted); font-style: italic; }
-.act .body { white-space: pre-wrap; overflow-wrap: anywhere; }
-.linkbtn { background: none; color: var(--muted); padding: 0 4px; font-size: 12px; }
-#code { margin: 0; flex: 1; overflow: auto; background: var(--code); font: 12.5px/1.5 ui-monospace, Menlo, Consolas, monospace; }
-#code .ln { display: flex; }
-#code .ln span:first-child { width: 48px; flex: none; text-align: right; padding-right: 10px; color: var(--muted); user-select: none; }
-#code .ln span:last-child { white-space: pre-wrap; overflow-wrap: anywhere; padding-right: 10px; }
-#code .ln.hl { background: var(--hl); }
-#chat { flex: 1; overflow: auto; padding: 8px 0; }
-.msg { padding: 6px 14px; }
-.msg b { font-weight: 600; }
-.msg .text { white-space: pre-wrap; overflow-wrap: anywhere; }
-.ev { padding: 2px 14px; font-size: 12px; color: var(--muted); }
-#send { display: flex; gap: 6px; padding: 10px; border-top: 1px solid var(--line); flex-wrap: wrap; }
-#send input#text { flex: 1; min-width: 120px; }
-#login { max-width: 420px; margin: 12vh auto; padding: 24px 16px; display: flex; flex-direction: column; gap: 10px; }
-.empty { padding: 30px; color: var(--muted); }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; border-radius: 8px; border: 1px solid var(--line); background: var(--raised); padding: 7px 12px; font-weight: 500; }
+button:hover { border-color: var(--muted); }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+button.link { border: 0; background: none; padding: 0; color: var(--accent); font-weight: 500; text-decoration: underline; text-underline-offset: 2px; }
+input, select, textarea { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+code, pre, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 13.5px; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+
+/* header */
+header { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+header h1 { margin: 0; font-size: 18px; letter-spacing: -.01em; }
+header .proj { font-weight: 600; color: var(--muted); }
+header .grow { flex: 1; }
+.conn { font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.conn::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: var(--faint); }
+.conn.live { color: var(--ok); } .conn.live::before { background: var(--ok); }
+
+/* team strip */
+#team { display: flex; gap: 10px; padding: 12px 16px; overflow-x: auto; border-bottom: 1px solid var(--line); background: var(--surface); }
+.person { flex: 0 0 auto; width: 250px; background: var(--raised); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; cursor: pointer; text-align: left; font-weight: 400; }
+.person.sel { outline: 2px solid var(--accent); }
+.person .top { display: flex; align-items: center; gap: 8px; }
+.person .name { font-weight: 700; }
+.person .state { margin-left: auto; font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 999px; }
+.state.on { background: var(--ok-soft); color: var(--ok); } .state.off { background: var(--surface); color: var(--muted); }
+.person .doing { margin-top: 6px; font-size: 13.5px; color: var(--ink); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.person .meta { margin-top: 4px; font-size: 12.5px; color: var(--muted); }
+.av { flex: none; width: 28px; height: 28px; border-radius: 50%; display: inline-grid; place-items: center; color: #fff; font-weight: 700; font-size: 13px; }
+.av.sm { width: 22px; height: 22px; font-size: 11px; }
+
+/* main */
+main { display: grid; grid-template-columns: minmax(0, 1fr) 360px; height: calc(100vh - 52px - var(--teamh, 112px)); }
+#left { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); }
+#filters { display: flex; gap: 6px; padding: 10px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; align-items: center; }
+.chip { border-radius: 999px; padding: 4px 12px; font-size: 13.5px; }
+.chip.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+#feed { flex: 1; overflow-y: auto; padding: 8px 16px 16px; }
+.empty { padding: 24px; color: var(--muted); border: 1px dashed var(--line); border-radius: 12px; margin: 16px 0; }
+.day { text-align: center; font-size: 12.5px; color: var(--muted); margin: 14px 0 6px; font-weight: 600; }
+.e { display: flex; gap: 10px; padding: 8px 0; }
+.e .body { min-width: 0; flex: 1; }
+.e .head { font-size: 13.5px; color: var(--muted); }
+.e .head b { color: var(--ink); }
+.e .text { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 2px; }
+.e.msg .bubble { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere; display: inline-block; max-width: 100%; }
+.e.msg.toyou .bubble { border-color: var(--accent); background: var(--accent-soft); }
+.e.prompt .bubble { border-left: 4px solid var(--accent); padding: 4px 0 4px 10px; margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere; font-weight: 500; }
+.e.reply .text.clamp { max-height: 9.5em; overflow: hidden; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
+.e.tools ul { margin: 4px 0 0; padding: 0; list-style: none; }
+.e.tools li { font-size: 13.5px; padding: 2px 0; color: var(--ink); overflow-wrap: anywhere; }
+.e.tools li .verb { color: var(--muted); }
+.note { font-size: 13.5px; color: var(--muted); padding: 4px 0 4px 38px; }
+.note b { color: var(--ink); font-weight: 600; }
+.card { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin: 6px 0 6px 38px; background: var(--raised); box-shadow: var(--shadow); }
+.card .title { font-weight: 700; }
+.goalcard { border-left: 4px solid var(--warn); }
+
+/* composer */
+#composer { border-top: 1px solid var(--line); padding: 10px 16px 14px; background: var(--surface); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; padding: 6px 12px; background: var(--raised); }
+.seg button.on { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+#composer .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+#composer textarea { width: 100%; min-height: 64px; resize: vertical; }
+#composer .hint { font-size: 13px; color: var(--muted); }
+#composer .send { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+
+/* side */
+#side { overflow-y: auto; padding: 12px 16px 24px; background: var(--surface); }
+#side h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 14px 0 8px; }
+#side h2:first-child { margin-top: 2px; }
+.goal { background: var(--raised); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; }
+.goal .gt { font-weight: 600; overflow-wrap: anywhere; }
+.bar { height: 6px; background: var(--surface); border-radius: 99px; overflow: hidden; margin: 8px 0; border: 1px solid var(--line); }
+.bar span { display: block; height: 100%; background: var(--ok); }
+.task { display: flex; gap: 8px; align-items: flex-start; padding: 6px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.task .tt { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.pill { flex: none; font-size: 12px; font-weight: 700; border-radius: 6px; padding: 1px 7px; border: 1px solid transparent; white-space: nowrap; }
+.pill.todo { background: var(--surface); color: var(--muted); border-color: var(--line); }
+.pill.doing { background: var(--accent-soft); color: var(--accent); }
+.pill.done { background: var(--ok-soft); color: var(--ok); }
+.pill.blocked { background: var(--bad-soft); color: var(--bad); }
+.pill.open { background: var(--warn-soft); color: var(--warn); }
+.row-item { display: flex; gap: 8px; align-items: center; padding: 7px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--raised); margin-bottom: 6px; width: 100%; text-align: left; font-weight: 400; }
+.row-item .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* dialogs */
+dialog { border: 1px solid var(--line); border-radius: 14px; padding: 0; width: min(920px, calc(100vw - 32px)); max-height: calc(100vh - 48px); background: var(--bg); color: var(--ink); box-shadow: 0 20px 60px rgba(0, 0, 0, .3); }
+dialog::backdrop { background: rgba(10, 12, 16, .5); }
+.dlg-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--bg); }
+.dlg-head h3 { margin: 0; font-size: 17px; }
+.dlg-head .grow { flex: 1; }
+.dlg-body { padding: 14px 16px 18px; overflow: auto; max-height: calc(100vh - 120px); }
+#fcode { margin: 0; background: var(--code); border: 1px solid var(--line); border-radius: 10px; overflow: auto; }
+#fcode .ln { display: flex; }
+#fcode .ln span:first-child { width: 52px; flex: none; text-align: right; padding-right: 12px; color: var(--faint); user-select: none; }
+#fcode .ln span:last-child { white-space: pre-wrap; overflow-wrap: anywhere; padding-right: 12px; }
+#fcode .ln.hl { background: var(--hl); }
+.tabs { display: flex; gap: 4px; margin-bottom: 12px; flex-wrap: wrap; }
+.tabs button.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.kcard { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; background: var(--raised); }
+.kcard pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0 0; }
+textarea.big { width: 100%; min-height: 50vh; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13.5px; }
+.cmd { display: flex; gap: 8px; align-items: stretch; margin: 6px 0 14px; }
+.cmd code { flex: 1; background: var(--code); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; overflow-x: auto; white-space: nowrap; }
+ol.steps { padding-left: 20px; } ol.steps li { margin-bottom: 10px; }
+#login { max-width: 440px; margin: 10vh auto; padding: 0 16px; display: flex; flex-direction: column; gap: 10px; }
+#login h1 { margin-bottom: 0; }
+.err { color: var(--bad); font-weight: 600; }
+
 @media (max-width: 900px) {
   main { grid-template-columns: 1fr; height: auto; }
-  section { border-right: 0; border-bottom: 1px solid var(--line); max-height: 70vh; }
-  #code { min-height: 40vh; }
+  #left { border-right: 0; min-height: 70vh; }
+  #feed { max-height: 60vh; }
+  #side { border-top: 1px solid var(--line); }
+  .person { width: 220px; }
 }
 </style>
 </head>
 <body>
 <div id="login" hidden>
   <h1>huddle</h1>
-  <p class="sub">Paste an invite code (from <code>huddle invite</code>), or the server token and project name.</p>
-  <input id="linvite" placeholder="invite code">
-  <p class="sub">or</p>
-  <input id="ltoken" placeholder="token">
-  <input id="lproject" placeholder="project">
-  <input id="lname" placeholder="your name (for chat)">
-  <button id="lgo">Open</button>
+  <p class="muted">Paste the invite code someone sent you. It's the long part after <code>join</code>.</p>
+  <input id="linvite" placeholder="invite code" autocomplete="off">
+  <input id="lname" placeholder="your name (shown to the team)" autocomplete="name">
+  <button class="primary" id="lgo">Open dashboard</button>
+  <div id="lerr" class="err"></div>
 </div>
+
 <div id="app" hidden>
   <header>
     <h1>huddle</h1>
-    <span id="pname" class="sub"></span>
+    <span class="proj" id="pname"></span>
     <span class="grow"></span>
-    <span id="conn">connecting…</span>
-    <button class="ghost" id="copyinv">Copy invite</button>
-    <button class="ghost" id="logout">Switch</button>
+    <span class="conn" id="conn">connecting</span>
+    <button id="btn-know">Team knowledge</button>
+    <button id="btn-invite">Invite people</button>
+    <button id="btn-help" aria-label="How huddle works">?</button>
   </header>
+  <div id="team"></div>
   <main>
-    <section>
-      <h2>Agents</h2><div id="agents"></div>
-      <h2>Locked files</h2><div id="locks"></div>
-      <h2>Shared files</h2><div id="files"></div>
-    </section>
-    <section id="viewer">
-      <form id="askbar">
-        <input id="asktext" placeholder="Ask the Claudes: e.g. add a history feature with tests" autocomplete="off">
-        <select id="askto"><option value="">whole team (they split it up)</option></select>
-        <button>Send</button>
-        <div id="askmsg">Goals for the whole team get planned by one Claude and split among everyone. Picking a person sends it to just their Claude.</div>
-      </form>
-      <div id="tabs">
-        <button data-tab="activity" class="on">Activity</button>
-        <button data-tab="board">Board</button>
-        <button data-tab="file">Live file</button>
-        <button data-tab="doc">PROJECT.md</button>
-        <button data-tab="memory">Memory</button>
-        <button data-tab="skills">Skills</button>
+    <section id="left">
+      <div id="filters">
+        <button class="chip on" data-f="all">Everything</button>
+        <button class="chip" data-f="talk">Messages</button>
+        <button class="chip" data-f="claude">Claude activity</button>
+        <button class="chip" data-f="tasks">Tasks</button>
+        <button class="chip" data-f="files">Files &amp; code</button>
+        <span id="whof" class="small muted"></span>
       </div>
-      <div id="vhead" class="sub">Pick a file to watch it live.</div>
-      <pre id="code"></pre>
-      <div id="team" hidden></div>
-    </section>
-    <section>
-      <h2>Chat &amp; activity</h2>
-      <div id="chat"></div>
-      <form id="send">
-        <select id="to"><option value="">everyone</option></select>
-        <input id="text" placeholder="Message the agents…" autocomplete="off">
-        <button>Send</button>
+      <div id="feed"></div>
+      <form id="composer">
+        <div class="row">
+          <div class="seg" role="tablist">
+            <button type="button" data-mode="msg" class="on">Message</button>
+            <button type="button" data-mode="ask">Ask the Claudes to do something</button>
+          </div>
+          <label class="small muted" for="to">to</label>
+          <select id="to"></select>
+        </div>
+        <textarea id="text" placeholder="Write a message to the team…"></textarea>
+        <div class="send">
+          <span class="hint" id="hint">Everyone sees messages here, and their Claudes see them too.</span>
+          <span><span class="small muted" id="sendmsg"></span> <button class="primary" id="sendbtn">Send</button></span>
+        </div>
       </form>
     </section>
+    <aside id="side">
+      <h2>Tasks</h2>
+      <div id="tasks"></div>
+      <h2>Being edited right now</h2>
+      <div id="locks"></div>
+      <h2>Recently changed files</h2>
+      <div id="files"></div>
+    </aside>
   </main>
 </div>
+
+<dialog id="dlg-file">
+  <div class="dlg-head"><h3 id="ftitle">File</h3><span class="grow"></span><span id="fmeta" class="small muted"></span><button data-close>Close</button></div>
+  <div class="dlg-body"><pre id="fcode"></pre></div>
+</dialog>
+
+<dialog id="dlg-know">
+  <div class="dlg-head"><h3>Team knowledge</h3><span class="grow"></span><button data-close>Close</button></div>
+  <div class="dlg-body">
+    <p class="muted small" style="margin-top:0">Every Claude in the project reads this when it starts. It lives in huddle, not in git.</p>
+    <div class="tabs"><button data-k="doc" class="on">Project brief</button><button data-k="memory">Memory</button><button data-k="skills">Skills</button></div>
+    <div id="kbody"></div>
+  </div>
+</dialog>
+
+<dialog id="dlg-invite">
+  <div class="dlg-head"><h3>Invite people</h3><span class="grow"></span><button data-close>Close</button></div>
+  <div class="dlg-body">
+    <p style="margin-top:0">Send a teammate these steps. They need <b>Claude Code</b>, <b>Node 18+</b> and <b>git</b>. They use their own Claude account, and they don't need access to your GitHub.</p>
+    <ol class="steps">
+      <li>Make an empty folder and open a terminal in it.</li>
+      <li>Run this, with their name at the end:<div class="cmd"><code id="joincmd"></code><button id="copyjoin">Copy</button></div>
+        If it asks to set up git, they say yes. It pulls in the project.</li>
+      <li>Start Claude in that folder with <code>claude</code>. Their Claude already knows the plan and who's doing what.</li>
+      <li>Optional: <code>npx -y github:flyingf15h/huddle autopilot</code> in a second terminal lets their Claude pick up team tasks on its own.</li>
+    </ol>
+    <p class="small muted">Watching only? Share this dashboard link: <button class="link" id="copydash">copy dashboard link</button></p>
+    <p class="small"><b>Anyone with the invite can join and see the project.</b> Only send it to people on your team.</p>
+  </div>
+</dialog>
+
+<dialog id="dlg-help">
+  <div class="dlg-head"><h3>How huddle works</h3><span class="grow"></span><button data-close class="primary">Got it</button></div>
+  <div class="dlg-body">
+    <ol class="steps">
+      <li><b>The cards at the top</b> are the people on the team. Each one says what that person and their Claude are doing right now. Click a card to see only them.</li>
+      <li><b>The timeline</b> shows everything as it happens: messages, what each Claude was asked, what it ran and edited, and what it replied.</li>
+      <li><b>The box at the bottom</b> sends a message to the team, or (switch to <i>Ask the Claudes</i>) gives the Claudes a job. One of them splits it into tasks and they share the work.</li>
+      <li><b>On the right</b>: task progress, and which files are being edited. A file someone is editing is locked for everyone else until they're done. Click any file to see it live.</li>
+    </ol>
+    <p class="muted small">Team knowledge (the project brief, shared notes and skills) is what every Claude reads when it starts. Invite people shows the exact steps to send a teammate.</p>
+  </div>
+</dialog>
+
+<dialog id="dlg-name">
+  <div class="dlg-head"><h3>What's your name?</h3></div>
+  <div class="dlg-body">
+    <p style="margin-top:0" class="muted">Shown next to your messages so the team knows who's talking.</p>
+    <input id="nameinput" style="width:100%" autocomplete="name">
+    <p><button class="primary" id="namesave">Save</button></p>
+  </div>
+</dialog>
+
 <script>
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const ago = (t) => { const s = Math.round((Date.now() - t) / 1000); return s < 60 ? s + 's ago' : s < 3600 ? Math.round(s / 60) + 'm ago' : Math.round(s / 3600) + 'h ago'; };
+const ago = (t) => { const s = Math.max(0, Math.round((Date.now() - t) / 1000)); return s < 45 ? 'just now' : s < 3600 ? Math.round(s / 60) + ' min ago' : s < 86400 ? Math.round(s / 3600) + ' h ago' : Math.round(s / 86400) + ' d ago'; };
+const clock = (t) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} }, del(k) { try { localStorage.removeItem(k); } catch {} } };
 
+// ---------- auth ----------
 const params = new URLSearchParams(location.hash.slice(1));
-let auth = { token: params.get('token') || store.get('huddle.token'), project: params.get('project') || store.get('huddle.project'),
-  name: store.get('huddle.name') || 'human' };
+let auth = { token: store.get('huddle.token'), project: store.get('huddle.project'), name: store.get('huddle.name') || '' };
 if (params.get('invite')) Object.assign(auth, decodeInvite(params.get('invite')) || {});
+if (params.get('token')) { auth.token = params.get('token'); auth.project = params.get('project'); }
 if (location.hash) history.replaceState(null, '', location.pathname);
-
 function decodeInvite(code) {
   try {
-    const j = JSON.parse(atob(code.trim().replace(/^huddle:/, '').replace(/-/g, '+').replace(/_/g, '/')));
+    code = code.trim().split(/\s+/).find(w => w.length > 40) || code.trim();
+    const j = JSON.parse(atob(code.replace(/^huddle:/, '').replace(/-/g, '+').replace(/_/g, '/')));
     return { token: j.t, project: j.p };
   } catch { return null; }
 }
-
-const S = { agents: {}, locks: {}, files: {}, sel: null, content: {}, seq: 0, tab: 'activity', shared: null, editing: false,
-  activity: [], who: '' };
-
-// ---- shared team knowledge ----
-document.addEventListener('click', (e) => {
-  const t = e.target.closest('[data-tab]');
-  if (!t) return;
-  S.tab = t.dataset.tab;
-  S.editing = false;
-  for (const b of document.querySelectorAll('#tabs button')) b.classList.toggle('on', b === t);
-  showTab();
-});
-async function loadShared() { S.shared = await api('shared'); if (S.tab !== 'file' && !S.editing) showTab(); }
-async function loadBoard() { S.board = await api('board'); if (S.tab === 'board') renderBoard(); }
-function renderBoard() {
-  const el = $('team'), b = S.board;
-  if (!b) { el.innerHTML = '<p class="sub">loading…</p>'; return; }
-  if (!b.goals.length && !b.tasks.length) { el.innerHTML = '<p class="sub">No goals yet. Use the bar above to ask the Claudes for something; one of them plans it and hands out tasks.</p>'; return; }
-  const task = (t) => `<div class="task"><span class="pill ${t.status}">${t.status}</span><b>${esc(t.title)}</b>
-    <span class="sub">${t.owner ? esc(t.owner) : 'unassigned'}${t.after && t.after.length ? ' · waits for ' + t.after.length + ' task(s)' : ''}${t.notes && t.notes.length ? ' · ' + esc(t.notes[t.notes.length - 1].text) : ''}</span></div>`;
-  el.innerHTML = b.goals.slice().reverse().map(g => `<div class="goal"><div class="sub">${esc(g.byName)}${g.to ? ' → ' + esc(g.to) + "'s Claude" : ' → whole team'} · ${ago(g.at)} ·
-      <span class="pill ${g.status === 'done' ? 'done' : g.status === 'open' ? '' : 'doing'}">${g.status}</span>${g.planner && !g.to ? ' · planned by ' + esc(g.planner) : ''}</div>
-      <div class="gt">${esc(g.text)}</div>${g.plan ? `<div class="sub">Plan: ${esc(g.plan)}</div>` : ''}
-      ${b.tasks.filter(t => t.goalId === g.id).map(task).join('') || (g.status === 'open' ? '<div class="sub">waiting for a Claude to plan it…</div>' : '')}</div>`).join('');
-}
-
-$('askbar').onsubmit = async (e) => {
-  e.preventDefault();
-  const text = $('asktext').value.trim();
-  if (!text) return;
-  const to = $('askto').value || null;
-  try {
-    await api('goal', { text, to });
-    $('asktext').value = '';
-    $('askmsg').textContent = to ? `Sent to ${to}'s Claude.` : 'Sent to the team. Watch the Board tab as a Claude plans it.';
-  } catch (err) { $('askmsg').textContent = 'Could not send: ' + err.message; }
-};
-
-function actItem(it) {
-  const body = it.kind === 'end' ? 'finished its turn' : it.kind === 'tool' ? '→ ' + it.text : it.text;
-  return `<div class="act ${it.kind}"><div class="who">${esc(it.name)}${it.kind === 'prompt' ? ' (user prompt)' : it.kind === 'text' ? ' (Claude)' : ''} · ${new Date(it.at).toLocaleTimeString()}</div><div class="body">${esc(body)}</div></div>`;
-}
-function renderActivity() {
-  const el = $('team');
-  const names = [...new Set(S.activity.map(it => it.name))];
-  const list = S.activity.filter(it => !S.who || it.name === S.who);
-  const stick = el.scrollTop + el.clientHeight > el.scrollHeight - 60;
-  el.innerHTML = `<div class="row"><span class="sub">What everyone's Claude is doing, live</span><span class="grow"></span>
-    <select id="actwho"><option value="">everyone</option>${names.map(n => `<option ${n === S.who ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></div>
-    ${list.map(actItem).join('') || '<p class="sub">Nothing yet. Prompts, replies and tool calls show up here as people work (unless they turned sharing off).</p>'}`;
-  $('actwho').onchange = (e) => { S.who = e.target.value; renderActivity(); el.scrollTop = el.scrollHeight; };
-  if (stick) el.scrollTop = el.scrollHeight;
-}
-function showTab() {
-  const file = S.tab === 'file';
-  $('vhead').hidden = $('code').hidden = !file;
-  $('team').hidden = file;
-  if (S.tab === 'activity') return renderActivity();
-  if (S.tab === 'board') return renderBoard();
-  if (file || !S.shared) return;
-  const sh = S.shared, el = $('team');
-  if (S.tab === 'doc') {
-    const d = sh.doc;
-    if (S.editing) return;
-    el.innerHTML = `<div class="row"><span class="sub">${d ? `v${d.version} · last edited by ${esc(d.byName)} ${ago(d.at)}` : 'empty'} · the brief every agent starts with</span>
-      <span class="grow"></span><button id="docedit">Edit</button></div>
-      <div class="card"><pre>${esc(d && d.text.trim() ? d.text : 'Nothing yet. Add goals, conventions, architecture, how to run and test, who is working on what.')}</pre></div>`;
-    $('docedit').onclick = () => {
-      S.editing = true;
-      const base = d ? d.version : 0;
-      el.innerHTML = `<textarea id="doctext"></textarea><div class="row"><button id="docsave">Save</button><button class="ghost" id="doccancel">Cancel</button><span id="docmsg" class="sub"></span></div>`;
-      $('doctext').value = d ? d.text : '';
-      $('doccancel').onclick = () => { S.editing = false; showTab(); };
-      $('docsave').onclick = async () => {
-        try { await api('doc', { text: $('doctext').value, baseVersion: base }); S.editing = false; await loadShared(); }
-        catch (err) { $('docmsg').textContent = err.message; }
-      };
-    };
-  } else if (S.tab === 'memory') {
-    el.innerHTML = `<div class="row"><input id="mtitle" placeholder="title, e.g. tests need FOO=1"></div>
-      <div class="row"><input id="mtext" placeholder="what everyone should know, and why"><button id="madd">Remember</button></div>
-      ${sh.memories.slice().reverse().map(m => `<div class="card"><b>${esc(m.title)}</b> <span class="sub">${esc(m.byName)} · ${ago(m.at)}</span>
-        <button class="linkbtn" data-forget="${esc(m.id)}">delete</button><pre>${esc(m.text)}</pre></div>`).join('') || '<p class="sub">No shared memories yet.</p>'}`;
-    $('madd').onclick = async () => {
-      const title = $('mtitle').value.trim(), text = $('mtext').value.trim();
-      if (title && text) { await api('memory', { title, text }).catch(e => alertMsg(e)); }
-    };
-    for (const b of el.querySelectorAll('[data-forget]')) b.onclick = () => api('forget', { id: b.dataset.forget }).catch(alertMsg);
-  } else if (S.tab === 'skills') {
-    el.innerHTML = (sh.skills.map(k => `<div class="card"><b>${esc(k.name)}</b> <span class="sub">v${k.version} by ${esc(k.byName)} · ${ago(k.at)}</span>
-      <button class="linkbtn" data-skilldel="${esc(k.name)}">delete</button><div class="sub">${esc(k.description)}</div><pre>${esc(k.body)}</pre></div>`).join('')
-      || '<p class="sub">No shared skills yet. Agents add them with huddle_save_skill, or run <code>huddle skill add PATH</code>.</p>');
-    for (const b of el.querySelectorAll('[data-skilldel]')) b.onclick = () => api('skill-delete', { name: b.dataset.skilldel }).catch(alertMsg);
-  }
-}
-function alertMsg(e) { addChat(`<div class="ev">${esc(e.message || e)}</div>`); }
-const me = () => ({ id: 'human:' + auth.name, name: auth.name, kind: 'human', host: 'dashboard' });
+const inviteCode = () => btoa(JSON.stringify({ s: location.origin, t: auth.token, p: auth.project })).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const me = () => ({ id: 'human:' + (auth.name || 'guest'), name: auth.name || 'guest', kind: 'human', host: 'dashboard' });
 const api = (ep, body) => fetch(`/api/p/${encodeURIComponent(auth.project)}/${ep}`, {
   method: body ? 'POST' : 'GET',
   headers: { authorization: 'Bearer ' + auth.token, 'content-type': 'application/json' },
   body: body ? JSON.stringify({ agent: me(), ...body }) : undefined,
 }).then(r => r.json().then(j => { if (!r.ok) throw new Error(j.error || r.status); return j; }));
 
-function showLogin() { $('app').hidden = true; $('login').hidden = false; $('lname').value = auth.name === 'human' ? '' : auth.name; }
-$('lgo').onclick = () => {
-  const inv = $('linvite').value && decodeInvite($('linvite').value);
-  auth.token = inv ? inv.token : $('ltoken').value.trim();
-  auth.project = inv ? inv.project : $('lproject').value.trim();
-  auth.name = $('lname').value.trim() || 'human';
-  start();
-};
-$('logout').onclick = () => { store.del('huddle.token'); store.del('huddle.project'); location.reload(); };
-$('copyinv').onclick = () => {
-  const code = btoa(JSON.stringify({ s: location.origin, t: auth.token, p: auth.project })).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  navigator.clipboard.writeText(`npx -y github:flyingf15h/huddle join ${code}`).then(() => { $('copyinv').textContent = 'Copied'; setTimeout(() => $('copyinv').textContent = 'Copy invite', 1500); });
-};
+// ---------- state ----------
+const S = { agents: {}, locks: {}, files: {}, board: null, shared: null, entries: [], filter: 'all', who: null, mode: 'msg', file: null, content: {} };
+// distinct, white-text-safe colours so people are easy to tell apart
+const PALETTE = ['#1d5bd6', '#b4235a', '#0f7a43', '#9a4a00', '#6b3fd1', '#0e7490', '#a21caf', '#475569', '#b42323', '#3f6212'];
+const color = (name) => { let h = 2166136261; for (const c of String(name)) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return PALETTE[(h >>> 0) % PALETTE.length]; };
+const avatar = (name, sm) => `<span class="av${sm ? ' sm' : ''}" style="background:${color(name)}" aria-hidden="true">${esc(String(name || '?')[0].toUpperCase())}</span>`;
 
-function render() {
-  // one row per person per checkout; each new Claude session gets a fresh id
-  const byKey = {};
-  for (const a of Object.values(S.agents).sort((a, b) => b.online - a.online || b.lastSeen - a.lastSeen)) {
-    const k = a.name + '|' + (a.checkout || a.id);
-    if (!byKey[k]) byKey[k] = a;
+// what a tool call means, in plain words
+function toolWords(text) {
+  const m = /^([\w-]+)(?::\s*([\s\S]*))?$/.exec(text || '');
+  const tool = m ? m[1] : '', arg = m && m[2] ? m[2] : '';
+  const verbs = { Edit: 'edited', MultiEdit: 'edited', Write: 'wrote', NotebookEdit: 'edited', Read: 'read', Bash: 'ran',
+    Grep: 'searched for', Glob: 'looked for files', WebFetch: 'opened', WebSearch: 'searched the web for', Task: 'started a helper:', Agent: 'started a helper:',
+    TodoWrite: 'updated its to-do list', Skill: 'used a skill' };
+  if (tool.startsWith('huddle_')) {
+    const h = { huddle_send: 'sent a message', huddle_status: 'checked who is doing what', huddle_set_status: 'updated its status', huddle_activity: "checked the others' activity",
+      huddle_lock: 'locked', huddle_unlock: 'released its files', huddle_wait: 'waited for', huddle_view: 'looked at', huddle_board: 'checked the task board',
+      huddle_plan: 'planned the tasks', huddle_claim_goal: 'took on planning a goal', huddle_claim_task: 'took a task', huddle_update_task: 'updated a task',
+      huddle_remember: 'saved a team memory:', huddle_recall: 'looked through team memory', huddle_project: 'read the project brief', huddle_merge: 'merged',
+      huddle_publish: 'shared its branch', huddle_branches: 'checked branches', huddle_ask_team: 'asked the team:', huddle_save_skill: 'shared a skill' }[tool] || tool.replace('huddle_', 'huddle: ');
+    return { verb: h, arg: ['huddle_send', 'huddle_set_status', 'huddle_update_task', 'huddle_project', 'huddle_board', 'huddle_status', 'huddle_activity', 'huddle_recall', 'huddle_branches', 'huddle_publish', 'huddle_unlock', 'huddle_claim_goal', 'huddle_claim_task', 'huddle_plan'].includes(tool) ? '' : arg };
   }
-  const agents = Object.values(byKey);
-  $('agents').innerHTML = agents.map(a => `<div class="item"><span class="dot ${a.online ? 'on' : ''}"></span>${esc(a.name)}
-    <span class="sub">${a.kind === 'agent' ? '' : esc(a.kind)}</span><div class="sub">${esc(a.status || (a.online ? 'online' : 'last seen ' + ago(a.lastSeen)))}${a.branch ? ' · ⎇ ' + esc(a.branch) : ''}${a.host ? ' · ' + esc(a.host) : ''}</div></div>`).join('') || '<div class="item sub">nobody yet</div>';
-  const locks = Object.values(S.locks);
-  $('locks').innerHTML = locks.map(l => `<div class="item clickable ${S.sel === l.path ? 'sel' : ''}" data-p="${esc(l.path)}"><span class="lock">🔒</span> ${esc(l.path)}
-    <div class="sub">${esc(l.holderName)} · ${ago(l.since)}${l.note ? ' · ' + esc(l.note) : ''}</div></div>`).join('') || '<div class="item sub">none</div>';
-  const files = Object.values(S.files).sort((a, b) => b.at - a.at);
-  $('files').innerHTML = files.map(f => `<div class="item clickable ${S.sel === f.path ? 'sel' : ''}" data-p="${esc(f.path)}">${esc(f.path)}
-    <div class="sub">v${f.version} by ${esc(f.byName)} · ${ago(f.at)}</div></div>`).join('') || '<div class="item sub">none yet</div>';
-  const opts = ['<option value="">everyone</option>'].concat([...new Set(agents.filter(a => a.kind === 'agent').map(a => a.name))].map(n => `<option>${esc(n)}</option>`));
-  const people = [...new Set(agents.filter(a => a.kind === 'agent' || a.kind === 'autopilot').map(a => a.name))];
-  const curAsk = $('askto').value;
-  $('askto').innerHTML = '<option value="">whole team (they split it up)</option>' + people.map(n => `<option value="${esc(n)}">only ${esc(n)}'s Claude</option>`).join('');
-  $('askto').value = curAsk;
-  const cur = $('to').value;
-  $('to').innerHTML = opts.join('');
-  $('to').value = cur;
-}
-document.addEventListener('click', (e) => {
-  const el = e.target.closest('[data-p]');
-  if (el) {
-    S.sel = el.dataset.p; render(); loadFile(S.sel, false);
-    if (S.tab !== 'file') document.querySelector('[data-tab=file]').click();
-  }
-});
-
-async function loadFile(p, highlight) {
-  try {
-    const f = await api('file?path=' + encodeURIComponent(p));
-    const old = S.content[p];
-    S.content[p] = f.content;
-    if (S.sel === p) showFile(f, highlight ? old : null);
-  } catch (e) {
-    if (S.sel === p) { $('vhead').textContent = p + ' — no edits shared yet'; $('code').innerHTML = ''; }
-  }
-}
-function showFile(f, old) {
-  const lock = S.locks[f.path];
-  $('vhead').innerHTML = `<b>${esc(f.path)}</b> <span class="sub">v${f.version} · last edit by ${esc(f.byName)} ${ago(f.at)}</span>
-    ${lock ? `<span class="lock"> · 🔒 ${esc(lock.holderName)} is editing</span>` : ''}`;
-  const lines = f.content.split('\n');
-  let a = 0, b = 0;
-  if (old != null) {
-    const o = old.split('\n');
-    while (a < lines.length && a < o.length && lines[a] === o[a]) a++;
-    while (b < lines.length - a && b < o.length - a && lines[lines.length - 1 - b] === o[o.length - 1 - b]) b++;
-  }
-  const hiEnd = lines.length - b;
-  $('code').innerHTML = lines.map((l, i) => `<div class="ln ${old != null && i >= a && i < hiEnd ? 'hl' : ''}"><span>${i + 1}</span><span>${esc(l) || ' '}</span></div>`).join('');
-  const first = $('code').querySelector('.hl');
-  if (first) first.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  return { verb: verbs[tool] || tool, arg, code: tool === 'Bash' };
 }
 
-function addChat(html) {
-  const c = $('chat');
-  const stick = c.scrollTop + c.clientHeight > c.scrollHeight - 40;
-  c.insertAdjacentHTML('beforeend', html);
-  if (stick) c.scrollTop = c.scrollHeight;
+// ---------- normalize everything into timeline entries ----------
+// kinds: msg, prompt, reply, tool, end, goal, plan, task, lock, unlock, file, knowledge, git, join
+function fromActivity(it) {
+  if (it.kind === 'prompt') return { kind: 'prompt', who: it.name, at: it.at, text: it.text };
+  if (it.kind === 'text') return { kind: 'reply', who: it.name, at: it.at, text: it.text };
+  if (it.kind === 'tool') return { kind: 'tool', who: it.name, at: it.at, text: it.text };
+  return { kind: 'end', who: it.name, at: it.at };
 }
-function onEvent(ev) {
+function fromEvent(ev) {
   switch (ev.type) {
+    case 'message': return [{ kind: 'msg', who: ev.message.fromName, at: ev.message.at, to: ev.message.to, text: ev.message.text }];
+    case 'activity': return ev.items.map(fromActivity);
+    case 'join': return ev.agent.kind === 'human' && ev.agent.host === 'dashboard' ? [] : [{ kind: 'join', who: ev.agent.name, at: ev.at, agentKind: ev.agent.kind }];
+    case 'lock': return [{ kind: 'lock', who: ev.lock.holderName, at: ev.at, path: ev.lock.path, branch: ev.lock.branch }];
+    case 'unlock': return [{ kind: 'unlock', who: ev.holderName, at: ev.at, path: ev.path, stale: ev.reason === 'stale' }];
+    case 'file': return [{ kind: 'file', who: ev.file.byName, at: ev.at, path: ev.file.path, branch: ev.file.branch, version: ev.file.version }];
+    case 'shared': return [{ kind: 'knowledge', who: ev.byName, at: ev.at, what: ev.kind, action: ev.action, title: ev.title || ev.name }];
+    case 'git': return ev.ref ? [{ kind: 'git', who: ev.ref.owner, at: ev.at, branch: ev.ref.branch, subject: ev.ref.subject }] : [];
     case 'board': {
-      const what = { goal: ev.goal && (ev.goal.to ? `asked ${esc(ev.goal.to)}'s Claude: ${esc(ev.goal.text.slice(0, 120))}` : `gave the team a goal: ${esc(ev.goal.text.slice(0, 120))}`),
-        'claim-goal': 'is planning a goal', plan: `planned it: ${ev.tasks ? ev.tasks.length : 0} task(s)`,
-        'claim-task': ev.task && `took “${esc(ev.task.title)}”`, 'task-update': ev.task && `marked “${esc(ev.task.title)}” ${ev.task.status}` }[ev.action];
-      if (what) addChat(`<div class="ev">📋 ${esc(ev.byName)} ${what}</div>`);
-      loadBoard().catch(() => {});
-      break;
-    }
-    case 'git':
-      if (ev.ref) addChat(`<div class="ev">⎇ ${esc(ev.ref.owner)} shared ${esc(ev.ref.branch)}${ev.ref.subject ? ': ' + esc(ev.ref.subject) : ''}</div>`);
-      break;
-    case 'activity':
-      S.activity.push(...ev.items);
-      if (S.activity.length > 600) S.activity.splice(0, S.activity.length - 600);
-      if (S.tab === 'activity') renderActivity();
-      break;
-    case 'shared': {
-      const what = ev.kind === 'doc' ? 'PROJECT.md' : ev.kind === 'memory' ? `memory “${esc(ev.title)}”` : `skill “${esc(ev.name)}”`;
-      addChat(`<div class="ev">📚 ${esc(ev.byName)} ${ev.action === 'delete' ? 'deleted' : ev.action === 'add' ? 'added' : 'updated'} ${what}</div>`);
-      loadShared().catch(() => {});
-      break;
-    }
-    case 'join': case 'leave': case 'status':
-      S.agents[ev.agent.id] = ev.agent;
-      if (ev.type === 'status' && ev.agent.status) addChat(`<div class="ev">${esc(ev.agent.name)} is now: ${esc(ev.agent.status)}</div>`);
-      if (ev.type === 'join') addChat(`<div class="ev">${esc(ev.agent.name)} joined</div>`);
-      break;
-    case 'lock': S.locks[ev.lock.path] = ev.lock; addChat(`<div class="ev">🔒 ${esc(ev.lock.holderName)} locked ${esc(ev.lock.path)}</div>`); break;
-    case 'unlock': delete S.locks[ev.path]; addChat(`<div class="ev">🔓 ${esc(ev.holderName)} released ${esc(ev.path)}${ev.reason === 'stale' ? ' (timed out)' : ''}</div>`); break;
-    case 'file':
-      S.files[ev.file.path] = ev.file;
-      addChat(`<div class="ev">✎ ${esc(ev.file.byName)} edited ${esc(ev.file.path)} (v${ev.file.version})</div>`);
-      if (!S.sel) S.sel = ev.file.path;
-      if (S.sel === ev.file.path) loadFile(ev.file.path, true);
-      break;
-    case 'message': {
-      const m = ev.message;
-      addChat(`<div class="msg"><b>${esc(m.fromName)}</b>${m.to ? ' → ' + esc(m.to) : ''} <span class="sub">${new Date(m.at).toLocaleTimeString()}</span><div class="text">${esc(m.text)}</div></div>`);
-      break;
+      if (ev.action === 'goal') return [{ kind: 'goal', who: ev.byName, at: ev.at, goal: ev.goal }];
+      if (ev.action === 'plan') return [{ kind: 'plan', who: ev.byName, at: ev.at, goal: ev.goal, tasks: ev.tasks || [] }];
+      if (ev.action === 'claim-goal') return [{ kind: 'task', who: ev.byName, at: ev.at, text: `is planning how to split up “${ev.goal.text.split('\n')[0].slice(0, 90)}”` }];
+      if (ev.task) return [{ kind: 'task', who: ev.byName, at: ev.at, text: ev.action === 'claim-task' ? `took the task “${ev.task.title}”` : `marked “${ev.task.title}” as ${statusWord(ev.task.status).toLowerCase()}` }];
+      return [];
     }
   }
-  render();
+  return [];
+}
+const statusWord = (s) => ({ todo: 'To do', doing: 'In progress', done: 'Done', blocked: 'Blocked', open: 'Waiting for a plan', planning: 'Being planned', planned: 'In progress' }[s] || s);
+const group = { msg: 'talk', prompt: 'claude', reply: 'claude', tool: 'claude', end: 'claude', goal: 'tasks', plan: 'tasks', task: 'tasks', lock: 'files', unlock: 'files', file: 'files', git: 'files', knowledge: 'talk', join: 'talk' };
+const visible = (e) => (S.filter === 'all' || group[e.kind] === S.filter) && (!S.who || e.who === S.who);
+
+// ---------- timeline rendering ----------
+let lastEl = null, lastKey = '', lastDay = '';
+function entryHtml(e) {
+  const who = `<b>${esc(e.who)}</b>`;
+  switch (e.kind) {
+    case 'msg': {
+      const toYou = e.to && auth.name && e.to.toLowerCase() === auth.name.toLowerCase();
+      return `<div class="e msg${toYou ? ' toyou' : ''}">${avatar(e.who)}<div class="body"><div class="head">${who} → ${e.to ? esc(e.to) : 'everyone'} · ${clock(e.at)}</div><div class="bubble">${esc(e.text)}</div></div></div>`;
+    }
+    case 'prompt': return `<div class="e prompt">${avatar(e.who)}<div class="body"><div class="head">${who} asked their Claude · ${clock(e.at)}</div><div class="bubble">${esc(e.text)}</div></div></div>`;
+    case 'reply': {
+      const long = e.text.length > 500;
+      return `<div class="e reply">${avatar(e.who)}<div class="body"><div class="head">${who}'s Claude replied · ${clock(e.at)}</div><div class="text${long ? ' clamp' : ''}">${esc(e.text)}</div>${long ? '<button class="link small" data-more>Show all</button>' : ''}</div></div>`;
+    }
+    case 'tool': return `<div class="e tools">${avatar(e.who)}<div class="body"><div class="head">${who}'s Claude is working · ${clock(e.at)}</div><ul>${toolLi(e)}</ul></div></div>`;
+    case 'end': return `<div class="note">${who}'s Claude finished · ${clock(e.at)}</div>`;
+    case 'join': return `<div class="note">${who} ${e.agentKind === 'autopilot' ? 'turned on autopilot' : 'joined'} · ${clock(e.at)}</div>`;
+    case 'lock': return `<div class="note">🔒 ${who} started editing <button class="link" data-file="${esc(e.path)}" data-branch="${esc(e.branch || '')}">${esc(e.path)}</button>${e.branch ? ` on ${esc(e.branch)}` : ''}. It's locked for everyone else.</div>`;
+    case 'unlock': return `<div class="note">🔓 ${who} ${e.stale ? 'went quiet, so huddle released' : 'is done with'} ${esc(e.path)}</div>`;
+    case 'file': return `<div class="note">✎ ${who} saved <button class="link" data-file="${esc(e.path)}" data-branch="${esc(e.branch || '')}">${esc(e.path)}</button> (version ${e.version})</div>`;
+    case 'git': return `<div class="note">⎇ ${who} shared their <b>${esc(e.branch)}</b> branch${e.subject ? `: “${esc(e.subject)}”` : ''}</div>`;
+    case 'knowledge': return `<div class="note">📚 ${who} ${e.action === 'delete' ? 'deleted' : e.action === 'add' ? 'added' : 'updated'} ${e.what === 'doc' ? 'the project brief' : e.what === 'memory' ? `the team memory “${esc(e.title)}”` : `the skill “${esc(e.title)}”`}</div>`;
+    case 'goal': return `<div class="card goalcard"><div class="small muted">${who} asked ${e.goal.to ? esc(e.goal.to) + "'s Claude" : 'the Claudes'} · ${clock(e.at)}</div><div class="title" style="white-space:pre-wrap">${esc(e.goal.text)}</div>${e.goal.to ? '' : '<div class="small muted">The first free Claude will split this into tasks.</div>'}</div>`;
+    case 'plan': return `<div class="card"><div class="small muted">${who}'s Claude split it into ${e.tasks.length} task${e.tasks.length === 1 ? '' : 's'}</div>${e.goal && e.goal.plan ? `<div class="small" style="margin:4px 0">${esc(e.goal.plan)}</div>` : ''}${e.tasks.map(t => `<div class="task"><span class="tt">${esc(t.title)}</span>${t.owner ? avatar(t.owner, true) + `<span class="small">${esc(t.owner)}</span>` : '<span class="small muted">anyone</span>'}</div>`).join('')}</div>`;
+    case 'task': return `<div class="note">📋 ${who} ${esc(e.text)}</div>`;
+  }
+  return '';
+}
+function toolLi(e) {
+  const w = toolWords(e.text);
+  return `<li><span class="verb">${esc(w.verb)}</span> ${w.arg ? (w.code ? `<code>${esc(w.arg)}</code>` : esc(w.arg)) : ''}</li>`;
+}
+function dayOf(t) { return new Date(t).toDateString(); }
+function appendEntry(e, feed) {
+  const d = dayOf(e.at);
+  if (d !== lastDay) {
+    lastDay = d;
+    feed.insertAdjacentHTML('beforeend', `<div class="day">${d === new Date().toDateString() ? 'Today' : new Date(e.at).toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })}</div>`);
+    lastKey = '';
+  }
+  // a Claude's run of tool calls collapses into one block
+  if (e.kind === 'tool' && lastKey === 'tool:' + e.who && lastEl) {
+    lastEl.querySelector('ul').insertAdjacentHTML('beforeend', toolLi(e));
+    return;
+  }
+  feed.insertAdjacentHTML('beforeend', entryHtml(e));
+  lastEl = feed.lastElementChild;
+  lastKey = e.kind === 'tool' ? 'tool:' + e.who : '';
+}
+function renderFeed() {
+  const feed = $('feed');
+  lastEl = null; lastKey = ''; lastDay = '';
+  feed.innerHTML = '';
+  const list = S.entries.filter(visible).slice(-600);
+  if (!list.length) {
+    feed.innerHTML = `<div class="empty">${S.who ? `Nothing from ${esc(S.who)} here yet.` : S.filter === 'all'
+      ? 'Nothing has happened yet. When someone opens Claude Code in their joined folder, what their Claude is doing shows up here. Use the box below to message the team or ask the Claudes to build something.'
+      : 'Nothing of this kind yet.'}</div>`;
+    return;
+  }
+  for (const e of list) appendEntry(e, feed);
+  feed.scrollTop = feed.scrollHeight;
+}
+function addEntries(list) {
+  if (!list.length) return;
+  S.entries.push(...list);
+  if (S.entries.length > 1500) S.entries.splice(0, S.entries.length - 1500);
+  const feed = $('feed');
+  if (feed.querySelector('.empty')) return renderFeed();
+  const stick = feed.scrollTop + feed.clientHeight > feed.scrollHeight - 80;
+  for (const e of list) if (visible(e)) appendEntry(e, feed);
+  if (stick) feed.scrollTop = feed.scrollHeight;
+}
+document.addEventListener('click', (ev) => {
+  const more = ev.target.closest('[data-more]');
+  if (more) { more.previousElementSibling.classList.remove('clamp'); more.remove(); return; }
+  const f = ev.target.closest('[data-file]');
+  if (f) openFile(f.dataset.file, f.dataset.branch || null);
+});
+for (const c of document.querySelectorAll('[data-f]')) c.onclick = () => {
+  S.filter = c.dataset.f;
+  for (const x of document.querySelectorAll('[data-f]')) x.classList.toggle('on', x === c);
+  renderFeed();
+};
+
+// ---------- team strip ----------
+function people() {
+  const by = {};
+  for (const a of Object.values(S.agents)) {
+    if (a.kind === 'human' && a.host === 'dashboard' && a.name === auth.name) continue;
+    const p = by[a.name] = by[a.name] || { name: a.name, online: false, lastSeen: 0, status: '', branch: null, autopilot: false };
+    p.online = p.online || a.online;
+    if (a.lastSeen > p.lastSeen) { p.lastSeen = a.lastSeen; if (a.branch) p.branch = a.branch; }
+    if (a.status && (!p.status || a.online)) p.status = a.status;
+    if (a.kind === 'autopilot' && a.online) p.autopilot = true;
+  }
+  return Object.values(by).sort((x, y) => y.online - x.online || y.lastSeen - x.lastSeen);
+}
+function nowDoing(name) {
+  for (let i = S.entries.length - 1; i >= 0; i--) {
+    const e = S.entries[i];
+    if (e.who !== name) continue;
+    if (e.kind === 'end') return `Claude is idle (finished ${ago(e.at)})`;
+    if (e.kind === 'tool') { const w = toolWords(e.text); return `Claude ${w.verb} ${w.arg}`.trim(); }
+    if (e.kind === 'prompt') return `Asked Claude: “${e.text.slice(0, 120)}”`;
+    if (e.kind === 'reply') return `Claude replied ${ago(e.at)}`;
+    if (e.kind === 'lock') return `Editing ${e.path}`;
+    if (e.kind === 'msg') return `Said: “${e.text.slice(0, 100)}”`;
+  }
+  return '';
+}
+function renderTeam() {
+  const ps = people();
+  const doingCount = (n) => S.board ? S.board.tasks.filter(t => t.owner === n && t.status === 'doing').length : 0;
+  $('team').innerHTML = ps.map(p => {
+    const doing = nowDoing(p.name) || p.status || (p.online ? 'Online' : '');
+    const t = doingCount(p.name);
+    return `<button class="person${S.who === p.name ? ' sel' : ''}" data-person="${esc(p.name)}" title="Show only ${esc(p.name)} in the timeline">
+      <div class="top">${avatar(p.name)}<span class="name">${esc(p.name)}</span><span class="state ${p.online ? 'on' : 'off'}">${p.online ? (p.autopilot ? 'Autopilot' : 'Online') : 'Away ' + ago(p.lastSeen).replace(' ago', '')}</span></div>
+      <div class="doing">${esc(doing) || '<span class="muted">No activity yet</span>'}</div>
+      <div class="meta">${[p.branch ? '⎇ ' + esc(p.branch) : '', t ? `${t} task${t === 1 ? '' : 's'} in progress` : ''].filter(Boolean).join(' · ') || '&nbsp;'}</div>
+    </button>`;
+  }).join('') || '<div class="muted">Nobody has joined yet. Use <b>Invite people</b> to get your team in.</div>';
+  for (const b of document.querySelectorAll('[data-person]')) b.onclick = () => {
+    S.who = S.who === b.dataset.person ? null : b.dataset.person;
+    $('whof').innerHTML = S.who ? `Showing only <b>${esc(S.who)}</b> · <button class="link" id="clearwho">show everyone</button>` : '';
+    if (S.who) $('clearwho').onclick = () => { S.who = null; $('whof').innerHTML = ''; renderTeam(); renderFeed(); };
+    renderTeam(); renderFeed();
+  };
+  document.documentElement.style.setProperty('--teamh', $('team').offsetHeight + 'px');
+  // who the composer can address
+  const names = ps.map(p => p.name).filter(n => n !== auth.name);
+  const sel = $('to'), cur = sel.value;
+  sel.innerHTML = S.mode === 'ask'
+    ? `<option value="">the whole team (they split it up)</option>${names.map(n => `<option value="${esc(n)}">only ${esc(n)}'s Claude</option>`).join('')}`
+    : `<option value="">everyone</option>${names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}`;
+  sel.value = [...sel.options].some(o => o.value === cur) ? cur : '';
 }
 
-$('send').onsubmit = async (e) => {
+// ---------- side panel ----------
+function renderSide() {
+  const b = S.board;
+  const goals = b ? b.goals.slice().reverse().filter(g => g.status !== 'done' || Date.now() - g.at < 3 * 86400e3).slice(0, 8) : [];
+  $('tasks').innerHTML = goals.map(g => {
+    const ts = b.tasks.filter(t => t.goalId === g.id);
+    const done = ts.filter(t => t.status === 'done').length;
+    return `<div class="goal"><div style="display:flex;gap:8px;align-items:flex-start"><span class="gt" style="flex:1">${esc(g.text.split('\n')[0].slice(0, 140))}</span><span class="pill ${g.status === 'done' ? 'done' : g.status === 'open' ? 'open' : 'doing'}">${statusWord(g.status)}</span></div>
+      <div class="small muted">from ${esc(g.byName)}${g.to ? ' for ' + esc(g.to) + "'s Claude" : ''}${g.planner && !g.to ? ' · planned by ' + esc(g.planner) + "'s Claude" : ''}</div>
+      ${ts.length ? `<div class="bar" title="${done} of ${ts.length} done"><span style="width:${Math.round(100 * done / ts.length)}%"></span></div>
+      ${ts.map(t => `<div class="task"><span class="pill ${t.status}">${statusWord(t.status)}</span><span class="tt">${esc(t.title)}${t.notes && t.notes.length && t.status !== 'todo' ? `<div class="small muted">${esc(t.notes[t.notes.length - 1].text.slice(0, 160))}</div>` : ''}</span>${t.owner ? avatar(t.owner, true) : ''}</div>`).join('')}` : '<div class="small muted" style="margin-top:6px">Waiting for a Claude to split this into tasks…</div>'}
+    </div>`;
+  }).join('') || '<div class="empty small" style="margin:0">No tasks yet. Switch the box below to <b>Ask the Claudes</b> and describe what you want built.</div>';
+  const locks = Object.values(S.locks);
+  $('locks').innerHTML = locks.map(l => `<button class="row-item" data-file="${esc(l.path)}" data-branch="${esc(l.branch || '')}">${avatar(l.holderName, true)}<span class="grow"><b>${esc(l.path)}</b><br><span class="small muted">${esc(l.holderName)} · since ${ago(l.since)}${l.branch ? ' · ' + esc(l.branch) : ''}</span></span>🔒</button>`).join('')
+    || '<div class="small muted">Nobody is editing a file right now.</div>';
+  const files = Object.values(S.files).filter(f => f.size).sort((a, b) => b.at - a.at).slice(0, 8);
+  $('files').innerHTML = files.map(f => `<button class="row-item" data-file="${esc(f.path)}" data-branch="${esc(f.branch || '')}">${avatar(f.byName, true)}<span class="grow">${esc(f.path)}<br><span class="small muted">${esc(f.byName)} · ${ago(f.at)}</span></span></button>`).join('')
+    || '<div class="small muted">No files changed through huddle yet.</div>';
+}
+
+// ---------- file viewer ----------
+async function openFile(p, branch) {
+  S.file = { path: p, branch };
+  $('ftitle').textContent = p;
+  $('fmeta').textContent = 'loading…';
+  $('fcode').innerHTML = '';
+  if (!$('dlg-file').open) $('dlg-file').showModal();
+  await loadFile(false);
+}
+async function loadFile(highlight) {
+  if (!S.file) return;
+  const { path: p, branch } = S.file;
+  const key = (branch || '') + '::' + p;
+  try {
+    const f = await api('file?path=' + encodeURIComponent(p) + (branch ? '&branch=' + encodeURIComponent(branch) : ''));
+    const old = highlight ? S.content[key] : null;
+    S.content[key] = f.content;
+    $('fmeta').textContent = `version ${f.version} · last saved by ${f.byName} ${ago(f.at)}${f.lock ? ' · 🔒 ' + f.lock.holderName + ' is editing' : ''}${f.branch ? ' · ⎇ ' + f.branch : ''}`;
+    const lines = f.content.split('\n');
+    let a = 0, b = 0;
+    if (old != null) {
+      const o = old.split('\n');
+      while (a < lines.length && a < o.length && lines[a] === o[a]) a++;
+      while (b < lines.length - a && b < o.length - a && lines[lines.length - 1 - b] === o[o.length - 1 - b]) b++;
+    }
+    $('fcode').innerHTML = lines.map((l, i) => `<div class="ln ${old != null && i >= a && i < lines.length - b ? 'hl' : ''}"><span>${i + 1}</span><span>${esc(l) || ' '}</span></div>`).join('');
+    const first = $('fcode').querySelector('.hl');
+    if (first) first.scrollIntoView({ block: 'center' });
+  } catch {
+    $('fmeta').textContent = '';
+    $('fcode').innerHTML = `<div style="padding:12px">No live copy of this file yet. It appears here once someone edits it with Claude.</div>`;
+  }
+}
+
+// ---------- team knowledge ----------
+let ktab = 'doc', kediting = false;
+for (const t of document.querySelectorAll('[data-k]')) t.onclick = () => {
+  ktab = t.dataset.k; kediting = false;
+  for (const x of document.querySelectorAll('[data-k]')) x.classList.toggle('on', x === t);
+  renderKnow();
+};
+function renderKnow() {
+  const sh = S.shared, el = $('kbody');
+  if (!sh) { el.textContent = 'loading…'; return; }
+  if (ktab === 'doc') {
+    if (kediting) return;
+    const d = sh.doc;
+    el.innerHTML = `<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><span class="small muted" style="flex:1">${d ? `Version ${d.version}, last edited by ${esc(d.byName)} ${ago(d.at)}` : 'No project brief yet'}</span><button class="primary" id="docedit">${d ? 'Edit' : 'Write one'}</button></div>
+      <div class="kcard"><pre>${esc(d && d.text.trim() ? d.text : 'Nothing yet. A good brief covers the goal, how the code is laid out, how to run and test it, conventions, and who is working on what.')}</pre></div>`;
+    $('docedit').onclick = () => {
+      kediting = true;
+      const base = d ? d.version : 0;
+      el.innerHTML = `<textarea class="big" id="doctext"></textarea><div style="display:flex;gap:8px;margin-top:8px;align-items:center"><button class="primary" id="docsave">Save for everyone</button><button id="doccancel">Cancel</button><span id="docmsg" class="err small"></span></div>`;
+      $('doctext').value = d ? d.text : '';
+      $('doccancel').onclick = () => { kediting = false; renderKnow(); };
+      $('docsave').onclick = async () => {
+        try { await api('doc', { text: $('doctext').value, baseVersion: base }); kediting = false; await loadShared(); }
+        catch (err) { $('docmsg').textContent = err.message; }
+      };
+    };
+  } else if (ktab === 'memory') {
+    el.innerHTML = `<div class="kcard"><b>Add something everyone should know</b>
+      <input id="mtitle" placeholder="Short title, e.g. tests need Docker running" style="width:100%;margin-top:8px">
+      <textarea id="mtext" placeholder="The detail, and why it matters" style="width:100%;margin-top:6px;min-height:60px"></textarea>
+      <div style="margin-top:6px"><button class="primary" id="madd">Save to team memory</button> <span id="mmsg" class="err small"></span></div></div>
+      ${sh.memories.slice().reverse().map(m => `<div class="kcard"><div style="display:flex;gap:8px"><b style="flex:1">${esc(m.title)}</b><span class="small muted">${esc(m.byName)} · ${ago(m.at)}</span><button class="link small" data-forget="${esc(m.id)}">Delete</button></div><pre>${esc(m.text)}</pre></div>`).join('') || '<p class="muted">No memories yet.</p>'}`;
+    $('madd').onclick = async () => {
+      const title = $('mtitle').value.trim(), text = $('mtext').value.trim();
+      if (!title || !text) return;
+      try { await api('memory', { title, text }); await loadShared(); } catch (e) { $('mmsg').textContent = e.message; }
+    };
+    for (const b of el.querySelectorAll('[data-forget]')) b.onclick = async () => { await api('forget', { id: b.dataset.forget }).catch(() => {}); await loadShared(); };
+  } else {
+    el.innerHTML = sh.skills.map(k => `<div class="kcard"><div style="display:flex;gap:8px"><b style="flex:1">${esc(k.name)}</b><span class="small muted">${esc(k.byName)} · ${ago(k.at)}</span><button class="link small" data-skilldel="${esc(k.name)}">Delete</button></div><div class="small">${esc(k.description)}</div><pre class="small">${esc(k.body)}</pre></div>`).join('')
+      || '<p class="muted">No shared skills yet. A skill is a reusable how-to (like "how we cut a release") that every Claude gets. Ask a Claude to save one, or run <code>huddle skill add PATH</code>.</p>';
+    for (const b of el.querySelectorAll('[data-skilldel]')) b.onclick = async () => { await api('skill-delete', { name: b.dataset.skilldel }).catch(() => {}); await loadShared(); };
+  }
+}
+async function loadShared() { S.shared = await api('shared'); if ($('dlg-know').open && !kediting) renderKnow(); }
+async function loadBoard() { S.board = await api('board'); renderSide(); renderTeam(); }
+
+// ---------- composer ----------
+for (const b of document.querySelectorAll('[data-mode]')) b.onclick = () => {
+  S.mode = b.dataset.mode;
+  for (const x of document.querySelectorAll('[data-mode]')) x.classList.toggle('on', x === b);
+  $('text').placeholder = S.mode === 'ask' ? 'Describe what you want built or fixed. Be specific about what "done" looks like.' : 'Write a message to the team…';
+  $('hint').textContent = S.mode === 'ask'
+    ? 'The first free Claude splits this into tasks and assigns them. Claudes pick it up on their next step, or right away on autopilot.'
+    : 'Everyone sees messages here, and their Claudes see them too.';
+  $('sendbtn').textContent = S.mode === 'ask' ? 'Ask the Claudes' : 'Send';
+  renderTeam();
+};
+$('text').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && S.mode === 'msg') { e.preventDefault(); $('composer').requestSubmit(); } });
+$('composer').onsubmit = async (e) => {
   e.preventDefault();
   const text = $('text').value.trim();
   if (!text) return;
-  $('text').value = '';
-  try { await api('message', { text, to: $('to').value || null }); } catch (err) { addChat(`<div class="ev">send failed: ${esc(err.message)}</div>`); }
+  if (!auth.name) return askName();
+  const to = $('to').value || null;
+  $('sendbtn').disabled = true;
+  try {
+    if (S.mode === 'ask') await api('goal', { text, to });
+    else await api('message', { text, to });
+    $('text').value = '';
+    $('sendmsg').textContent = S.mode === 'ask' ? (to ? `Sent to ${to}'s Claude.` : 'Sent. Watch Tasks on the right.') : '';
+    setTimeout(() => { $('sendmsg').textContent = ''; }, 6000);
+  } catch (err) { $('sendmsg').innerHTML = `<span class="err">Couldn't send: ${esc(err.message)}</span>`; }
+  $('sendbtn').disabled = false;
 };
 
-async function start() {
-  if (!auth.token || !auth.project) return showLogin();
-  try { await api('hello', {}); } catch (e) { alertLogin(e.message); return; }
-  store.set('huddle.token', auth.token); store.set('huddle.project', auth.project); store.set('huddle.name', auth.name);
-  $('login').hidden = true; $('app').hidden = false;
-  $('pname').textContent = auth.project + ' · you are ' + auth.name;
-  showTab();
-  loadShared().catch(() => {});
-  loadBoard().catch(() => {});
-  api('activity?limit=300').then(r => { S.activity = r.activity; showTab(); $('team').scrollTop = $('team').scrollHeight; }).catch(() => {});
-  const hist = await api('messages?limit=100');
-  for (const m of hist.messages) onEvent({ type: 'message', message: m });
-  connect();
-  setInterval(() => api('hello', {}).catch(() => {}), 60000);
-  setInterval(render, 15000);
-}
+// ---------- dialogs & header ----------
+for (const b of document.querySelectorAll('[data-close]')) b.onclick = () => b.closest('dialog').close();
+for (const d of document.querySelectorAll('dialog')) d.addEventListener('click', (e) => { if (e.target === d) d.close(); });
+$('dlg-file').addEventListener('close', () => { S.file = null; });
+$('btn-know').onclick = () => { renderKnow(); $('dlg-know').showModal(); loadShared().catch(() => {}); };
+$('btn-invite').onclick = () => { $('joincmd').textContent = `npx -y github:flyingf15h/huddle join ${inviteCode()} --name THEIR_NAME`; $('dlg-invite').showModal(); };
+const copy = (text, btn, label) => navigator.clipboard.writeText(text).then(() => { btn.textContent = 'Copied'; setTimeout(() => { btn.textContent = label; }, 1500); });
+$('copyjoin').onclick = () => copy($('joincmd').textContent, $('copyjoin'), 'Copy');
+$('copydash').onclick = () => copy(`${location.origin}/#invite=${inviteCode()}`, $('copydash'), 'copy dashboard link');
+$('btn-help').onclick = () => $('dlg-help').showModal();
+$('dlg-help').addEventListener('close', () => store.set('huddle.helpSeen', '1'));
+function askName() { $('nameinput').value = auth.name; $('dlg-name').showModal(); $('nameinput').focus(); }
+$('namesave').onclick = () => {
+  const n = $('nameinput').value.trim().replace(/\s+/g, '-');
+  if (!n) return;
+  auth.name = n; store.set('huddle.name', n); $('dlg-name').close();
+  if (!store.get('huddle.helpSeen')) $('dlg-help').showModal();
+  $('pname').textContent = `${auth.project} · you're ${auth.name}`;
+  api('hello', {}).catch(() => {});
+};
+$('nameinput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('namesave').click(); });
 
+// ---------- login ----------
+function showLogin(msg) { $('app').hidden = true; $('login').hidden = false; $('lname').value = auth.name; $('lerr').textContent = msg || ''; }
+$('lgo').onclick = () => {
+  const inv = decodeInvite($('linvite').value);
+  if (!inv) return showLogin("That doesn't look like an invite code.");
+  Object.assign(auth, inv);
+  auth.name = $('lname').value.trim().replace(/\s+/g, '-') || auth.name;
+  start();
+};
+
+// ---------- live events ----------
 function applySnapshot(s) {
-    S.agents = {}; S.locks = {}; S.files = {};
-    for (const a of s.agents) S.agents[a.id] = a;
-    for (const l of s.locks) S.locks[l.path] = l;
-    for (const f of s.files) if (f.size) S.files[f.path] = f;
-    if (!S.sel && s.files.length) { S.sel = (s.locks[0] || s.files[0]).path; loadFile(S.sel, false); }
-    render();
+  S.agents = {}; S.locks = {}; S.files = {};
+  for (const a of s.agents) S.agents[a.id] = a;
+  for (const l of s.locks) S.locks[(l.branch || '') + '::' + l.path] = l;
+  for (const f of s.files) S.files[(f.branch || '') + '::' + f.path] = f;
+  renderTeam(); renderSide();
 }
-
-// WebSocket on the hosted server, SSE on a self-hosted one
+function onEvent(ev) {
+  switch (ev.type) {
+    case 'join': case 'leave': case 'status': S.agents[ev.agent.id] = ev.agent; break;
+    case 'lock': S.locks[(ev.lock.branch || '') + '::' + ev.lock.path] = ev.lock; break;
+    case 'unlock': delete S.locks[(ev.branch || '') + '::' + ev.path]; break;
+    case 'file':
+      S.files[(ev.file.branch || '') + '::' + ev.file.path] = ev.file;
+      if (S.file && S.file.path === ev.file.path && (S.file.branch || null) === (ev.file.branch || null)) loadFile(true);
+      break;
+    case 'board': loadBoard().catch(() => {}); break;
+    case 'shared': loadShared().catch(() => {}); break;
+    case 'activity': S.agents[ev.agent.id] = ev.agent; break;
+  }
+  if (ev.type !== 'leave' && ev.type !== 'status') addEntries(fromEvent(ev));
+  renderTeam(); renderSide();
+}
 let wsWorks = null;
 function connect() {
   const qs = `token=${encodeURIComponent(auth.token)}&since=999999999`;
+  const live = (on) => { $('conn').textContent = on ? 'Live' : 'Reconnecting…'; $('conn').classList.toggle('live', on); };
   if (wsWorks !== false && 'WebSocket' in window) {
     const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/p/${encodeURIComponent(auth.project)}/ws?${qs}`);
     let opened = false, ping;
-    ws.onopen = () => { opened = wsWorks = true; $('conn').textContent = 'live'; ping = setInterval(() => ws.send('ping'), 30000); };
+    ws.onopen = () => { opened = wsWorks = true; live(true); ping = setInterval(() => ws.send('ping'), 30000); };
     ws.onmessage = (e) => {
       if (e.data === 'pong') return;
       const ev = JSON.parse(e.data);
       if (ev.type === 'snapshot') applySnapshot(ev); else if (ev.type !== 'truncated') onEvent(ev);
     };
     ws.onclose = () => {
-      clearInterval(ping);
-      $('conn').textContent = 'reconnecting…';
+      clearInterval(ping); live(false);
       if (!opened && wsWorks === null) { wsWorks = false; return connect(); }
       setTimeout(connect, 2000);
     };
@@ -449,10 +696,34 @@ function connect() {
   const es = new EventSource(`/api/p/${encodeURIComponent(auth.project)}/events?${qs}`);
   es.addEventListener('snapshot', (e) => applySnapshot(JSON.parse(e.data)));
   es.onmessage = (e) => onEvent(JSON.parse(e.data));
-  es.onopen = () => { $('conn').textContent = 'live'; };
-  es.onerror = () => { $('conn').textContent = 'reconnecting…'; };
+  es.onopen = () => live(true);
+  es.onerror = () => live(false);
 }
-function alertLogin(msg) { showLogin(); $('login').insertAdjacentHTML('beforeend', `<p class="lock">${esc(msg)}</p>`); }
+
+async function start() {
+  if (!auth.token || !auth.project) return showLogin();
+  try { await (auth.name ? api('hello', {}) : api('state')); }
+  catch (e) { return showLogin(/token|project/.test(e.message) ? "That invite didn't work. Ask for a fresh one." : e.message); }
+  store.set('huddle.token', auth.token); store.set('huddle.project', auth.project); if (auth.name) store.set('huddle.name', auth.name);
+  $('login').hidden = true; $('app').hidden = false;
+  $('pname').textContent = `${auth.project}${auth.name ? ` · you're ${auth.name}` : ''}`;
+  // history: messages, Claude activity and goals, merged by time
+  const [msgs, act, board] = await Promise.all([api('messages?limit=200'), api('activity?limit=400'), api('board')])
+    .catch(() => [{ messages: [] }, { activity: [] }, null]);
+  S.board = board;
+  S.entries = [
+    ...msgs.messages.map(m => ({ kind: 'msg', who: m.fromName, at: m.at, to: m.to, text: m.text })),
+    ...act.activity.map(fromActivity),
+    ...(board ? board.goals.map(g => ({ kind: 'goal', who: g.byName, at: g.at, goal: g })) : []),
+  ].sort((a, b) => a.at - b.at);
+  renderFeed(); renderSide();
+  connect();
+  loadShared().catch(() => {});
+  if (!auth.name) askName();
+  else if (!store.get('huddle.helpSeen')) $('dlg-help').showModal();
+  setInterval(() => { if (auth.name) api('hello', {}).catch(() => {}); }, 60000);
+  setInterval(() => { renderTeam(); renderSide(); }, 30000);
+}
 start();
 </script>
 </body>
