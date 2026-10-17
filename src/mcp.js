@@ -4,7 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
-const { loadConfig, identity, Client, relPath, hashFile, formatMessages, ago } = require('./client');
+const { loadConfig, identity, Client, relPath, hashFile, formatMessages, ago, build } = require('./client');
 const { Sync } = require('./sync');
 const gitx = require('./git');
 const board = require('./board');
@@ -17,6 +17,8 @@ const INSTRUCTIONS = `huddle connects you with other Claude agents working on th
 - Talk to the other agents with huddle_send. Messages to you arrive in your context automatically; huddle_inbox fetches them on demand.
 - If you need a locked file, ask its holder, watch it with huddle_view, or block with huddle_wait.
 - Locks are released when your turn ends. Use huddle_lock with hold=true to reserve files across turns, and huddle_unlock when done.
+- Folder locks: huddle_lock on a folder ("src/pages/") gives you everything inside it until you release it; nobody else can edit there, and nobody can lock a folder or file that overlaps it.
+- Hand-off: when your user wraps up or you pass work on, call huddle_handoff with where you left off and what comes next. The team and the next session see it.
 - Autopilot: your person chooses whether other people can start you on things (huddle_autopilot): "requests" (default) means when someone sends a request to this person's Claude, it is run automatically in the background; "full" also plans team goals and takes open tasks; "off" means requests wait. If your user asks to turn autopilot on/off, use huddle_autopilot.
 - Your name: your person can name you (e.g. "Pip") so the team can tell the Claudes apart. If your user asks you to take a name, or what you are called, use huddle_name.
 - Branches: people on the same git branch share a live working copy and locks; people on different branches work independently and merge later (huddle_branches, huddle_merge). Your commits are shared automatically at the end of each turn.
@@ -32,9 +34,11 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: { text: { type: 'string' }, to: { type: 'string', description: 'agent name or id; omit for everyone' } }, required: ['text'] } },
   { name: 'huddle_inbox', description: 'Read unread messages sent to you or to everyone. Set wait_seconds to block until a message arrives (useful when waiting on a reply).',
     inputSchema: { type: 'object', properties: { wait_seconds: { type: 'number', minimum: 0, maximum: 600 } } } },
-  { name: 'huddle_lock', description: 'Lock files before editing so nobody else changes them. Editing already locks files automatically; use this to reserve several files up front. hold=true keeps the lock after your turn ends.',
+  { name: 'huddle_lock', description: 'Lock files or folders before editing so nobody else changes them. Editing already locks files automatically; use this to reserve several files up front, or a whole folder (end the path with "/", e.g. "src/pages/"): only you can edit inside it until you release it, and locks can never overlap. hold=true keeps a file lock after your turn ends (folder locks always stay until released or your session ends).',
     inputSchema: { type: 'object', properties: { paths: { type: 'array', items: { type: 'string' } }, note: { type: 'string', description: 'what you are doing with them' }, hold: { type: 'boolean' } }, required: ['paths'] } },
-  { name: 'huddle_unlock', description: 'Release your locks so other agents can edit. Omit paths to release everything you hold.',
+  { name: 'huddle_handoff', description: 'Leave a short hand-off note for the team and your next session: where you left off and what comes next (two or three lines). Call it when your user wraps up or you hand work over. Your latest note replaces earlier ones from this session.',
+    inputSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] } },
+  { name: 'huddle_unlock', description: 'Release your locks so other agents can edit. Omit paths to release everything you hold (folders too).',
     inputSchema: { type: 'object', properties: { paths: { type: 'array', items: { type: 'string' } } } } },
   { name: 'huddle_wait', description: 'Block until a file locked by someone else is released, then lock it for you (unless lock=false).',
     inputSchema: { type: 'object', properties: { path: { type: 'string' }, timeout_seconds: { type: 'number', minimum: 1, maximum: 600 }, lock: { type: 'boolean' } }, required: ['path'] } },
@@ -87,12 +91,12 @@ function runMcp() {
   try {
     client = new Client(cfg || {}, identity(cfg));
     // always report the branch we're on right now (people switch branches mid-session)
-    Object.defineProperty(client.agent, 'branch', { get: () => gitx.currentBranch(cfg.root), enumerable: true });
+    Object.defineProperty(client.agent, 'branch', { get: () => cfg.clone ? cfg.clone.branch : gitx.currentBranch(cfg.root), enumerable: true });
   } catch (e) { setupError = cfg ? e.message : 'no .huddle/config.json found above ' + process.cwd() + ' (run `huddle join <invite>` in the project)'; }
 
   const log = (msg) => process.stderr.write(`[huddle] ${msg}\n`);
   if (client) {
-    client.post('hello', {}).catch(e => log(e.message));
+    client.post('hello', { build: build() }).catch(e => log(e.message));
     // an open sync socket already keeps us online on the hosted server
     const beat = setInterval(() => { if (!(sync && sync.wsOpen)) client.post('hello', {}).catch(() => {}); }, 45000);
     beat.unref();
@@ -113,7 +117,7 @@ function runMcp() {
       if (note) notify(note.title, note.body);
     };
     process.on('exit', () => { if (runner) autopilot.releaseRunner(cfg.root); });
-    sync.start();
+    if (!cfg.clone) sync.start(); // a request clone works alone in its worktree
   }
   const shutdown = () => { if (sync) sync.stop(); process.exit(0); };
   process.on('SIGTERM', shutdown);
@@ -151,6 +155,12 @@ function runMcp() {
     }
   }
 
+  // "src/pages/" or an existing folder on disk
+  function isDir(p, r0) {
+    if (/[\\/]$/.test(p)) return true;
+    try { return fs.statSync(path.join(cfg.root, r0)).isDirectory(); } catch { return false; }
+  }
+
   function rel(p) {
     const r = relPath(cfg.root, p);
     if (!r) throw new Error(`${p} is not inside the project (${cfg.root})`);
@@ -166,6 +176,11 @@ function runMcp() {
         for (const ag of s.agents.sort((x, y) => y.online - x.online)) {
           lines.push(`- ${ag.id === me.id ? '(you) ' : ''}${ag.name} [${ag.kind}${ag.host ? ' on ' + ag.host : ''}] ${ag.online ? 'online' : 'offline, seen ' + ago(ag.lastSeen)}${ag.status ? ' — ' + ag.status + (ag.statusAt ? ` (${ago(ag.statusAt)})` : '') : ''}`);
         }
+        const hand = (await client.get('handoffs', { limit: 8 }).catch(() => ({ handoffs: [] }))).handoffs;
+        if (hand.length) {
+          lines.push('', 'Hand-off notes (where sessions left off, newest last):');
+          for (const h of hand) lines.push(`- ${h.name}, ${ago(h.at)}${h.auto ? ' (auto)' : ''}: ${h.text}${h.commits.length ? ` [commits: ${h.commits.slice(0, 3).join('; ')}]` : ''}`);
+        }
         const log = (await client.get('worklog', { limit: 12 }).catch(() => ({ worklog: [] }))).worklog;
         if (log.length) {
           lines.push('', 'Recently started work (newest last):');
@@ -173,7 +188,7 @@ function runMcp() {
         }
         lines.push('', 'Locks:');
         if (!s.locks.length) lines.push('- none');
-        for (const l of s.locks) lines.push(`- ${l.path}: ${l.holder === me.id ? 'you' : l.holderName}, ${ago(l.since)}${l.hold ? ', held' : ''}${l.note ? ' — ' + l.note : ''}`);
+        for (const l of s.locks) lines.push(`- ${l.path}${l.dir ? ' (whole folder)' : ''}: ${l.holder === me.id ? 'you' : l.holderName}, ${ago(l.since)}${l.hold ? ', held' : ''}${l.note ? ' — ' + l.note : ''}`);
         const recent = s.files.filter(f => f.size).sort((x, y) => y.at - x.at).slice(0, 10);
         if (recent.length) {
           lines.push('', 'Recently edited:');
@@ -201,14 +216,22 @@ function runMcp() {
         const out = [];
         for (const p of a.paths || []) {
           const r0 = rel(p);
-          const r = await client.post('lock', { path: r0, branch: me.branch, note: a.note || '', hold: !!a.hold, baseHash: hashFile(path.join(cfg.root, r0)) });
-          out.push(r.ok ? `locked ${r0}` : `${r0} is already locked by ${r.lock.holderName}${r.lock.note ? ' (' + r.lock.note + ')' : ''}`);
+          const dir = isDir(p, r0);
+          const r = await client.post('lock', dir ? { path: r0 + '/', dir: true, branch: me.branch, note: a.note || '' }
+            : { path: r0, branch: me.branch, note: a.note || '', hold: !!a.hold, baseHash: hashFile(path.join(cfg.root, r0)) });
+          out.push(r.ok ? `locked ${r0}${dir ? '/ (the whole folder; huddle_unlock releases it)' : ''}`
+            : `${r0}${dir ? '/' : ''} overlaps ${r.lock.path}${r.lock.dir ? ' (a folder)' : ''}, locked by ${r.lock.holderName}${r.lock.note ? ' (' + r.lock.note + ')' : ''}`);
         }
         return out.join('\n') || 'no paths given';
       }
+      case 'huddle_handoff': {
+        const files = gitx.isRepo(cfg.root) ? gitx.dirty(cfg.root).map(l => l.slice(3)).slice(0, 20) : [];
+        await client.post('handoff', { text: a.text, files });
+        return 'hand-off saved; the team sees it, and so does your next session here';
+      }
       case 'huddle_unlock': {
         const r = a.paths && a.paths.length
-          ? await client.post('unlock', { paths: a.paths.map(rel), branch: me.branch })
+          ? await client.post('unlock', { paths: a.paths.map(x => rel(x) + (isDir(x, rel(x)) ? '/' : '')), branch: me.branch })
           : await client.post('unlock', { all: true });
         return r.released.length ? 'released ' + r.released.join(', ') : 'you held no matching locks';
       }
@@ -216,7 +239,7 @@ function runMcp() {
         const p = rel(a.path);
         const timeout = Math.min(Number(a.timeout_seconds || 300), 600);
         const r = await client.post('wait-unlock', { path: p, branch: me.branch, timeout }, { timeout: (timeout + 15) * 1000 });
-        if (!r.free) return `${p} is still locked by ${r.lock.holderName} after ${timeout}s`;
+        if (!r.free) return `${p} is still locked by ${r.lock.holderName}${r.lock.dir ? ` (the ${r.lock.path} folder)` : ''} after ${timeout}s`;
         if (a.lock === false) return `${p} is free`;
         const l = await client.post('lock', { path: p, branch: me.branch, baseHash: hashFile(path.join(cfg.root, p)) });
         if (!l.ok) return `${p} was grabbed by ${l.lock.holderName} first`;

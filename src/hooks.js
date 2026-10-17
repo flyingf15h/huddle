@@ -3,7 +3,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { loadConfig, identity, Client, relPath, hashFile, sha, formatMessages, ago, CONFIG_DIR } = require('./client');
+const { loadConfig, identity, Client, relPath, hashFile, sha, formatMessages, ago, build, CONFIG_DIR } = require('./client');
 const shared = require('./shared');
 const gitx = require('./git');
 const board = require('./board');
@@ -41,62 +41,134 @@ function sessionState(cfg, agent) {
   };
 }
 
-async function inbox(client, cfg, force) {
-  const st = sessionState(cfg, client.agent);
-  if (!force && Date.now() - (st.data.inboxAt || 0) < INBOX_EVERY_MS) return '';
-  st.data.inboxAt = Date.now();
-  st.save();
+// One request for everything a hook needs from the server: share activity and status, read mail,
+// and get back only what changed (team, board, shared knowledge, hand-offs) since this session last looked.
+async function turn(client, st, body) {
+  const ask = { ...body, teamVersion: st.data.teamVersion, boardVersion: st.data.boardVersion === undefined ? -1 : st.data.boardVersion,
+    sharedVersion: st.data.shared ? st.data.shared.version : undefined, handoffsSince: st.data.handoffAt || 0 };
+  try { return await client.post('turn', ask); }
+  catch (e) { if (e.status !== 404) throw e; }
+  // an older server: the same, a request at a time
+  if (body.items && body.items.length) await client.post('activity', { items: body.items }).catch(() => {});
+  if (body.status) await client.post('status', { status: body.status, auto: body.auto }).catch(() => {});
   const r = await client.post('inbox', {});
-  const out = [];
-  if (r.messages.length) out.push(`New huddle messages from other agents (reply with the huddle_send tool if useful):\n${formatMessages(r.messages, client.agent)}`);
-  // (a prompt reads the team itself, so only mid-turn checks do it here)
-  if (!force && r.teamVersion !== undefined && st.data.team && r.teamVersion !== st.data.teamVersion) {
-    const delta = teamDelta(await client.get('state'), client.agent, st);
-    if (delta) out.push(delta);
-  }
-  // someone changed PROJECT.md, a memory or a skill: refresh the files and tell the agent
-  if (r.sharedVersion !== undefined && st.data.shared && r.sharedVersion !== st.data.shared.version) {
-    const sh = await client.get('shared');
-    shared.writeShared(cfg.root, sh);
-    const change = shared.describeChanges(st.data.shared, sh);
-    if (change) out.push(change);
-    st.data.shared = shared.signature(sh);
-    st.save();
-  }
-  if (r.boardVersion !== undefined && r.boardVersion !== st.data.boardVersion) {
-    const b = await client.get('board');
-    if (st.data.boardVersion !== undefined) {
-      const note = board.describe(st.data.boardSeen || {}, b, client.agent.name);
-      if (note) out.push(note);
-    }
-    st.data.boardVersion = b.version;
-    st.data.boardSeen = board.signature(b);
-    st.save();
-  }
-  return out.join('\n\n');
+  if (body.state || r.teamVersion !== ask.teamVersion) r.state = await client.get('state');
+  if (r.boardVersion !== ask.boardVersion || body.state) r.board = await client.get('board');
+  if (ask.sharedVersion !== undefined && r.sharedVersion !== ask.sharedVersion) r.shared = await client.get('shared');
+  if (r.board && r.board.version === ask.boardVersion) { r.tasks = r.board.tasks.filter(t => t.owner === client.agent.name && t.status !== 'done'); delete r.board; }
+  else if (r.board) r.tasks = r.board.tasks.filter(t => t.owner === client.agent.name && t.status !== 'done');
+  return r;
 }
 
-// Requests other people sent to this person's Claude that aren't finished, shown on every prompt.
-// The request runner does them in the background unless the person turned it off; either way the
-// Claude in front of the person should know about them.
-async function openRequests(client) {
-  const me = client.agent.name;
-  const b = await client.get('board');
-  const open = b.tasks.filter(t => t.direct && t.owner === me && t.status !== 'done');
-  if (!open.length) return '';
-  const settings = await client.get('settings').catch(() => ({ settings: {} }));
-  const mode = ((settings.settings || {})[me] || {}).autopilot || 'requests';
-  const how = mode === 'off'
-    ? 'Your requests runner is off, so these wait for you: do them now if your user agrees, or tell your user they are waiting.'
-    : 'Your request runner works through these in the background; don\'t redo them, but mention them to your user. A blocked one needs your user.';
-  return `Requests sent to you (${aiNameOf(settings, me) ? aiNameOf(settings, me) + ', ' : ''}${me}'s Claude):\n` +
+// What changed for this Claude, from a turn() answer: mail, the other Claudes' work, team
+// knowledge, the board and where finished sessions left off. Moves the session's baselines along.
+function digest(client, cfg, st, r) {
+  const me = client.agent;
+  const d = { mail: '', team: '', news: [] };
+  if (r.messages.length) d.mail = `New huddle messages from other agents (reply with the huddle_send tool if useful):\n${formatMessages(r.messages, me)}`;
+  if (r.state && st.data.team) d.team = teamDelta(r.state, me, st);
+  if (r.shared) {
+    shared.writeShared(cfg.root, r.shared);
+    const change = st.data.shared && shared.describeChanges(st.data.shared, r.shared);
+    if (change) d.news.push(change);
+    st.data.shared = shared.signature(r.shared);
+  }
+  if (r.board) {
+    const note = st.data.boardVersion !== undefined && board.describe(st.data.boardSeen || {}, r.board, me.name);
+    if (note) d.news.push(note);
+    st.data.boardVersion = r.board.version;
+    st.data.boardSeen = board.signature(r.board);
+  }
+  if (r.handoffs && r.handoffs.length) {
+    d.news.push('huddle: a session finished and left a hand-off note:\n' + handoffLines(r.handoffs, me.name));
+    st.data.handoffAt = Math.max(...r.handoffs.map(h => h.at));
+  }
+  st.save();
+  return d;
+}
+
+// mid-turn check (PostToolUse), at most every INBOX_EVERY_MS
+async function inbox(client, cfg, items) {
+  const st = sessionState(cfg, client.agent);
+  if (Date.now() - (st.data.inboxAt || 0) < INBOX_EVERY_MS) {
+    if (items.length) await client.post('activity', { items }).catch(() => {});
+    return '';
+  }
+  st.data.inboxAt = Date.now();
+  st.save();
+  const d = digest(client, cfg, st, await turn(client, st, { items }));
+  return [d.mail, d.team, ...d.news].filter(Boolean).join('\n\n');
+}
+
+function handoffLines(list, me) {
+  return list.map(h => `- ${h.name === me ? 'you (an earlier session)' : h.name}, ${ago(h.at)}${h.branch ? ` on ${h.branch}` : ''}: ${h.text}` +
+    (h.commits.length ? `\n  commits: ${h.commits.slice(0, 5).join('; ')}` : '') +
+    (h.files.length ? `\n  files: ${h.files.slice(0, 8).join(', ')}${h.files.length > 8 ? ` +${h.files.length - 8}` : ''}` : '')).join('\n');
+}
+// the newest note per person from the last few days, for a session that's just starting
+function recentHandoffs(list, me) {
+  const per = new Map();
+  for (const h of list) if (Date.now() - h.at < 3 * 86400000) per.set(h.name, h);
+  const keep = [...per.values()].sort((x, y) => y.at - x.at).slice(0, 5);
+  return keep.length ? 'Where people left off (hand-off notes, newest first):\n' + handoffLines(keep, me) : '';
+}
+
+// Requests other people sent to this person's Claude that aren't finished. When the request runner
+// is on, each runs as its own background Claude and stays out of this conversation (the person just
+// sees a line in their terminal); when it's off, this Claude is told so it can bring them up.
+function openRequests(s, tasks, me) {
+  const open = tasks.filter(t => t.direct && t.owner === me && t.status !== 'done');
+  if (!open.length) return { context: '', notice: '' };
+  const mode = ((s.settings || {})[me] || {}).autopilot || 'requests';
+  if (mode !== 'off') {
+    return { context: '', notice: `huddle: ${open.length} request${open.length > 1 ? 's' : ''} running in the background, each as its own Claude: ` +
+      open.slice(0, 3).map(t => `"${t.title.slice(0, 50)}" from ${t.by} (${t.status})`).join(', ') + (open.length > 3 ? ', …' : '') };
+  }
+  return { notice: '', context: `Requests sent to you (${aiNameOf(s, me) ? aiNameOf(s, me) + ', ' : ''}${me}'s Claude):\n` +
     open.map(t => `- [${t.id}] from ${t.by}, ${t.status}: ${t.title}${t.status === 'blocked' && t.notes && t.notes.length ? ` (${t.notes[t.notes.length - 1].text})` : ''}`).join('\n') +
-    '\n' + how;
+    '\nYour requests runner is off, so these wait for you: do them now if your user agrees, or tell your user they are waiting.' };
+}
+
+// Board tasks this person's Claude has had in progress, brought up when it starts on something new
+// so finished ones get closed instead of going stale.
+function staleTasks(tasks, me) {
+  const doing = tasks.filter(t => !t.direct && t.owner === me && t.status === 'doing');
+  if (!doing.length) return '';
+  return 'Board tasks you still have in progress: ' + doing.slice(0, 5).map(t => `[${t.id}] ${t.title}`).join('; ') +
+    '. If one is finished, mark it done with huddle_update_task, or put "closes <id>" in the commit that finishes it.';
+}
+
+// commits this session made since it last looked: their messages can close board tasks
+async function closeFromCommits(client, cfg, st) {
+  if (!gitx.isRepo(cfg.root)) return;
+  const h = gitx.head(cfg.root);
+  if (!h || h === st.data.commitsSeen) return;
+  const range = st.data.commitsSeen && gitx.hasCommit(cfg.root, st.data.commitsSeen) ? [`${st.data.commitsSeen}..${h}`] : ['-1', h];
+  const log = gitx.git(cfg.root, ['log', '--no-merges', '--max-count=50', '--format=%H%x00%B%x1e', ...range]);
+  st.data.commitsSeen = h;
+  st.save();
+  const commits = log.out.split('\x1e').map(x => x.trim()).filter(Boolean).map(x => { const [sha, message] = x.split('\0'); return { sha, message }; });
+  if (!commits.some(c => /\b[0-9a-f]{8}\b/i.test(c.message))) return;
+  const r = await client.post('commits', { commits });
+  return r.closed && r.closed.length ? r.closed : null;
+}
+
+// where this session left off, written by huddle itself when Claude didn't write one (huddle_handoff)
+async function autoHandoff(client, cfg, st, s) {
+  const me = s && s.agents.find(a => a.id === client.agent.id);
+  const status = me && me.status;
+  const files = st.data.edited || [];
+  const commits = st.data.sessionHead && gitx.isRepo(cfg.root) && gitx.hasCommit(cfg.root, st.data.sessionHead)
+    ? gitx.git(cfg.root, ['log', '--max-count=10', '--format=%h %s', `${st.data.sessionHead}..HEAD`]).out.split('\n').filter(Boolean) : [];
+  if (!status && !files.length && !commits.length) return;
+  const said = cfg.shareActivity === 'full' && !st.data.private && st.data.lastReply ? st.data.lastReply : '';
+  const text = `${status ? `Was on: ${status}.` : 'Worked on the files below.'}${said ? ` Last said: ${said}` : ''}`;
+  await client.post('handoff', { text, files, commits, auto: true });
 }
 
 // After a turn, share the branch if it has new commits so others can merge it.
 async function autoPublish(client, cfg, st) {
-  if (cfg.shareGit === false || !gitx.isRepo(cfg.root)) return;
+  if (cfg.shareGit === false || cfg.clone || !gitx.isRepo(cfg.root)) return;
   const h = gitx.head(cfg.root);
   if (!h || st.data.publishedHead === h) return;
   try { await gitx.publish(client, cfg.root); st.data.publishedHead = h; st.save(); } catch {}
@@ -203,13 +275,12 @@ async function shareStats(input, client, cfg, st) {
 // prompt, replies and tool calls, out of the team's activity feed.
 const PRIVATE_PROMPT = /^\s*(private\s*:|#private\b|\(private\))/i;
 
-async function shareActivity(input, client, cfg, before = [], after = []) {
-  if (cfg.shareActivity === 'off') return;
-  const st = sessionState(cfg, client.agent);
-  if (st.data.private) { newActivity(input, st, cfg.shareActivity); st.save(); return; } // read past it, share nothing
-  const items = [...before, ...newActivity(input, st, cfg.shareActivity), ...after];
+// what the transcript gained since we last looked, ready to share (nothing for a private turn)
+function pendingActivity(input, cfg, st) {
+  if (cfg.shareActivity === 'off') return [];
+  const items = newActivity(input, st, cfg.shareActivity);
   st.save();
-  if (items.length) await client.post('activity', { items });
+  return st.data.private ? [] : items; // a private turn: read past it, share nothing
 }
 
 // Claude Code writes the final reply to the transcript only after Stop hooks
@@ -305,7 +376,7 @@ function teamSummary(s, me) {
 
 const handlers = {
   async 'session-start'(input, client, cfg) {
-    const s = await client.post('hello', {});
+    const s = await client.post('hello', { build: build(), handoffs: true });
     const sh = await client.get('shared');
     shared.writeShared(cfg.root, sh);
     const here = input.cwd ? path.resolve(input.cwd) : cfg.root;
@@ -321,27 +392,38 @@ const handlers = {
     st.data.aiName = aiNameOf(s, client.agent.name);
     st.data.team = teamNow(s, client.agent);
     st.data.teamVersion = s.teamVersion;
+    const handoffs = s.handoffs || [];
+    st.data.handoffAt = Math.max(0, ...handoffs.map(h => h.at));
+    st.data.sessionHead = st.data.commitsSeen = gitx.isRepo(cfg.root) ? gitx.head(cfg.root) : null;
+    st.data.edited = [];
     st.save();
     if (gitx.isRepo(cfg.root)) gitx.fetchAll(client, cfg.root).catch(() => {});
     // shown to the person in their terminal, so they can see this session is in the huddle
     const others = [...new Set(s.agents.filter(a => a.online && a.name !== client.agent.name && a.kind !== 'human').map(a => a.name))];
-    const settings = await client.get('settings').catch(() => ({ settings: {} }));
-    const mode = (settings.settings[client.agent.name] || {}).autopilot || 'requests';
+    const mode = ((s.settings || {})[client.agent.name] || {}).autopilot || 'requests';
+    const mine = build();
+    const newer = mine && s.agents.filter(a => a.online && a.build && a.build.at > mine.at).sort((x, y) => y.build.at - x.build.at)[0];
     const notice = `huddle: this session is in "${cfg.project.replace(/-[0-9a-f]{6,8}$/, '')}" as ${client.agent.name}` +
       ` · ${others.length ? others.join(', ') + ' online' : 'nobody else online'}` +
-      ` · your Claude ${mode === 'full' ? 'is on full autopilot' : mode === 'off' ? 'does not take requests (/autopilot to change)' : 'takes requests (/autopilot to change)'}`;
+      ` · your Claude ${mode === 'full' ? 'is on full autopilot' : mode === 'off' ? 'does not take requests (/autopilot to change)' : 'takes requests (/autopilot to change)'}` +
+      (newer ? ` · ${newer.name} runs a newer huddle; run \`huddle update\` and restart Claude` : '');
     return withNotice(notice, ctx('SessionStart',
       `You are "${client.agent.name}" in huddle project "${client.cfg.project}", shared with other Claude agents working in the same codebase from other machines.\n` +
       (nameLine(s, client.agent.name) ? nameLine(s, client.agent.name) + '\n' : '') +
       (linked ? `The huddle project is the folder ./${path.relative(here, cfg.root)} (work and run git there). Only files inside it are shared with the team; other folders here are yours alone.\n` : '') +
       'Rules: before you edit a file it is locked for you automatically; files other agents are editing are read-only and edits to them will be refused. ' +
-      'If that happens, work on something else, message the holder with huddle_send, look at their live copy with huddle_view, or block with huddle_wait. ' +
+      'For work that spans a whole folder, lock the folder with huddle_lock (e.g. "viewer/src/pages/"): nobody else can edit inside it until you release it, and nobody can lock a folder that overlaps one someone else holds. ' +
+      'If an edit is refused, work on something else, message the holder with huddle_send, look at their live copy with huddle_view, or block with huddle_wait. ' +
       'When you start a new piece of work, call huddle_set_status once with a short summary of it (under 12 words, e.g. "adding search to the parts library"); huddle pre-fills it from your user\'s prompt, and other Claudes are told whenever it changes. Skip it for follow-ups on the same work. ' +
       'You are told when another Claude\'s work changes; check huddle_status before larger changes so you do not overlap. ' +
+      'When you finish a board task, mark it done with huddle_update_task, or write "closes <task id>" in the commit that finishes it. ' +
+      'When your user wraps up or you hand work over, leave a two-line note with huddle_handoff: where you left off and what comes next (huddle writes one from your status and commits if you don\'t). ' +
       'Messages from other agents show up in your context automatically.\n' +
       'The team shares knowledge through huddle instead of git: the PROJECT.md brief (huddle_project), memory notes (huddle_remember / huddle_recall) and skills (huddle_save_skill). ' +
       'When you learn something another agent would otherwise have to rediscover (a gotcha, a decision, how to run or test something), save it.\n\n' +
-      teamSummary(s, client.agent) + '\n' + branchSummary(s, client, cfg) + '\n\n' + board.briefing(b, client.agent.name) + '\n\n' + shared.briefing(sh)));
+      teamSummary(s, client.agent) + '\n' + branchSummary(s, client, cfg) + '\n\n' +
+      (recentHandoffs(handoffs, client.agent.name) ? recentHandoffs(handoffs, client.agent.name) + '\n\n' : '') +
+      board.briefing(b, client.agent.name) + '\n\n' + shared.briefing(sh)));
   },
 
   async pre(input, client, cfg) {
@@ -354,8 +436,8 @@ const handlers = {
     const r = await client.post('lock', { path: rel, branch, baseHash: local, wantContent: true });
     if (!r.ok) {
       const l = r.lock;
-      return deny(`${rel} is locked by ${l.holderName} (since ${ago(l.since)}${l.note ? ', "' + l.note + '"' : ''}). ` +
-        'It is read-only for you until they release it. Options: work on a different file, ask them via huddle_send, ' +
+      return deny(`${l.dir ? `${rel} is inside ${l.path}, a folder` : rel} locked by ${l.holderName} (since ${ago(l.since)}${l.note ? ', "' + l.note + '"' : ''}). ` +
+        `It is read-only for you until they release it. Options: work on ${l.dir ? 'something outside that folder' : 'a different file'}, ask them via huddle_send, ` +
         'read their live version with huddle_view, or call huddle_wait to block until it is free.');
     }
     try {
@@ -382,17 +464,20 @@ const handlers = {
   async post(input, client, cfg) {
     const notes = [];
     const rel = EDIT_TOOLS.has(input.tool_name) ? relPath(cfg.root, targetOf(input)) : null;
-    if (rel && !private_(cfg.root, rel)) {
+    // (a request clone's work reaches the team as a commit when it's done, not as live edits)
+    if (rel && !private_(cfg.root, rel) && !cfg.clone) {
       const abs = path.join(cfg.root, ...rel.split('/'));
       try {
         const content = fs.readFileSync(abs, 'utf8');
         await client.post('content', { path: rel, branch: client.agent.branch, content, tool: input.tool_name });
+        const st = sessionState(cfg, client.agent);
+        st.data.edited = [...new Set([...(st.data.edited || []), rel])].slice(-50);
+        st.save();
       } catch (e) {
         if (e.code !== 'ENOENT') notes.push(`huddle could not share ${rel}: ${e.message}`);
       }
     }
-    await shareActivity(input, client, cfg).catch(() => {});
-    const mail = await inbox(client, cfg, false);
+    const mail = await inbox(client, cfg, pendingActivity(input, cfg, sessionState(cfg, client.agent)));
     if (mail) notes.push(mail);
     return ctx('PostToolUse', notes.join('\n\n'));
   },
@@ -400,9 +485,9 @@ const handlers = {
   async prompt(input, client, cfg) {
     const prompt = String(input.prompt || '').trim();
     const isPrivate = PRIVATE_PROMPT.test(prompt);
-    // whatever is left from the previous turn goes out (or is dropped) under that turn's privacy
-    await shareActivity(input, client, cfg).catch(() => {});
     const st = sessionState(cfg, client.agent);
+    // whatever is left from the previous turn goes out (or is dropped) under that turn's privacy
+    const items = pendingActivity(input, cfg, st);
     st.data.private = isPrivate;
     st.data.turnStart = st.data.turnStart || Date.now();
     if (input.transcript_path && st.data.usageFile !== input.transcript_path) newUsage(input, st); // start counting from here
@@ -416,43 +501,57 @@ const handlers = {
       fs.writeFileSync(path.join(cfg.root, CONFIG_DIR, 'seen.json'), JSON.stringify({ at: Date.now() }));
       fs.rmSync(path.join(cfg.root, CONFIG_DIR, 'statusline.json'), { force: true });
     } catch {}
-    if (!isPrivate && cfg.shareActivity === 'full' && prompt) await client.post('activity', { items: [{ kind: 'prompt', text: prompt }] }).catch(() => {});
-    const auto = !isPrivate && (cfg.shareActivity || 'full') === 'full' ? statusFromPrompt(prompt) : null;
-    if (auto) await client.post('status', { status: auto, auto: true }).catch(() => {});
-    const mail = await inbox(client, cfg, true);
-    const s = await client.get('state');
-    const now = sessionState(cfg, client.agent); // re-read: inbox() just saved its own changes
-    const ai = aiNameOf(s, client.agent.name);
+    const full = (cfg.shareActivity || 'full') === 'full';
+    if (!isPrivate && full && prompt) items.push({ kind: 'prompt', text: prompt });
+    // a background request Claude gets its status from the runner, not from its long task prompt
+    const auto = !isPrivate && full && !process.env.HUDDLE_AUTOPILOT ? statusFromPrompt(prompt) : null;
+    const r = await turn(client, st, { items, status: auto, auto: true, state: true });
+    const d = digest(client, cfg, st, r);
+    const s = r.state;
+    const me = client.agent.name;
+    const ai = aiNameOf(s, me);
     let renamed = '';
-    if (ai !== (now.data.aiName || null)) {
-      renamed = ai ? `huddle: ${nameLine(s, client.agent.name)}` : `huddle: ${client.agent.name} took your name away; you are ${client.agent.name}'s Claude again.`;
-      now.data.aiName = ai;
+    if (ai !== (st.data.aiName || null)) {
+      renamed = ai ? `huddle: ${nameLine(s, me)}` : `huddle: ${me} took your name away; you are ${me}'s Claude again.`;
+      st.data.aiName = ai;
+      st.save();
     }
-    const lockLine = teamDelta(s, client.agent, now);
+    if (!st.data.team) d.team = teamDelta(s, client.agent, st);
     const privateNote = isPrivate ? 'This turn is private: huddle is not sharing your user\'s prompt, your replies or your tool calls with the team. Do not put what is discussed here into huddle messages, team memory or PROJECT.md unless the user asks you to. File edits and commits in the project still sync as usual.' : '';
-    const asks = await openRequests(client).catch(() => '');
+    const asks = process.env.HUDDLE_AUTOPILOT ? { context: '', notice: '' } : openRequests(s, r.tasks || [], me);
+    const stale = auto && auto !== st.data.lastAuto ? staleTasks(r.tasks || [], me) : '';
+    if (auto) { st.data.lastAuto = auto; st.save(); }
     // whatever the prompt is about, the team's messages and requests come first
-    const team = [mail, asks].filter(Boolean).join('\n\n');
+    const team = [d.mail, asks.context].filter(Boolean).join('\n\n');
     const first = team ? `huddle: read this first, before your user's prompt, and tell your user about anything that needs them.\n\n${team}` : '';
-    return ctx('UserPromptSubmit', [first, renamed, privateNote, lockLine].filter(Boolean).join('\n\n'));
+    const out = ctx('UserPromptSubmit', [first, renamed, privateNote, ...d.news, stale, d.team].filter(Boolean).join('\n\n'));
+    return asks.notice ? withNotice(asks.notice, out) : out;
   },
 
   async stop(input, client, cfg) {
     await shareStop(input, client, cfg).catch(() => {});
-    await shareStats(input, client, cfg, sessionState(cfg, client.agent)).catch(() => {});
+    const st = sessionState(cfg, client.agent);
+    const reply = String(input.last_assistant_message || '').trim().replace(/\s+/g, ' ');
+    if (reply && !st.data.private) { st.data.lastReply = reply.length > 300 ? reply.slice(0, 300) + '…' : reply; st.save(); }
+    await shareStats(input, client, cfg, st).catch(() => {});
     await autoPublish(client, cfg, sessionState(cfg, client.agent));
+    const closed = await closeFromCommits(client, cfg, sessionState(cfg, client.agent)).catch(() => null);
     if (cfg.releaseOnStop) await client.post('unlock', { all: true, keepHeld: true, reason: 'turn finished' });
-    if (input.stop_hook_active) return null;
+    const note = closed ? { systemMessage: `huddle: your commit closed ${closed.map(t => `"${t.title}"`).join(', ')} on the board` } : null;
+    if (input.stop_hook_active) return note;
     const peek = await client.post('inbox', { peek: true });
     const me = client.agent;
     const direct = peek.messages.filter(m => m.to === me.id || m.to === me.name);
-    if (!direct.length) return null;
+    if (!direct.length) return note;
     const r = await client.post('inbox', {});
     return { decision: 'block', reason: `Before stopping: other agents sent you messages.\n${formatMessages(r.messages, me)}\nReply with huddle_send (or act on them), then you may stop.` };
   },
 
   async 'session-end'(input, client, cfg) {
-    await autoPublish(client, cfg, sessionState(cfg, client.agent));
+    const st = sessionState(cfg, client.agent);
+    await autoPublish(client, cfg, st);
+    await closeFromCommits(client, cfg, sessionState(cfg, client.agent)).catch(() => {});
+    await autoHandoff(client, cfg, sessionState(cfg, client.agent), await client.get('state').catch(() => null)).catch(() => {});
     await client.post('unlock', { all: true, reason: 'session ended' });
     await client.post('bye', {});
     return null;
@@ -469,7 +568,8 @@ async function runHook(event) {
   const h = handlers[event];
   if (!h) { process.stderr.write(`huddle: unknown hook ${event}\n`); return; }
   try {
-    const client = new Client(cfg, { ...identity(cfg), branch: gitx.currentBranch(cfg.root) });
+    // a request clone takes its locks on its person's branch, so it and everyone there stay out of each other's files
+    const client = new Client(cfg, { ...identity(cfg), branch: cfg.clone ? cfg.clone.branch : gitx.currentBranch(cfg.root) });
     out(await h(input, client, cfg));
   } catch (e) {
     if (event === 'pre' && cfg.failClosed) out(deny(`huddle server unavailable, so edits are blocked (failClosed is on): ${e.message}`));

@@ -4,13 +4,15 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { spawn, spawnSync } = require('child_process');
-const { loadConfig, identity, Client, relPath, hashFile, formatMessages, ago, CONFIG_DIR } = require('./client');
+const { loadConfig, identity, Client, relPath, hashFile, formatMessages, ago, build, CONFIG_DIR } = require('./client');
 const gitx = require('./git');
 
 const PKG_DIR = path.resolve(__dirname, '..');
 const INSTALL_DIR = process.env.HUDDLE_HOME || path.join(os.homedir(), '.huddle', 'app');
 const HOOK_MARK = 'huddle-hook';
 const PUBLIC_SERVER = process.env.HUDDLE_PUBLIC_SERVER || 'https://huddle.sage-hill.workers.dev';
+const REPO = process.env.HUDDLE_REPO || 'flyingf15h/huddle';
+const FOLDERS = path.join(path.dirname(INSTALL_DIR), 'folders.json'); // every folder this computer joined, for `huddle update`
 
 const HELP = `huddle — let Claude agents on different machines work on one project together
 
@@ -25,6 +27,11 @@ Everyone (in the project folder):
   huddle join <invite> [--name YOUR_NAME]
       Set up this folder: config, Claude Code hooks and the huddle MCP tools.
   huddle leave                  remove huddle from this folder
+  huddle update [--from DIR] [--ref REF]
+                                get the newest huddle (from GitHub, or a local checkout) and
+                                refresh the hooks in every folder you joined; then restart Claude
+  huddle permissions [--write]  a shared .claude/settings.json so every teammate's Claude stops
+                                asking about edits, huddle, git, builds and tests (deploys still ask)
   huddle link FOLDER            run in a parent folder: Claude started here joins FOLDER's huddle
 
 Talk to the whole team of Claudes:
@@ -36,8 +43,10 @@ Talk to the whole team of Claudes:
                                 Claude subscription; runs claude -p in this folder):
                                 requests (default) = does what people send to your Claude,
                                 on = also plans team goals and takes open tasks, off = waits
-  huddle autopilot [--allow "Bash(npm test:*)"] [--model M]
-                                run it in this terminal (when no Claude session is open here)
+  huddle autopilot [--allow "Bash(npm test:*)"] [--model M] [--parallel N]
+                                run it in this terminal (when no Claude session is open here).
+                                Each request runs as its own Claude in its own git worktree,
+                                up to 3 at once, and merges back into your branch when clean
 
 Versions, branches and merging (git history travels through huddle, no shared remote needed):
   huddle sync                   compare your copy with the team's and merge / branch / switch
@@ -49,6 +58,8 @@ Versions, branches and merging (git history travels through huddle, no shared re
   huddle unpublish [BRANCH]     take back a branch you shared
   huddle forget NAME            remove someone who left from the team list
   huddle same-person OLD NAME   merge two names for the same person (e.g. a dashboard name)
+  huddle tidy                   merge names that only differ in capitals ("kelly" and "Kelly")
+                                and drop old sessions from the team list
 
 Shared team knowledge (not in git, every agent gets it):
   huddle project                print PROJECT.md, the brief every agent starts with
@@ -68,7 +79,9 @@ Day to day:
   huddle sharing [full|tools|off]   how much of YOUR Claude sessions others can see
   huddle ai-name [NAME]         name your Claude (e.g. "Pip"); the team sees it and can send it
                                 work with --to Pip. No NAME: show it. --clear removes it.
-  huddle lock <file> / unlock [file]
+  huddle lock <file|folder/> / unlock [file|folder/]
+                                a locked folder is only editable by whoever locked it
+  huddle handoff ["note"]       leave a note on where you left off; no note: show everyone's
   huddle invite                 print this project's invite code again
   huddle open                   open the live dashboard in your browser
 `;
@@ -171,6 +184,7 @@ function selfInstall() {
   fs.mkdirSync(INSTALL_DIR, { recursive: true });
   fs.cpSync(path.join(PKG_DIR, 'src'), path.join(INSTALL_DIR, 'src'), { recursive: true });
   fs.copyFileSync(path.join(PKG_DIR, 'package.json'), path.join(INSTALL_DIR, 'package.json'));
+  if (fs.existsSync(path.join(PKG_DIR, 'build.json'))) fs.copyFileSync(path.join(PKG_DIR, 'build.json'), path.join(INSTALL_DIR, 'build.json'));
   // put `huddle` on PATH if ~/.local/bin is there
   if (process.platform !== 'win32' && !process.env.HUDDLE_HOME) {
     const bin = path.join(os.homedir(), '.local', 'bin');
@@ -181,6 +195,131 @@ function selfInstall() {
     }
   }
   return INSTALL_DIR;
+}
+
+function rememberFolder(root, projectRoot) {
+  let list = [];
+  try { list = JSON.parse(fs.readFileSync(FOLDERS, 'utf8')); } catch {}
+  list = list.filter(f => f.root !== root);
+  list.push({ root, ...(projectRoot ? { projectRoot } : {}) });
+  try { fs.mkdirSync(path.dirname(FOLDERS), { recursive: true }); fs.writeFileSync(FOLDERS, JSON.stringify(list, null, 1)); } catch {}
+}
+// folders joined (or linked) on this computer: our own list, plus Claude Code's record of where
+// the huddle MCP server is registered (covers folders joined before the list existed)
+function joinedFolders() {
+  const out = new Map();
+  try { for (const f of JSON.parse(fs.readFileSync(FOLDERS, 'utf8'))) out.set(f.root, f); } catch {}
+  // (a custom HUDDLE_HOME is a separate install: only the folders it joined itself)
+  if (!process.env.HUDDLE_HOME) try {
+    const cc = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude.json'), 'utf8'));
+    for (const [root, p] of Object.entries(cc.projects || {})) {
+      const h = p && p.mcpServers && p.mcpServers.huddle;
+      if (!h || out.has(root)) continue;
+      const target = h.env && h.env.HUDDLE_ROOT;
+      out.set(root, { root, ...(target && path.resolve(target) !== path.resolve(root) ? { projectRoot: target } : {}) });
+    }
+  } catch {}
+  return [...out.values()].filter(f => fs.existsSync(path.join(f.projectRoot || f.root, CONFIG_DIR, 'config.json')));
+}
+
+// Get the newest huddle and point every joined folder's hooks at it.
+async function cmdUpdate({ flags }) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'huddle-update-'));
+  try {
+    let src, info;
+    if (flags.from) {
+      src = path.resolve(String(flags.from));
+      need(fs.existsSync(path.join(src, 'src', 'cli.js')), `${src} doesn't look like a huddle checkout`);
+      const g = gitx.git(src, ['log', '-1', '--format=%H %ct']);
+      info = g.ok ? { sha: g.out.split(' ')[0], at: Number(g.out.split(' ')[1]) * 1000, from: src } : { sha: 'local', at: Date.now(), from: src };
+    } else {
+      const ref = String(flags.ref || 'main');
+      process.stdout.write(`checking github.com/${REPO} (${ref}) … `);
+      let c;
+      try {
+        const res = await fetch(`https://api.github.com/repos/${REPO}/commits/${encodeURIComponent(ref)}`, { headers: { accept: 'application/vnd.github+json', 'user-agent': 'huddle' } });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        c = await res.json();
+      } catch (e) { console.log('failed'); need(false, `couldn't look up the latest huddle: ${e.message}`); }
+      info = { sha: c.sha, at: Date.parse(c.commit.committer.date), from: `github:${REPO}` };
+      const cur = build();
+      if (cur && cur.sha === info.sha && !flags.force) console.log(`already on ${info.sha.slice(0, 7)}`);
+      else {
+        console.log(`${info.sha.slice(0, 7)} from ${new Date(info.at).toLocaleString()}`);
+        const res = await fetch(`https://codeload.github.com/${REPO}/tar.gz/${info.sha}`);
+        need(res.ok, `download failed: HTTP ${res.status}`);
+        fs.writeFileSync(path.join(tmp, 'huddle.tgz'), Buffer.from(await res.arrayBuffer()));
+        const x = spawnSync('tar', ['-xzf', 'huddle.tgz'], { cwd: tmp });
+        need(x.status === 0, "couldn't unpack the download (is tar installed?)");
+        src = path.join(tmp, fs.readdirSync(tmp).find(d => d !== 'huddle.tgz'));
+      }
+    }
+    if (src) {
+      need(path.resolve(src) !== path.resolve(INSTALL_DIR), 'that is the installed copy itself');
+      fs.rmSync(path.join(INSTALL_DIR, 'src'), { recursive: true, force: true });
+      fs.mkdirSync(INSTALL_DIR, { recursive: true });
+      fs.cpSync(path.join(src, 'src'), path.join(INSTALL_DIR, 'src'), { recursive: true });
+      fs.copyFileSync(path.join(src, 'package.json'), path.join(INSTALL_DIR, 'package.json'));
+      fs.writeFileSync(path.join(INSTALL_DIR, 'build.json'), JSON.stringify(info));
+      console.log(`installed huddle ${info.sha.slice(0, 7)} into ${INSTALL_DIR}`);
+    }
+  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+  const folders = joinedFolders();
+  for (const f of folders) {
+    installHooks(f.root, INSTALL_DIR, f.projectRoot);
+    installCommand(f.root);
+  }
+  console.log(`refreshed the hooks in ${folders.length} folder${folders.length === 1 ? '' : 's'}${folders.length ? ':\n  ' + folders.map(f => f.root).join('\n  ') : ''}
+Restart Claude Code in those folders to load the new version.`);
+}
+
+// A shared .claude/settings.json (committed with the project) so nobody's Claude asks about routine
+// work: file edits, huddle, git short of force-pushing, and this project's builds and tests.
+// Deploys, installs of new packages and anything destructive still ask.
+function permissionPreset(root) {
+  const allow = ['mcp__huddle', 'Bash(huddle:*)',
+    'Bash(git status:*)', 'Bash(git log:*)', 'Bash(git diff:*)', 'Bash(git show:*)', 'Bash(git fetch:*)', 'Bash(git pull:*)',
+    'Bash(git add:*)', 'Bash(git commit:*)', 'Bash(git stash:*)', 'Bash(curl -s:*)'];
+  const main = gitx.isRepo(root) ? (gitx.git(root, ['symbolic-ref', '--short', '-q', 'refs/remotes/origin/HEAD']).out.replace(/^origin\//, '') || gitx.currentBranch(root, 0)) : null;
+  // a prefix rule would let --force through too, so force-pushes are asked about explicitly
+  const ask = ['Bash(git push -f:*)', 'Bash(git push --force:*)'];
+  if (main) {
+    allow.push(`Bash(git push origin ${main}:*)`);
+    for (const f of ['-f', '--force', '--force-with-lease']) ask.push(`Bash(git push origin ${main} ${f}:*)`);
+  }
+  // look at the project and the folders right inside it (e.g. viewer/package.json)
+  const dirs = [root, ...fs.readdirSync(root, { withFileTypes: true }).filter(d => d.isDirectory() && !d.name.startsWith('.') && d.name !== 'node_modules').map(d => path.join(root, d.name))];
+  const has = (f) => dirs.some(d => fs.existsSync(path.join(d, f)));
+  if (has('package.json')) {
+    allow.push('Bash(npm ci:*)', 'Bash(npm run build:*)', 'Bash(npm test:*)', 'Bash(npm run test:*)', 'Bash(npm run lint:*)', 'Bash(npx tsc:*)', 'Bash(npx eslint:*)');
+  }
+  if (has('pyproject.toml') || has('uv.lock')) allow.push('Bash(uv sync:*)', 'Bash(uv run pytest:*)');
+  else if (has('requirements.txt')) allow.push('Bash(pytest:*)', 'Bash(python -m pytest:*)');
+  if (has('Cargo.toml')) allow.push('Bash(cargo build:*)', 'Bash(cargo test:*)', 'Bash(cargo check:*)', 'Bash(cargo clippy:*)');
+  if (has('go.mod')) allow.push('Bash(go build:*)', 'Bash(go test:*)', 'Bash(go vet:*)');
+  if (has('Makefile')) allow.push('Bash(make test:*)', 'Bash(make build:*)');
+  return { defaultMode: 'acceptEdits', allow, ask };
+}
+
+function cmdPermissions({ flags }) {
+  const cfg = configured();
+  const file = path.join(cfg.root, '.claude', 'settings.json');
+  let cur = {};
+  try { cur = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { need(e.code === 'ENOENT', `${file} isn't valid JSON; fix it first`); }
+  const want = permissionPreset(cfg.root);
+  const have = (cur.permissions && cur.permissions.allow) || [];
+  const adding = want.allow.filter(a => !have.includes(a));
+  const haveAsk = (cur.permissions && cur.permissions.ask) || [];
+  const asking = want.ask.filter(a => !haveAsk.includes(a));
+  const mode = (cur.permissions && cur.permissions.defaultMode) || null;
+  if (!adding.length && !asking.length && mode) return console.log(`.claude/settings.json already has all of it (defaultMode ${mode}).`);
+  console.log(`${flags.write ? 'Adding' : 'Would add'} to .claude/settings.json:\n${mode ? '' : '  defaultMode: acceptEdits (file edits without asking)\n'}${adding.map(a => '  ' + a).join('\n')}${asking.length ? `\nand always asks before: ${asking.map(a => a.slice(5, -3)).join(', ')}` : ''}
+Anything else (deploys, ssh, installing new packages, rm) still asks too.`);
+  if (!flags.write) return console.log('\nRun huddle permissions --write to save it.');
+  cur.permissions = { ...(cur.permissions || {}), defaultMode: mode || want.defaultMode, allow: [...have, ...adding], ask: [...haveAsk, ...asking] };
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(cur, null, 2) + '\n');
+  console.log(`\nSaved. Commit .claude/settings.json so every teammate's Claude gets it:\n  git add .claude/settings.json && git commit -m "let Claude do routine work without asking"`);
 }
 
 function q(s) { return process.platform === 'win32' ? `"${s}"` : `'${s.replace(/'/g, `'\\''`)}'`; }
@@ -322,6 +461,7 @@ async function cmdJoin({ pos, flags }) {
   fs.writeFileSync(cfgFile, JSON.stringify({ ...prev, server: inv.server, token: inv.token, project: inv.project, name }, null, 2) + '\n', { mode: 0o600 });
   ignoreLocally(root);
   const dir = selfInstall();
+  rememberFolder(root);
   installHooks(root, dir);
   installCommand(root);
   const mcp = installMcp(root, dir);
@@ -337,6 +477,9 @@ its tool calls) so everyone can follow along. Change that with: huddle sharing t
 While Claude is open here, things teammates send to YOUR Claude run automatically,
 using your Claude subscription. Change it any time: /autopilot off (in Claude),
 huddle autopilot off, or the dashboard. /autopilot on also takes team-wide work.
+
+Tip: huddle permissions --write makes a shared .claude/settings.json so nobody's Claude
+asks before routine edits, git, builds and tests (deploys still ask).
 
 Next: start (or restart) Claude Code in this folder, then just prompt it as usual.
 It already knows who else is working, what's locked, and the team's PROJECT.md,
@@ -511,6 +654,7 @@ function cmdLink({ pos }) {
   need(fs.existsSync(path.join(target, CONFIG_DIR, 'config.json')), `${target} isn't joined to a huddle yet (run huddle join there first)`);
   need(target !== here, 'that is this folder; it is already connected');
   const dir = selfInstall();
+  rememberFolder(here, target);
   installHooks(here, dir, target);
   installCommand(here);
   const mcp = installMcp(here, dir, target);
@@ -737,17 +881,58 @@ async function cmdAiName({ pos, flags }) {
 
 async function cmdStatus() {
   const c = humanClient();
-  const [s, st] = await Promise.all([c.get('state'), c.get('settings').catch(() => ({ settings: {} }))]);
+  const [s, hand] = await Promise.all([c.get('state'), c.get('handoffs', { limit: 6 }).catch(() => ({ handoffs: [] }))]);
+  const settings = s.settings || {};
   console.log(`${c.cfg.project} @ ${c.cfg.server}\n`);
-  for (const a of s.agents.filter(a => a.kind !== 'cli').sort((x, y) => y.online - x.online)) {
-    const ai = a.kind === 'agent' && (st.settings[a.name] || {}).aiName;
-    console.log(`${a.online ? '●' : '○'} ${(ai ? `${a.name} (${ai})` : a.name).padEnd(24)} ${a.kind.padEnd(7)} ${a.online ? '' : 'seen ' + ago(a.lastSeen)} ${a.status || ''}${a.status && a.statusAt ? ` (${ago(a.statusAt)})` : ''}`);
+  // one block per person: their Claude sessions (and background request Claudes) underneath
+  const people = new Map();
+  for (const a of s.agents.filter(a => a.kind !== 'cli')) {
+    if (!people.has(a.name)) people.set(a.name, []);
+    people.get(a.name).push(a);
   }
+  const lower = new Map();
+  for (const n of people.keys()) lower.set(n.toLowerCase(), [...(lower.get(n.toLowerCase()) || []), n]);
+  const order = [...people.entries()].sort((x, y) => y[1].some(a => a.online) - x[1].some(a => a.online) || x[0].localeCompare(y[0]));
+  for (const [name, list] of order) {
+    const on = list.filter(a => a.online);
+    const ai = (settings[name] || {}).aiName;
+    const last = Math.max(...list.map(a => a.lastSeen));
+    console.log(`${on.length ? '●' : '○'} ${ai ? `${name} (${ai})` : name}${on.length ? '' : `  seen ${ago(last)}`}`);
+    for (const a of on.filter(a => a.kind !== 'human')) {
+      const what = a.clone ? `background Claude, ${a.clone}` : a.kind === 'autopilot' ? 'autopilot' : 'Claude';
+      console.log(`    ${what}${a.branch ? ' on ' + a.branch : ''}${a.status ? ` · ${a.status}${a.statusAt ? ` (${ago(a.statusAt)})` : ''}` : ''}`);
+    }
+  }
+  const dupes = [...lower.values()].filter(v => v.length > 1);
+  if (dupes.length) console.log(`\n${dupes.map(v => v.join(' / ')).join(', ')} look like the same person: huddle tidy merges them`);
   console.log('\nlocks:' + (s.locks.length ? '' : ' none'));
-  for (const l of s.locks) console.log(`  🔒 ${l.path}  ${l.holderName}, ${ago(l.since)}${l.note ? ' — ' + l.note : ''}`);
+  for (const l of s.locks) console.log(`  🔒 ${l.path}${l.dir ? ' (whole folder)' : ''}  ${l.holderName}, ${ago(l.since)}${l.note ? ' — ' + l.note : ''}`);
   const recent = s.files.filter(f => f.size).sort((a, b) => b.at - a.at).slice(0, 8);
   if (recent.length) console.log('\nrecent edits:');
   for (const f of recent) console.log(`  ${f.path} v${f.version} by ${f.byName}, ${ago(f.at)}`);
+  if (hand.handoffs.length) console.log('\nwhere people left off:');
+  for (const h of hand.handoffs.reverse()) console.log(`  ${h.name}, ${ago(h.at)}: ${h.text}`);
+}
+
+async function cmdTidy() {
+  const r = await humanClient('human').post('tidy', {});
+  for (const m of r.merged) console.log(`${m.from} is now ${m.into}`);
+  console.log(`${r.merged.length ? '' : 'no duplicate names. '}removed ${r.removed} old session${r.removed === 1 ? '' : 's'} from the team list`);
+}
+
+async function cmdHandoff({ pos }) {
+  const c = humanClient('human');
+  if (pos.length) {
+    await c.post('handoff', { text: pos.join(' ') });
+    return console.log('saved; the team and your next Claude session see it');
+  }
+  const r = await c.get('handoffs', { limit: 20 });
+  if (!r.handoffs.length) return console.log('no hand-off notes yet');
+  for (const h of r.handoffs) {
+    console.log(`${h.name}, ${ago(h.at)}${h.branch ? ' on ' + h.branch : ''}${h.auto ? ' (written by huddle)' : ''}\n  ${h.text}`);
+    if (h.commits.length) console.log(`  commits: ${h.commits.join('; ')}`);
+    if (h.files.length) console.log(`  files: ${h.files.join(', ')}`);
+  }
 }
 
 async function cmdSend({ pos, flags }) {
@@ -762,20 +947,28 @@ async function cmdInbox({ flags }) {
   console.log(r.messages.length ? formatMessages(r.messages, c.agent) : 'no new messages');
 }
 
+function isDirArg(p) {
+  if (/[\\/]$/.test(p)) return true;
+  try { return fs.statSync(path.resolve(p)).isDirectory(); } catch { return false; }
+}
+
 async function cmdLock({ pos, flags }) {
   const c = humanClient('human');
+  const branch = gitx.isRepo(c.cfg.root) ? gitx.currentBranch(c.cfg.root, 0) : null;
   for (const p of pos) {
     const r0 = relPath(c.cfg.root, path.resolve(p));
     need(r0, `${p} is outside the project`);
-    const r = await c.post('lock', { path: r0, note: flags.note || '', hold: true, baseHash: hashFile(path.resolve(p)) });
-    console.log(r.ok ? `locked ${r0}` : `${r0} is locked by ${r.lock.holderName}`);
+    const dir = isDirArg(p);
+    const r = await c.post('lock', dir ? { path: r0 + '/', dir: true, branch, note: flags.note || '' }
+      : { path: r0, branch, note: flags.note || '', hold: true, baseHash: hashFile(path.resolve(p)) });
+    console.log(r.ok ? `locked ${r0}${dir ? '/ (the whole folder)' : ''}` : `${r0}${dir ? '/' : ''} overlaps ${r.lock.path}, locked by ${r.lock.holderName}`);
   }
 }
 
 async function cmdUnlock({ pos }) {
   const c = humanClient('human');
   const r = pos.length
-    ? await c.post('unlock', { paths: pos.map(p => relPath(c.cfg.root, path.resolve(p))) })
+    ? await c.post('unlock', { paths: pos.map(p => relPath(c.cfg.root, path.resolve(p)) + (isDirArg(p) ? '/' : '')), branch: gitx.isRepo(c.cfg.root) ? gitx.currentBranch(c.cfg.root, 0) : null })
     : await c.post('unlock', { all: true });
   console.log(r.released.length ? 'released ' + r.released.join(', ') : 'nothing to release');
 }
@@ -906,7 +1099,7 @@ async function main() {
   const cmds = {
     server: cmdServer, new: cmdNew, join: cmdJoin, leave: cmdLeave, status: cmdStatus, send: cmdSend, inbox: cmdInbox,
     lock: cmdLock, unlock: cmdUnlock, watch: cmdWatch, invite: cmdInvite, open: cmdOpen,
-    project: cmdProject, sharing: cmdSharing, 'ai-name': cmdAiName,
+    project: cmdProject, sharing: cmdSharing, 'ai-name': cmdAiName, update: cmdUpdate, permissions: cmdPermissions, tidy: cmdTidy, handoff: cmdHandoff, handoffs: cmdHandoff,
     sync: cmdSync, branches: cmdBranches, branch: cmdBranch, publish: cmdPublish, fetch: cmdFetch, merge: cmdMerge,
     ask: cmdAsk, board: cmdBoard, autopilot: cmdAutopilot, unpublish: cmdUnpublish, forget: cmdForget, 'same-person': cmdSamePerson, link: cmdLink, unlink: cmdUnlink, statusline: cmdStatusline, memory: cmdMemory, memories: cmdMemory, skill: cmdSkill, skills: cmdSkill,
     hook: () => require('./hooks').runHook(args.pos[0]),

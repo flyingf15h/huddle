@@ -173,6 +173,74 @@ function person(name, pid, url, token, project, { git = true } = {}) {
     assert.equal(b.tasks[b.tasks.length - 1].owner, 'erin');
     ok('dependencies hold tasks back, claims are first-come, goals close when their tasks are done, direct asks go to one Claude');
 
+    // a commit that says it finishes a task closes it on the board
+    const davey = { id: 'dave#x', name: 'dave' };
+    const tk = (await api('task', { agent: davey, title: 'add pow', owner: 'dave' })).task;
+    await api('task-update', { agent: davey, id: tk.id, status: 'doing' });
+    fs.rmSync(path.join(dave.root, '.huddle', 'sessions'), { recursive: true, force: true });
+    dave.hook('session-start', {});
+    assert.match(dave.hook('prompt', { prompt: 'make the division errors friendlier please' }).hookSpecificOutput.additionalContext,
+      new RegExp(`Board tasks you still have in progress: \\[${tk.id}\\] add pow`));
+    dave.write('pow.py', 'def pow(a, b):\n    return a ** b\n');
+    dave.git('add', '-A'); dave.git('commit', '-qm', `pow, closes ${tk.id}`);
+    assert.match(dave.hook('stop', { stop_hook_active: true }).systemMessage, /closed "add pow"/);
+    const closedTask = (await api('board')).tasks.find(t => t.id === tk.id);
+    assert.equal(closedTask.status, 'done');
+    assert.match(closedTask.notes[closedTask.notes.length - 1].text, /closed by commit [0-9a-f]{8}: pow, closes/);
+    ok('a commit that says "closes <task>" closes it on the board');
+
+    // requests run as Claudes of their own, side by side in their own worktrees, and merge back
+    const fakeBin = path.join(tmp, 'bin');
+    fs.mkdirSync(fakeBin);
+    const runLog = path.join(tmp, 'runs.log');
+    fs.writeFileSync(path.join(fakeBin, 'claude'), `#!/usr/bin/env node
+const fs = require('fs'), path = require('path');
+const p = process.argv[process.argv.indexOf('-p') + 1] || '';
+const id = (p.match(/Your task \\[(\\w+)\\]/) || [])[1];
+const clone = JSON.parse(fs.readFileSync('.huddle/config.json', 'utf8')).clone || {};
+fs.appendFileSync(${JSON.stringify(runLog)}, ['start', id, Date.now(), process.cwd(), process.env.HUDDLE_SESSION, process.env.HUDDLE_ROOT, clone.branch].join(' ') + '\\n');
+setTimeout(() => {
+  if (p.includes('touch calc')) fs.appendFileSync('calc.py', '# from the request\\n');
+  else fs.writeFileSync('notes-' + id + '.txt', 'done\\n');
+  fs.appendFileSync(${JSON.stringify(runLog)}, ['end', id, Date.now()].join(' ') + '\\n');
+  console.log('did ' + id);
+}, 1200);
+`, { mode: 0o755 });
+    process.env.PATH = fakeBin + path.delimiter + process.env.PATH;
+    Object.assign(process.env, gitEnv);
+    dave.write('calc.py', dave.read('calc.py') + '# wip\n'); // dave is in the middle of something
+    const ap = require('../src/autopilot');
+    const { loadConfig, Client, identity } = require('../src/client');
+    const dcfg = { ...loadConfig(dave.root), clonesDir: path.join(tmp, 'clones') };
+    await api('setting', { agent: davey, autopilot: 'requests' });
+    const asker = { id: 'h#erin', name: 'erin', kind: 'human' };
+    for (const text of ['write notes A', 'write notes B', 'touch calc please']) await api('goal', { agent: asker, text, to: 'dave' });
+    const runner = ap.createRunner({ cfg: dcfg, client: new Client(dcfg, identity(dcfg, 'autopilot')), log: () => {} });
+    await runner.refreshMode();
+    runner.work();
+    const reqs = () => api('board').then(bd => bd.tasks.filter(t => ['write notes A', 'write notes B', 'touch calc please'].includes(t.title)));
+    const end = Date.now() + 20000;
+    while (!(await reqs()).every(t => t.status === 'done')) { assert(Date.now() < end, 'requests never finished'); await new Promise(r => setTimeout(r, 200)); }
+    runner.stop();
+    const runs = fs.readFileSync(runLog, 'utf8').trim().split('\n').map(l => l.split(' '));
+    const [ra, rb] = (await reqs()).slice(0, 2).map(t => t.id);
+    const at = (kind, id) => Number(runs.find(r => r[0] === kind && r[1] === id)[2]);
+    assert(at('start', rb) < at('end', ra) && at('start', ra) < at('end', rb), 'the two requests ran at the same time');
+    for (const r of runs.filter(r => r[0] === 'start')) {
+      assert(r[3].startsWith(path.join(tmp, 'clones')) && r[3] === r[5], 'each runs in its own worktree, with huddle pointed there');
+      assert.equal(r[4], 'clone-' + r[1]);
+      assert.equal(r[6], 'main');
+    }
+    assert(fs.existsSync(path.join(dave.root, `notes-${ra}.txt`)) && fs.existsSync(path.join(dave.root, `notes-${rb}.txt`)), 'clean results merged into dave\'s branch');
+    assert(dave.read('calc.py').includes('# wip') && !dave.read('calc.py').includes('# from the request'), "dave's own work is untouched");
+    const calcId = (await reqs()).find(t => t.title === 'touch calc please').id;
+    assert(dave.git('branch').includes(`huddle-request-${calcId}`) && !dave.git('branch').includes(`huddle-request-${ra}`));
+    assert.equal(dave.git('worktree', 'list').split('\n').length, 1, 'worktrees are cleaned up');
+    const replies = (await api('messages')).messages.filter(m => m.to === 'erin' && /Re your request/.test(m.text));
+    assert.equal(replies.filter(m => /merged into dave's main/.test(m.text)).length, 2);
+    assert.match(replies.find(m => /touch calc/.test(m.text)).text, new RegExp(`on branch huddle-request-${calcId}`));
+    ok('requests run as their own Claudes in parallel worktrees; clean results merge in, the rest wait on a branch');
+
     console.log('\nall good');
   } catch (e) {
     console.error(`\n✗ failed after "${step}":`, e);

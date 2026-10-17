@@ -211,6 +211,7 @@ class Sync {
   }
 
   protect(p) {
+    if (p.endsWith('/')) return; // a folder lock: edits inside it are refused by the hooks instead
     const abs = this.abs(p);
     let st;
     try { st = fs.statSync(abs); } catch { return; }

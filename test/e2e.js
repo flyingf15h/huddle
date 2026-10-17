@@ -323,6 +323,56 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
     assert.match(await alice.tool('huddle_status'), /Recently started work[\s\S]*bob, \d+s ago: asked: “add a search box[\s\S]*bob, \d+s ago: parts search/);
     ok("each Claude's current work reaches the others as it changes, and only then");
 
+    // folder locks: only one Claude edits inside a locked folder, and locks never overlap
+    fs.mkdirSync(path.join(alice.root, 'lib', 'sub'), { recursive: true });
+    fs.mkdirSync(path.join(bob.root, 'lib', 'sub'), { recursive: true });
+    assert.match(await alice.tool('huddle_lock', { paths: ['lib/'], note: 'reworking lib' }), /locked lib\/ \(the whole folder/);
+    const inLib = { tool_name: 'Write', tool_input: { file_path: path.join(bob.root, 'lib', 'sub', 'x.js') } };
+    const no = bob.hook('pre', inLib);
+    assert.equal(no.hookSpecificOutput.permissionDecision, 'deny');
+    assert.match(no.hookSpecificOutput.permissionDecisionReason, /lib\/sub\/x\.js is inside lib\/, a folder locked by alice/);
+    assert.match(await bob.tool('huddle_lock', { paths: ['lib/sub/'] }), /overlaps lib\/ \(a folder\), locked by alice/);
+    assert.match(await bob.tool('huddle_lock', { paths: ['docs/a.md'] }), /locked docs\/a\.md/);
+    assert.match(await alice.tool('huddle_lock', { paths: ['docs/'] }), /overlaps docs\/a\.md, locked by bob/);
+    alice.hook('stop', { stop_hook_active: true }); // the end of a turn keeps the folder
+    assert.equal(bob.hook('pre', inLib).hookSpecificOutput.permissionDecision, 'deny');
+    assert.match(await alice.tool('huddle_status'), /lib\/ \(whole folder\): you/);
+    assert.match(await alice.tool('huddle_unlock', { paths: ['lib/'] }), /released lib\//);
+    assert.equal(bob.hook('pre', inLib), null);
+    await bob.tool('huddle_unlock', {});
+    ok('a locked folder is editable by one Claude only, and no two locks overlap');
+
+    // hand-off notes: where a session left off reaches the team and the next session
+    assert.match(await bob.tool('huddle_handoff', { text: 'parts search works for names; next: filter by category' }), /hand-off saved/);
+    const hand = alice.hook('prompt', { prompt: 'what next' }).hookSpecificOutput.additionalContext;
+    assert.match(hand, /left a hand-off note:\n- bob, \d+s ago: parts search works for names; next: filter by category/);
+    assert(!/hand-off/.test((alice.hook('prompt', { prompt: 'and' }).hookSpecificOutput || {}).additionalContext || ''), 'a note is told once');
+    // carol's session ends without one: huddle writes it from her status and the files she edited
+    fs.rmSync(path.join(carol.root, '.huddle', 'sessions'), { recursive: true, force: true });
+    carol.hook('session-start', {});
+    carol.hook('prompt', { prompt: 'tighten the error messages in notes.txt' });
+    const notesEdit = { tool_name: 'Write', tool_input: { file_path: path.join(carol.root, 'notes.txt') } };
+    assert.equal(carol.hook('pre', notesEdit), null);
+    fs.writeFileSync(path.join(carol.root, 'notes.txt'), 'clearer errors\n');
+    carol.hook('post', notesEdit);
+    carol.hook('session-end', {});
+    const autoNote = (await api('handoffs')).handoffs.find(h => h.name === 'carol');
+    assert(autoNote && autoNote.auto && /Was on: asked: “tighten the error messages/.test(autoNote.text) && autoNote.files.includes('notes.txt'), JSON.stringify(autoNote));
+    assert.match(carol.hook('session-start', {}).hookSpecificOutput.additionalContext, /Where people left off[\s\S]*you \(an earlier session\)[^\n]*tighten the error[\s\S]*- bob, /);
+    carol.hook('session-end', {});
+    assert.match(await alice.tool('huddle_status'), /Hand-off notes[\s\S]*bob[^\n]*parts search works/);
+    ok('hand-off notes reach the team and the next session, written by huddle when Claude leaves none');
+
+    // one person, one entry: a name in other capitals is the same person, old sessions drop off
+    assert.equal((await api('hello', { agent: { id: 'BOB#web', name: 'BOB', kind: 'human', host: 'x' } })).you.name, 'bob');
+    for (const id of ['dave#1', 'dave#2', 'dave#3']) {
+      await api('hello', { agent: { id, name: 'dave', kind: 'agent' } });
+      await api('bye', { agent: { id } });
+    }
+    await api('tidy', { agent: { id: 'h#tidy', name: 'carol', kind: 'human' } });
+    assert.equal((await api('state')).agents.filter(a => a.name === 'dave').length, 1);
+    ok('names that differ in capitals are one person, and old sessions leave the team list');
+
     // secrets never leave the machine: no lock, no live copy
     fs.writeFileSync(path.join(alice.root, '.env.local'), 'GEMINI_API_KEY=secret123\n');
     const envEdit = { tool_name: 'Edit', tool_input: { file_path: path.join(alice.root, '.env.local') } };

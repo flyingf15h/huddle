@@ -538,7 +538,8 @@ function fromEvent(ev) {
     case 'message': return [{ kind: 'msg', who: ev.message.fromName, at: ev.message.at, to: ev.message.to, text: ev.message.text }];
     case 'activity': return ev.items.map(fromActivity);
     case 'join': return ev.agent.kind === 'human' ? [] : [{ kind: 'join', who: ev.agent.name, at: ev.at, agentKind: ev.agent.kind }];
-    case 'lock': return [{ kind: 'lock', who: ev.lock.holderName, at: ev.at, path: ev.lock.path, branch: ev.lock.branch }];
+    case 'lock': return [{ kind: 'lock', who: ev.lock.holderName, at: ev.at, path: ev.lock.path, branch: ev.lock.branch, dir: !!ev.lock.dir }];
+    case 'handoff': return [{ kind: 'handoff', who: ev.handoff.name, at: ev.at, text: ev.handoff.text, commits: ev.handoff.commits || [], auto: ev.handoff.auto }];
     case 'unlock': return [{ kind: 'unlock', who: ev.holderName, at: ev.at, path: ev.path, stale: ev.reason === 'stale' }];
     case 'file': return [{ kind: 'file', who: ev.file.byName, at: ev.at, path: ev.file.path, branch: ev.file.branch, version: ev.file.version }];
     case 'shared': return [{ kind: 'knowledge', who: ev.byName, at: ev.at, what: ev.kind, action: ev.action, title: ev.title || ev.name }];
@@ -554,7 +555,7 @@ function fromEvent(ev) {
   return [];
 }
 const TURN_KINDS = new Set(['msg', 'prompt', 'reply', 'tool', 'end']);
-const group = { msg: 'talk', prompt: 'claude', reply: 'claude', tool: 'claude', end: 'claude', goal: 'tasks', plan: 'tasks', task: 'tasks', lock: 'files', unlock: 'files', file: 'files', git: 'files', knowledge: 'talk', join: 'talk' };
+const group = { handoff: 'claude', msg: 'talk', prompt: 'claude', reply: 'claude', tool: 'claude', end: 'claude', goal: 'tasks', plan: 'tasks', task: 'tasks', lock: 'files', unlock: 'files', file: 'files', git: 'files', knowledge: 'talk', join: 'talk' };
 const visible = (e) => (S.filter === 'all' || group[e.kind] === S.filter) && (!S.who || e.who === S.who);
 
 let turn = null, lastDay = '';
@@ -563,7 +564,8 @@ function noteHtml(e) {
   const fileBtn = (p, b) => `<button class="link" data-file="${esc(p)}" data-branch="${esc(b || '')}">${esc(p)}</button>`;
   switch (e.kind) {
     case 'join': return `<div class="note"><span class="ic">👋</span><span>${who} ${e.agentKind === 'autopilot' ? 'turned on autopilot' : 'opened Claude'} · <span class="faint">${clock(e.at)}</span></span></div>`;
-    case 'lock': return `<div class="note"><span class="ic">🔒</span><span>${who} started editing ${fileBtn(e.path, e.branch)}${e.branch ? ` on ${esc(e.branch)}` : ''}</span></div>`;
+    case 'lock': return `<div class="note"><span class="ic">🔒</span><span>${who} ${e.dir ? `locked the whole <b>${esc(e.path)}</b> folder` : 'started editing ' + fileBtn(e.path, e.branch)}${e.branch ? ` on ${esc(e.branch)}` : ''}</span></div>`;
+    case 'handoff': return `<div class="card"><div class="kicker">📝 ${who} left off here${e.auto ? ' <span class="faint">(noted by huddle)</span>' : ''} · ${clock(e.at)}</div><div class="small" style="white-space:pre-wrap">${esc(e.text)}</div>${e.commits.length ? `<div class="small faint" style="margin-top:4px">${e.commits.slice(0, 4).map(esc).join('<br>')}</div>` : ''}</div>`;
     case 'unlock': return `<div class="note"><span class="ic">🔓</span><span>${who} ${e.stale ? 'went quiet, so huddle released' : 'is done with'} ${esc(e.path)}</span></div>`;
     case 'file': return `<div class="note"><span class="ic">✎</span><span>${who} saved ${fileBtn(e.path, e.branch)} <span class="faint">v${e.version}</span></span></div>`;
     case 'git': return `<div class="note"><span class="ic">⎇</span><span>${who} shared <b>${esc(e.branch)}</b>${e.subject ? `: “${esc(e.subject)}”` : ''}</span></div>`;
@@ -688,7 +690,8 @@ function people() {
   const by = {};
   for (const a of Object.values(S.agents)) {
     if (a.kind === 'human' && !hasClaude(a.name)) continue; // dashboard-only visitors aren't cards
-    const p = by[a.name] = by[a.name] || { name: a.name, online: false, lastSeen: 0, status: '', branch: null, runner: null };
+    const p = by[a.name] = by[a.name] || { name: a.name, online: false, lastSeen: 0, status: '', branch: null, runner: null, clones: 0 };
+    if (a.online && a.clone) { p.clones++; continue; } // a background Claude doing a request: counted, not the card's status
     p.online = p.online || a.online;
     if (a.online && a.runner && a.runner !== 'off' && p.runner !== 'full') p.runner = a.runner;
     if (a.lastSeen > p.lastSeen) { p.lastSeen = a.lastSeen; if (a.branch) p.branch = a.branch; }
@@ -728,7 +731,7 @@ function renderTeam() {
     return `<button class="person${S.who === p.name ? ' sel' : ''}" data-person="${esc(p.name)}" title="${S.who === p.name ? 'Show everyone' : 'Show only ' + esc(p.name)}${p.name === myName() && hasClaude(p.name) ? ' · right-click to name your Claude' : ''}">
       <div class="top">${avatar(p.name, false, busy)}<span class="name">${esc(p.name)}${p.name === myName() ? ' <span class="faint" style="font-weight:500">(you)</span>' : ''}${aiName(p.name) ? ` <span class="ainame" title="${esc(p.name)}'s Claude">· ${esc(aiName(p.name))}</span>` : ''}</span>${stateChip(p)}</div>
       <div class="doing">${esc(nowDoing(p.name) || p.status || '') || '<span class="faint">No activity yet</span>'}</div>
-      <div class="meta">${p.branch ? `<span>⎇ ${esc(p.branch)}</span>` : ''}${t ? `<span>${t} task${t === 1 ? '' : 's'} in progress</span>` : ''}</div>
+      <div class="meta">${p.branch ? `<span>⎇ ${esc(p.branch)}</span>` : ''}${t ? `<span>${t} task${t === 1 ? '' : 's'} in progress</span>` : ''}${p.clones ? `<span title="each request runs as its own Claude">${p.clones} background Claude${p.clones === 1 ? '' : 's'}</span>` : ''}</div>
     </button>`;
   }).join('') || `<div class="quiet">Nobody has joined yet. <button class="link" data-invite>Invite your team</button> to get started.</div>`;
   document.documentElement.style.setProperty('--teamh', $('team').offsetHeight + 'px');
@@ -845,7 +848,7 @@ function renderSide() {
   $('tasks').innerHTML = filt + (body || `<div class="quiet">${S.tf === 'mine' ? 'No tasks assigned to you.' : S.tf === 'open' ? 'Nothing open right now. Describe what you want built in <b>Message Claude</b>.' : 'No tasks yet.'}</div>`);
   const locks = Object.values(S.locks);
   $('lockcount').textContent = locks.length ? locks.length : '';
-  $('locks').innerHTML = locks.map(l => `<button class="row-item" data-file="${esc(l.path)}" data-branch="${esc(l.branch || '')}">${avatar(l.holderName, true)}<span class="grow"><span class="path">${esc(l.path)}</span><br><span class="small muted">${esc(l.holderName)} · ${ago(l.since)}${l.branch ? ' · ' + esc(l.branch) : ''}</span></span><span aria-label="locked">🔒</span></button>`).join('')
+  $('locks').innerHTML = locks.map(l => `<button class="row-item" data-file="${esc(l.path)}" data-branch="${esc(l.branch || '')}">${avatar(l.holderName, true)}<span class="grow"><span class="path">${esc(l.path)}${l.dir ? ' <span class="faint">(whole folder)</span>' : ''}</span><br><span class="small muted">${esc(l.holderName)} · ${ago(l.since)}${l.branch ? ' · ' + esc(l.branch) : ''}</span></span><span aria-label="locked">🔒</span></button>`).join('')
     || '<div class="quiet">No files locked.</div>';
   const files = Object.values(S.files).filter(f => f.size).sort((a, b) => b.at - a.at).slice(0, 8);
   $('files').innerHTML = files.map(f => `<button class="row-item" data-file="${esc(f.path)}" data-branch="${esc(f.branch || '')}">${avatar(f.byName, true)}<span class="grow"><span class="path">${esc(f.path)}</span><br><span class="small muted">${esc(f.byName)} · ${ago(f.at)}</span></span></button>`).join('')
@@ -1232,7 +1235,7 @@ function onEvent(ev) {
     case 'setting': S.settings[ev.name] = ev.settings; break;
     case 'stats': statsChanged(); break;
     case 'merge': location.reload(); return;
-    case 'forget': for (const [id, x] of Object.entries(S.agents)) if (x.name === ev.name) delete S.agents[id]; break;
+    case 'forget': if (!ev.name) { location.reload(); return; } for (const [id, x] of Object.entries(S.agents)) if (x.name === ev.name) delete S.agents[id]; break;
   }
   if (ev.type !== 'leave' && ev.type !== 'status') addEntries(fromEvent(ev));
   renderTeam(); renderSide();
@@ -1277,13 +1280,15 @@ async function start() {
   $('login').hidden = true; $('app').hidden = false;
   showMe();
   // history: messages, Claude activity and goals, merged by time
-  const [msgs, act, board] = await Promise.all([api('messages?limit=200'), api('activity?limit=500'), api('board')])
-    .catch(() => [{ messages: [] }, { activity: [] }, null]);
+  const [msgs, act, board, hand] = await Promise.all([api('messages?limit=200'), api('activity?limit=500'), api('board'),
+    api('handoffs?limit=30').catch(() => ({ handoffs: [] }))])
+    .catch(() => [{ messages: [] }, { activity: [] }, null, { handoffs: [] }]);
   S.board = board;
   S.entries = [
     ...msgs.messages.map(m => ({ kind: 'msg', who: m.fromName, at: m.at, to: m.to, text: m.text })),
     ...act.activity.map(fromActivity),
     ...(board ? board.goals.map(g => ({ kind: 'goal', who: g.byName, at: g.at, goal: g })) : []),
+    ...hand.handoffs.map(h => fromEvent({ type: 'handoff', at: h.at, handoff: h })[0]),
   ].sort((a, b) => a.at - b.at);
   renderFeed(); renderSide();
   connect();

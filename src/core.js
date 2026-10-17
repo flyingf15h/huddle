@@ -31,6 +31,7 @@ const ACTIVITY_TEXT = 4000;
 const STATS_DAYS = 60;              // daily buckets kept per person
 const STATS_MODELS = 20;            // models tracked per person
 const MAX_WORKLOG = 80;             // recent "now working on" changes, newest kept
+const MAX_HANDOFFS = 60;            // "where I left off" notes, newest kept
 // events that change who's doing what; hooks only re-read the team when this count moves
 const TEAM_EVENTS = new Set(['status', 'lock', 'unlock', 'join', 'leave', 'setting']);
 
@@ -58,9 +59,33 @@ function personFor(p, name) {
   return name;
 }
 
+// The lock of someone else's Claude that stops `who` locking fp (a folder when dir is set). A folder
+// lock covers everything inside it, and two Claudes' locks never overlap: no file in someone's
+// folder, no folder around someone's file or folder.
+function blockingLock(p, who, branch, fp, dir) {
+  const mine = dir ? fp + '/' : fp;
+  for (const l of Object.values(p.locks)) {
+    if (l.holder === who || (l.branch || null) !== branch) continue;
+    if (l.path === mine || (l.dir && (fp + '/').startsWith(l.path)) || (dir && l.path.startsWith(fp + '/'))) return l;
+  }
+  return null;
+}
+// a person's canonical name: aliases first, then a name that only differs in capitals ("kelly" -> "Kelly")
+function canonicalName(p, name) {
+  name = (p.aliases || {})[name] || name;
+  if (!name) return name;
+  const known = new Set([...Object.values(p.agents).map(a => a.name), ...Object.keys(p.settings || {}), ...Object.keys(p.stats || {})]);
+  if (known.has(name)) return name;
+  for (const k of known) if (k && k.toLowerCase() === name.toLowerCase()) return k;
+  return name;
+}
+// board tasks a commit message says it finishes: "[1a2b3c4d]", "#1a2b3c4d", "closes 1a2b3c4d", "done: task 1a2b3c4d"
+const CLOSES = /(?:\[|#|\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|done|finish(?:e[sd])?|complete[sd]?)\b[\s:]*(?:task\s*)?\[?#?)([0-9a-f]{8})\b/gi;
+function taskIdsIn(text) { return [...new Set([...String(text || '').matchAll(CLOSES)].map(m => m[1].toLowerCase()))]; }
+
 function normPath(p) {
   if (typeof p !== 'string' || !p) throw httpError(400, 'path required');
-  const n = path.posix.normalize(p.replace(/\\/g, '/'));
+  const n = path.posix.normalize(p.replace(/\\/g, '/')).replace(/(.)\/+$/, '$1'); // folders are passed as "dir/"; we keep the slash ourselves
   if (n.startsWith('../') || n === '..' || path.posix.isAbsolute(n)) throw httpError(400, 'path must be relative to the project root');
   return n;
 }
@@ -88,6 +113,7 @@ class Project {
     this.stats = {};      // per person: conversations, turns, time with Claude, tokens (see 'POST stats')
     this.teamVersion = 0; // bumped by TEAM_EVENTS
     this.worklog = [];    // [{name, status, at}]: what each Claude said it started on
+    this.handoffs = [];   // [{name, ai, text, files, commits, at}]: where a session left off, for whoever comes next
     this.waiters = new Set();
     if (saved) Object.assign(this, saved);
     this.waiters = new Set();
@@ -128,7 +154,7 @@ class Project {
   }
   publicAgent(a) {
     return { id: a.id, name: a.name, host: a.host, checkout: a.checkout, kind: a.kind, branch: a.branch || null, runner: a.runner || null,
-      status: a.status, statusAt: a.statusAt || null, lastSeen: a.lastSeen, online: this.online(a) };
+      status: a.status, statusAt: a.statusAt || null, lastSeen: a.lastSeen, online: this.online(a), build: a.build || null, clone: a.clone || null };
   }
   fileMeta(f) {
     return { path: f.path, branch: f.branch || null, hash: f.hash, by: f.by, byName: f.byName, at: f.at,
@@ -152,13 +178,15 @@ class Project {
     if (agent.kind === 'human' && agent.host === 'dashboard' && ['human', 'guest'].includes(agent.name)) {
       return { id: agent.id, name: agent.name, kind: 'human', status: '', lastSeen: now(), readSeq: this.seq, transient: true };
     }
-    agent = { ...agent, name: (this.aliases || {})[agent.name] || agent.name };
     let a = this.agents[agent.id];
+    // the name a session gives resolves once (aliases, capitals), not on every request
+    const name = a && a.rawName === agent.name ? a.name : canonicalName(this, agent.name);
     const fresh = !a || !this.online(a);
     if (!a) {
       a = this.agents[agent.id] = { id: agent.id, readSeq: this.seq, joined: now(), status: '' };
     }
-    a.name = agent.name || a.name || agent.id;
+    a.rawName = agent.name;
+    a.name = name || a.name || agent.id;
     a.host = agent.host || a.host || '';
     a.checkout = agent.checkout || a.checkout || '';
     a.kind = agent.kind || a.kind || 'agent';
@@ -182,7 +210,15 @@ class Project {
       }
     }
     const held = new Set(Object.values(this.locks).map(l => l.holder));
+    // each person keeps one offline row per kind (the newest): old sessions are noise, not people
+    const newest = {};
     for (const a of Object.values(this.agents)) {
+      const k = a.name + '\0' + a.kind;
+      if (!this.online(a) && !held.has(a.id) && (!newest[k] || newest[k].lastSeen < a.lastSeen)) newest[k] = a;
+    }
+    for (const a of Object.values(this.agents)) {
+      const k = a.name + '\0' + a.kind;
+      if (newest[k] && newest[k] !== a && !this.online(a) && !held.has(a.id) && !a.wasOnline) { delete this.agents[a.id]; continue; }
       if (t - a.lastSeen > FORGET_MS && !held.has(a.id) && !this.isConnected(a.id)) { delete this.agents[a.id]; continue; }
       const on = this.online(a);
       if (a.wasOnline && !on) {
@@ -197,13 +233,68 @@ class Project {
 const routes = {
   'POST hello': (p, b) => {
     const a = p.touch(b.agent);
+    if (b.build !== undefined) a.build = b.build && typeof b.build === 'object' ? { sha: String(b.build.sha || '').slice(0, 40), at: Number(b.build.at) || 0 } : null;
+    if (b.clone !== undefined) a.clone = b.clone ? String(b.clone).slice(0, 200) : null;
+    if (b.status !== undefined && a.clone) a.statusAt = now();
     if (b.runner !== undefined) a.runner = ['off', 'requests', 'full'].includes(b.runner) ? b.runner : null;
     if (b.status !== undefined) a.status = String(b.status).slice(0, 300);
     p.dirty = true;
-    return { ...p.snapshot(), you: p.publicAgent(a) };
+    return { ...p.snapshot(), you: p.publicAgent(a), ...(b.handoffs ? { handoffs: (p.handoffs || []).slice(-20) } : {}) };
   },
   'GET state': (p) => p.snapshot(),
   'GET worklog': (p, b, q) => ({ worklog: (p.worklog || []).slice(-Math.min(Number(q.get('limit')) || 20, MAX_WORKLOG)) }),
+  // one call per prompt instead of five: share the prompt, set the status, read mail, and get the
+  // team's state and this person's open tasks back
+  'POST turn': async (p, b, q, ctx) => {
+    const a = p.touch(b.agent);
+    if (Array.isArray(b.items) && b.items.length) routes['POST activity'](p, { agent: b.agent, items: b.items });
+    if (b.status) routes['POST status'](p, { agent: b.agent, status: b.status, auto: b.auto });
+    const out = await routes['POST inbox'](p, { agent: b.agent }, q, ctx);
+    // the rest only when it changed since the versions the caller last saw
+    if (b.state || (b.teamVersion !== undefined && b.teamVersion !== out.teamVersion)) out.state = p.snapshot();
+    if (b.boardVersion !== undefined && b.boardVersion !== p.board.version) out.board = p.board;
+    if (b.sharedVersion !== undefined && b.sharedVersion !== p.shared.version) out.shared = p.shared;
+    if (b.handoffsSince !== undefined) out.handoffs = (p.handoffs || []).filter(h => h.at > b.handoffsSince && h.agent !== a.id);
+    out.tasks = p.board.tasks.filter(t => t.owner === a.name && t.status !== 'done');
+    return out;
+  },
+  // where a session left off, for the team and the next session: one note per session, newest wins
+  'POST handoff': (p, b) => {
+    const a = p.touch(b.agent);
+    const text = String(b.text || '').trim().slice(0, 2000);
+    if (!text) throw httpError(400, 'say where you left off');
+    const h = { id: crypto.randomBytes(4).toString('hex'), name: a.name, agent: a.id, text, branch: a.branch || null,
+      files: (Array.isArray(b.files) ? b.files : []).slice(0, 20).map(x => String(x).slice(0, 200)),
+      commits: (Array.isArray(b.commits) ? b.commits : []).slice(0, 10).map(x => String(x).slice(0, 160)),
+      at: now(), auto: !!b.auto };
+    const prev = (p.handoffs || []).find(x => x.agent === a.id);
+    if (b.auto && prev && !prev.auto) return { ok: true, handoff: prev, kept: true }; // Claude's own note beats a generated one
+    p.handoffs = (p.handoffs || []).filter(x => x.agent !== a.id);
+    p.handoffs.push(h);
+    if (p.handoffs.length > MAX_HANDOFFS) p.handoffs.splice(0, p.handoffs.length - MAX_HANDOFFS);
+    p.emit('handoff', { handoff: h });
+    return { ok: true, handoff: h };
+  },
+  'GET handoffs': (p, b, q) => ({ handoffs: (p.handoffs || []).slice(-Math.min(Number(q.get('limit')) || 10, MAX_HANDOFFS)) }),
+  // new commits from someone's checkout: tasks their messages say are finished get closed
+  'POST commits': (p, b) => {
+    const a = p.touch(b.agent);
+    const closed = [];
+    for (const c of (Array.isArray(b.commits) ? b.commits : []).slice(0, 50)) {
+      for (const id of taskIdsIn(c.message)) {
+        const t = p.board.tasks.find(x => x.id === id);
+        if (!t || t.status === 'done') continue;
+        t.status = 'done';
+        t.owner = t.owner || a.name;
+        t.updated = now();
+        t.notes = [...(t.notes || []), { by: a.name, at: now(), text: `closed by commit ${String(c.sha || '').slice(0, 8)}: ${String(c.message).split('\n')[0].slice(0, 200)}` }].slice(-20);
+        goalDone(p, t);
+        closed.push(t);
+      }
+    }
+    if (closed.length) boardChanged(p, 'task-update', { task: closed[0], tasks: closed }, a);
+    return { ok: true, closed: closed.map(t => ({ id: t.id, title: t.title })) };
+  },
   'POST bye': (p, b) => {
     const a = p.agents[b.agent && b.agent.id];
     if (a) {
@@ -222,25 +313,33 @@ const routes = {
     const from = String(b.from || ''), into = String(b.into || '');
     if (!from || !into || from === into) throw httpError(400, 'from and into required');
     if (!Object.values(p.agents).some(a => a.name === from) && !p.messages.some(m => m.fromName === from)) throw httpError(404, `nobody called ${from}`);
-    p.aliases = p.aliases || {};
-    for (const [k, v] of Object.entries(p.aliases)) if (v === from) p.aliases[k] = into;
-    p.aliases[from] = into;
-    const fix = (o, k) => { if (o && o[k] === from) o[k] = into; };
-    for (const a of Object.values(p.agents)) fix(a, 'name');
-    for (const m of p.messages) { fix(m, 'fromName'); fix(m, 'to'); }
-    for (const it of p.activity) fix(it, 'name');
-    for (const w of p.worklog || []) fix(w, 'name');
-    for (const g of p.board.goals) { fix(g, 'byName'); fix(g, 'to'); fix(g, 'planner'); }
-    for (const t of p.board.tasks) { fix(t, 'owner'); fix(t, 'by'); for (const n of t.notes || []) fix(n, 'by'); }
-    for (const l of Object.values(p.locks)) fix(l, 'holderName');
-    for (const f of Object.values(p.files)) fix(f, 'byName');
-    for (const m of p.shared.memories) fix(m, 'byName');
-    if (p.settings && p.settings[from]) { p.settings[into] = p.settings[into] || p.settings[from]; delete p.settings[from]; }
-    if (p.stats && p.stats[from]) { p.stats[into] = addStats(p.stats[into] || newStats(), p.stats[from]); delete p.stats[from]; }
-    p.activityChanged = p.sharedChanged = true;
-    p.board.version++;
-    p.emit('merge', { from, into });
+    mergePerson(p, from, into);
     return { ok: true };
+  },
+  // tidy the team list: names that only differ in capitals become one person (the one used most
+  // recently wins), and each person keeps a single offline row
+  'POST tidy': (p, b) => {
+    p.touch(b.agent);
+    const seen = {};
+    for (const a of Object.values(p.agents)) {
+      const k = a.name.toLowerCase();
+      seen[k] = seen[k] || {};
+      seen[k][a.name] = Math.max(seen[k][a.name] || 0, a.lastSeen);
+    }
+    for (const n of [...Object.keys(p.settings || {}), ...Object.keys(p.stats || {})]) {
+      const k = n.toLowerCase();
+      seen[k] = seen[k] || {};
+      seen[k][n] = seen[k][n] || 0;
+    }
+    const merged = [];
+    for (const names of Object.values(seen)) {
+      const list = Object.entries(names).sort((x, y) => y[1] - x[1]).map(x => x[0]);
+      for (const from of list.slice(1)) { mergePerson(p, from, list[0]); merged.push({ from, into: list[0] }); }
+    }
+    const before = Object.keys(p.agents).length;
+    p.sweep();
+    p.emit('forget', { name: '' });
+    return { ok: true, merged, removed: before - Object.keys(p.agents).length };
   },
   // drop someone who isn't around any more (test runs, a name typo); never someone online or holding files
   'POST forget-agent': (p, b) => {
@@ -271,24 +370,28 @@ const routes = {
   },
   'POST lock': (p, b) => {
     const a = p.touch(b.agent);
+    const dir = !!b.dir || /[\\/]$/.test(String(b.path || ''));
     const fp = normPath(b.path);
+    if (dir && fp === '.') throw httpError(400, 'lock a folder inside the project, not the whole project');
     const branch = b.branch || null;
-    const key = fileKey(branch, fp);
+    const key = fileKey(branch, dir ? fp + '/' : fp);
     const cur = p.locks[key];
-    const f = p.files[key];
+    const f = dir ? null : p.files[key];
+    const blocker = blockingLock(p, a.id, branch, fp, dir);
     // same file held on another branch: not a block, but a merge conflict in the making
     const elsewhere = Object.values(p.locks).filter(l => l.path === fp && (l.branch || null) !== branch && l.holder !== a.id)
       .map(l => ({ branch: l.branch, holderName: l.holderName }));
     const latest = f ? { hash: f.hash, version: f.version, byName: f.byName, at: f.at,
       known: b.baseHash ? f.hashes.includes(b.baseHash) : false } : null;
-    if (cur && cur.holder !== a.id) {
+    if (blocker) {
       p.dirty = true;
-      return { ok: false, lock: cur, latest, elsewhere };
+      return { ok: false, lock: blocker, latest, elsewhere };
     }
+    // a folder is a deliberate claim, so it stays until released or the session ends
     const lock = p.locks[key] = {
-      path: fp, branch, holder: a.id, holderName: a.name, checkout: a.checkout,
+      path: dir ? fp + '/' : fp, branch, holder: a.id, holderName: a.name, checkout: a.checkout,
       since: cur ? cur.since : now(), note: b.note || (cur && cur.note) || '',
-      hold: !!(b.hold || (cur && cur.hold)),
+      hold: !!(b.hold || dir || (cur && cur.hold)), ...(dir ? { dir: true } : {}),
     };
     if (!cur) p.emit('lock', { lock });
     if (b.baseHash && !f) {
@@ -303,7 +406,7 @@ const routes = {
   'POST unlock': (p, b) => {
     const a = p.touch(b.agent);
     const released = [];
-    const keys = b.all ? Object.keys(p.locks) : (b.paths || [b.path]).map(x => fileKey(b.branch || null, normPath(x)));
+    const keys = b.all ? Object.keys(p.locks) : (b.paths || [b.path]).map(x => fileKey(b.branch || null, normPath(x) + (/[\\/]$/.test(x) ? '/' : '')));
     for (const key of keys) {
       const l = p.locks[key];
       if (!l || l.holder !== a.id) continue;
@@ -322,8 +425,9 @@ const routes = {
     if (Buffer.byteLength(b.content) > p.limits.fileBytes) throw httpError(413, 'file too large to share');
     const branch = b.branch || null;
     const key = fileKey(branch, fp);
+    const blocker = blockingLock(p, a.id, branch, fp, false);
+    if (blocker) throw httpError(409, `locked by ${blocker.holderName}${blocker.dir ? ` (the whole ${blocker.path} folder)` : ''}`);
     const l = p.locks[key];
-    if (l && l.holder !== a.id) throw httpError(409, `locked by ${l.holderName}`);
     if (!l) {
       p.locks[key] = { path: fp, branch, holder: a.id, holderName: a.name, checkout: a.checkout,
         since: now(), note: '', hold: false };
@@ -580,8 +684,7 @@ const routes = {
     if (b.owner !== undefined) t.owner = b.owner || null;
     if (b.note) t.notes = [...(t.notes || []), { by: a.name, at: now(), text: String(b.note).slice(0, 2000) }].slice(-20);
     t.updated = now();
-    const g = p.board.goals.find(x => x.id === t.goalId);
-    if (g && p.board.tasks.filter(x => x.goalId === g.id).every(x => x.status === 'done')) g.status = 'done';
+    goalDone(p, t);
     boardChanged(p, 'task-update', { task: t }, a);
     return { ok: true, task: t };
   },
@@ -705,10 +808,10 @@ const routes = {
   'POST wait-unlock': async (p, b, q, ctx) => {
     const a = p.touch(b.agent);
     const fp = normPath(b.path);
-    const key = fileKey(b.branch || null, fp);
-    const free = () => !p.locks[key] || p.locks[key].holder === a.id;
-    if (!free()) await ctx.waitFor(ev => ev.type === 'unlock' && ev.path === fp && (ev.branch || null) === (b.branch || null), (b.timeout || 300) * 1000);
-    return { free: free(), lock: p.locks[key] || null };
+    const dir = /[\\/]$/.test(String(b.path || ''));
+    const blocker = () => blockingLock(p, a.id, b.branch || null, fp, dir);
+    if (blocker()) await ctx.waitFor(ev => ev.type === 'unlock' && !blocker(), (b.timeout || 300) * 1000);
+    return { free: !blocker(), lock: blocker() };
   },
   // long-poll; servers stream the same events over SSE / WebSocket themselves
   'GET events': async (p, b, q, ctx) => {
@@ -749,6 +852,29 @@ function addStats(into, add) {
   return into;
 }
 
+// two names are the same person: fold `from` into `into` everywhere, and keep it that way
+function mergePerson(p, from, into) {
+  p.aliases = p.aliases || {};
+  for (const [k, v] of Object.entries(p.aliases)) if (v === from) p.aliases[k] = into;
+  p.aliases[from] = into;
+  const fix = (o, k) => { if (o && o[k] === from) o[k] = into; };
+  for (const a of Object.values(p.agents)) fix(a, 'name');
+  for (const m of p.messages) { fix(m, 'fromName'); fix(m, 'to'); }
+  for (const it of p.activity) fix(it, 'name');
+  for (const w of p.worklog || []) fix(w, 'name');
+  for (const h of p.handoffs || []) fix(h, 'name');
+  for (const g of p.board.goals) { fix(g, 'byName'); fix(g, 'to'); fix(g, 'planner'); }
+  for (const t of p.board.tasks) { fix(t, 'owner'); fix(t, 'by'); for (const n of t.notes || []) fix(n, 'by'); }
+  for (const l of Object.values(p.locks)) fix(l, 'holderName');
+  for (const f of Object.values(p.files)) fix(f, 'byName');
+  for (const m of p.shared.memories) fix(m, 'byName');
+  if (p.settings && p.settings[from]) { p.settings[into] = p.settings[into] || p.settings[from]; delete p.settings[from]; }
+  if (p.stats && p.stats[from]) { p.stats[into] = addStats(p.stats[into] || newStats(), p.stats[from]); delete p.stats[from]; }
+  p.activityChanged = p.sharedChanged = true;
+  p.board.version++;
+  p.emit('merge', { from, into });
+}
+
 function pushTask(p, t, a) {
   const title = String(t.title || '').trim().slice(0, 200);
   if (!title) throw httpError(400, 'every task needs a title');
@@ -758,6 +884,11 @@ function pushTask(p, t, a) {
     direct: !!t.direct };
   p.board.tasks.push(task);
   return task;
+}
+
+function goalDone(p, t) {
+  const g = p.board.goals.find(x => x.id === t.goalId);
+  if (g && p.board.tasks.filter(x => x.goalId === g.id).every(x => x.status === 'done')) g.status = 'done';
 }
 
 function boardChanged(p, action, info, a) {
@@ -797,5 +928,5 @@ function waitOn(p, pred, timeoutMs, onAbort) {
   });
 }
 
-module.exports = { Project, routes, waitOn, parseFrontmatter, fileKey, GIT_CHUNK, sha, now, httpError, sameSecret, normPath, aiLabel,
+module.exports = { Project, routes, waitOn, parseFrontmatter, fileKey, GIT_CHUNK, sha, now, httpError, sameSecret, normPath, aiLabel, taskIdsIn, blockingLock,
   ONLINE_MS, MAX_FILE_BYTES, OPEN_IDLE_MS, OPEN_MAX_PROJECTS, OPEN_CREATES_PER_HOUR };

@@ -58,6 +58,9 @@ Check `/mcp` in Claude Code if the tools don't show up: `huddle` should be liste
 GitHub isn't involved in any of this. Everything goes through the huddle server as it happens.
 
 - **Edits are live.** When two people are on the same branch, every edit one Claude makes lands in the other person's copy of the file within a second or two. While a Claude is editing a file it's locked: the file goes read-only for everyone else, and their Claude is told who has it instead of overwriting their work.
+- **Whole folders can be locked.** A Claude (or you, with `huddle lock src/pages/`) can lock a folder before a bigger change: nobody else can edit anything inside it until it's released or that session ends, and no two locks may overlap, so nobody can lock a file inside someone's folder or a folder around someone's file.
+- **Everyone knows what everyone is on.** When you give your Claude new work, the team sees it straight away (taken from your prompt, then a short summary from Claude). Each Claude is only told when another Claude's work changes, so this costs a few tokens, not a running report.
+- **Hand-off notes.** When a session ends, it leaves a short note on where it left off and what's next (Claude writes it with `huddle_handoff`, or huddle writes one from its status, edited files and commits). The rest of the team sees it, and so does your next session.
 - **Commits are shared automatically.** Whenever a Claude finishes a turn, any new commits are sent to the rest of the team through huddle. People on other branches get them when they merge (see [branches and merging](#different-versions-branches-and-merging)).
 - **The Claudes message each other.** A Claude can message the whole team or one person's Claude, and the message shows up in the other Claude's context at its next step. A Claude that gets a direct message has to answer it before it stops. They also coordinate through the shared task list.
 - **Requests start right away, messages wait.** Something sent to a person's Claude with *Message Claude* starts immediately if their Claude takes requests (the default, see [Autopilot](#autopilot-what-your-claude-does-with-work-from-the-team)). Messages between Claudes are read at their next step.
@@ -75,7 +78,7 @@ Each person chooses, and can change it any time:
 
 | Setting | What happens |
 |---|---|
-| **Takes requests** (default) | When someone sends something to *your* Claude, it starts on it automatically in the background, as long as you have Claude Code open in the project folder. Team-wide requests still wait for you. |
+| **Takes requests** (default) | When someone sends something to *your* Claude, it starts on it automatically in the background, as long as you have Claude Code open in the project folder. Each request gets a Claude of its own (a new conversation in its own git worktree, up to 3 at once), so the conversation you're having isn't interrupted and separate requests don't pile into one conversation. When one finishes, its commits merge into your branch if they merge cleanly; otherwise they wait on `huddle-request-<id>` and the sender is told. Team-wide requests still wait for you. |
 | **Full autopilot** | Also plans team-wide requests and picks up unassigned tasks. |
 | **Off** | Nothing starts on its own. Requests wait until you tell your Claude to work on them. |
 
@@ -84,6 +87,8 @@ Change it from the **My Claude** menu at the top of the dashboard, with `/autopi
 Autopilot runs Claude on *your* computer with *your* Claude subscription, so your laptop has to be on. It needs either a Claude Code session open in the folder, or `huddle autopilot` running in a terminal there (for when you don't want Claude open). By default it can edit files and use git. Allow more with `--allow`, for example `huddle autopilot --allow "Bash(npm test:*)"`, or set `"autopilotAllow": ["Bash(npm test:*)"]` in `.huddle/config.json` so it also applies in the background.
 
 You hear about messages and requests sent to your Claude right away: while a Claude Code session is open in the folder, huddle shows a desktop notification for each message to you (or to everyone) and each request for your Claude, so you don't have to wait for your next prompt. Your Claude also leads its next turn with them. Set `"notify": false` in `.huddle/config.json` to turn the pop-ups off.
+
+Board tasks close themselves: a commit whose message says `closes <task id>` (or `[<task id>]`) marks that task done, and when your Claude starts on something new it's reminded of tasks it still has in progress.
 
 ## Different versions, branches and merging
 
@@ -145,8 +150,10 @@ Hooks (in `.claude/settings.local.json`) enforce the rules on their own, so agen
 | Before Edit / Write | File gets locked for this agent. If someone else has it, the edit is refused and the agent is told who, plus its options. If this copy is out of date, it's refreshed first and the agent re-reads it |
 | After each edit | New contents go to the server and out to everyone else's disk |
 | After any tool / each prompt | New messages from other agents get added to the agent's context |
-| Turn ends | Its locks are released, unless it reserved them with `hold`. If someone sent it a direct message, it has to answer first |
-| Session ends | Everything it held is released |
+| Turn ends | Its locks are released, unless it reserved them with `hold` (folder locks stay). Commits that say `closes <task>` close it. If someone sent it a direct message, it has to answer first |
+| Session ends | Everything it held is released, and a hand-off note is left if Claude didn't write one |
+
+Each prompt is one request to the server: it shares the prompt and status, reads mail, and gets back only what changed since that Claude last looked (other Claudes' work, the board, shared knowledge, new hand-off notes).
 
 MCP tools (registered for that folder only):
 
@@ -156,7 +163,8 @@ MCP tools (registered for that folder only):
 | `huddle_set_status` | "Working on the auth middleware" |
 | `huddle_send` | Message everyone, or one agent by name |
 | `huddle_inbox` | Read messages; can block waiting for a reply |
-| `huddle_lock` / `huddle_unlock` | Reserve files up front, optionally across turns |
+| `huddle_lock` / `huddle_unlock` | Reserve files or whole folders up front, optionally across turns |
+| `huddle_handoff` | Leave a note on where you left off and what's next |
 | `huddle_wait` | Block until a locked file is free, then take it |
 | `huddle_view` | See another agent's file mid-edit |
 | `huddle_project` | Read or update the shared PROJECT.md |
@@ -175,16 +183,20 @@ huddle new [NAME] [--server URL]       create a project (public server by defaul
 huddle server [--port 7777] [--tunnel] [--project NAME] [--data DIR] [--open]
 huddle join <invite> [--name NAME]     set up the current folder
 huddle leave                           undo join in this folder
-huddle status                          who's online, locks, recent edits
+huddle update [--from DIR] [--ref REF] newest huddle from GitHub (or a local checkout), hooks refreshed in every joined folder
+huddle permissions [--write]           shared .claude/settings.json: no prompts for edits, huddle, git, builds and tests
+huddle status                          each person, their Claudes and what they're on, locks, recent edits, hand-offs
+huddle tidy                            merge names that differ only in capitals, drop old sessions
+huddle handoff ["note"]                leave a hand-off note, or read everyone's
 huddle send <text> [--to NAME]         message the agents yourself
 huddle inbox [--wait SECONDS]
 huddle watch                           live feed in your terminal, keeps files synced while you edit by hand
-huddle lock <file> / huddle unlock [file]
+huddle lock <file|folder/> / huddle unlock [file|folder/]
 huddle invite                          print the invite for this project again
 huddle open                            open the dashboard
 ```
 
-`join` copies huddle to `~/.huddle/app` and, if `~/.local/bin` is on your PATH, puts a `huddle` command there. That way the hooks still work after npx clears its cache.
+`join` copies huddle to `~/.huddle/app` and, if `~/.local/bin` is on your PATH, puts a `huddle` command there. That way the hooks still work after npx clears its cache. `huddle update` replaces that copy with the newest version; the session-start line tells you when a teammate runs a newer one.
 
 ## Hosting your own server
 

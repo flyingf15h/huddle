@@ -27,6 +27,7 @@ function loadConfig(start) {
   const file = path.join(root, CONFIG_DIR, 'config.json');
   const cfg = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
   return {
+    ...cfg, // the rest of config.json: notify, shareGit, autopilotAllow, clone, …
     root,
     server: (process.env.HUDDLE_SERVER || cfg.server || '').replace(/\/+$/, ''),
     token: process.env.HUDDLE_TOKEN || cfg.token,
@@ -66,10 +67,11 @@ function claudePid() {
   return process.env.CLAUDE_PID || String(process.ppid);
 }
 
-function identity(cfg, kind = 'agent') {
+// key: what tells this agent apart from others in the same checkout (default: the Claude process)
+function identity(cfg, kind = 'agent', key) {
   const host = os.hostname();
   const checkout = sha(host + ':' + cfg.root);
-  const key = kind === 'agent' ? claudePid() : kind;
+  key = key || (kind === 'agent' ? claudePid() : kind);
   return {
     id: `${cfg.name}#${sha(checkout + ':' + key).slice(0, 5)}`,
     name: cfg.name,
@@ -139,6 +141,11 @@ function ago(ms) {
   return `${Math.round(s / 3600)}h ago`;
 }
 
+// which huddle this is: `huddle update` writes build.json next to src/ (sha and commit time)
+function build() {
+  try { return JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'build.json'), 'utf8')); } catch { return null; }
+}
+
 function formatMessages(msgs, me) {
   return msgs.map(m => {
     const to = m.to ? (m.to === me.id || m.to === me.name ? ' → you' : ` → ${m.to}`) : '';
@@ -146,4 +153,4 @@ function formatMessages(msgs, me) {
   }).join('\n');
 }
 
-module.exports = { loadConfig, identity, Client, relPath, hashFile, sha, ago, formatMessages, findRoot, CONFIG_DIR };
+module.exports = { loadConfig, identity, Client, relPath, hashFile, sha, ago, formatMessages, findRoot, build, CONFIG_DIR };
