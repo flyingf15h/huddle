@@ -48,6 +48,7 @@ Versions, branches and merging (git history travels through huddle, no shared re
   huddle publish                share your current branch now (also automatic after each turn)
   huddle unpublish [BRANCH]     take back a branch you shared
   huddle forget NAME            remove someone who left from the team list
+  huddle same-person OLD NAME   merge two names for the same person (e.g. a dashboard name)
 
 Shared team knowledge (not in git, every agent gets it):
   huddle project                print PROJECT.md, the brief every agent starts with
@@ -547,6 +548,12 @@ async function cmdForget({ pos }) {
   console.log(`removed ${pos[0]} (${r.removed} session${r.removed === 1 ? '' : 's'})`);
 }
 
+async function cmdSamePerson({ pos }) {
+  need(pos[0] && pos[1], 'usage: huddle same-person OTHER_NAME NAME   (show OTHER_NAME as NAME from now on)');
+  await humanClient('human').post('merge-person', { from: pos[0], into: pos[1] });
+  console.log(`${pos[0]} now shows as ${pos[1]} everywhere`);
+}
+
 async function cmdUnpublish({ pos }) {
   const cfg = configured();
   const r = await gitClient(cfg).post('git-forget', { branch: pos[0] || undefined });
@@ -832,7 +839,7 @@ async function main() {
     lock: cmdLock, unlock: cmdUnlock, watch: cmdWatch, invite: cmdInvite, open: cmdOpen,
     project: cmdProject, sharing: cmdSharing,
     sync: cmdSync, branches: cmdBranches, branch: cmdBranch, publish: cmdPublish, fetch: cmdFetch, merge: cmdMerge,
-    ask: cmdAsk, board: cmdBoard, autopilot: cmdAutopilot, unpublish: cmdUnpublish, forget: cmdForget, link: cmdLink, unlink: cmdUnlink, memory: cmdMemory, memories: cmdMemory, skill: cmdSkill, skills: cmdSkill,
+    ask: cmdAsk, board: cmdBoard, autopilot: cmdAutopilot, unpublish: cmdUnpublish, forget: cmdForget, 'same-person': cmdSamePerson, link: cmdLink, unlink: cmdUnlink, memory: cmdMemory, memories: cmdMemory, skill: cmdSkill, skills: cmdSkill,
     hook: () => require('./hooks').runHook(args.pos[0]),
     mcp: () => require('./mcp').runMcp(),
   };

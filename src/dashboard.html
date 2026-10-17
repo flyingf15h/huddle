@@ -112,6 +112,41 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) 360px; height: calc(
 .start { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin: 16px 0; background: var(--surface); }
 .start h3 { margin: 0 0 6px; font-size: 16px; }
 
+/* reply summaries with the full text on hover */
+.sumline { cursor: help; display: flex; gap: 6px; align-items: baseline; margin-top: 2px; min-width: 0; }
+.sumline .st { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.sumline .more { flex: none; font-size: 12px; color: var(--accent); font-weight: 600; }
+.sumline .full { display: none; }
+#pop { position: fixed; z-index: 50; max-width: min(720px, calc(100vw - 32px)); max-height: 60vh; overflow: auto; background: var(--raised); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.25); padding: 10px 14px; font-size: 14.5px; }
+/* task list */
+.tfilter { display: flex; gap: 4px; margin-bottom: 10px; }
+.tfilter button { padding: 4px 10px; font-size: 13px; border-radius: 999px; }
+.tfilter button.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+details.goal { background: var(--raised); border: 1px solid var(--line); border-radius: 12px; margin-bottom: 10px; padding: 0; }
+details.goal > summary { list-style: none; cursor: pointer; padding: 10px 12px; }
+details.goal > summary::-webkit-details-marker { display: none; }
+details.goal > summary .gtitle { display: flex; gap: 8px; align-items: flex-start; }
+details.goal > summary .gtitle .gt { flex: 1; font-weight: 700; overflow-wrap: anywhere; }
+details.goal > summary .chev { flex: none; color: var(--muted); transition: transform .15s; }
+details.goal[open] > summary .chev { transform: rotate(90deg); }
+.gmeta { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+.tlist { padding: 0 6px 8px; }
+.trow { display: flex; gap: 8px; align-items: center; width: 100%; text-align: left; border: 0; border-radius: 8px; background: none; padding: 7px 6px; font-weight: 400; }
+.trow:hover { background: var(--surface); }
+.dot { flex: none; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--muted); }
+.dot.doing { border-color: var(--accent); background: linear-gradient(90deg, var(--accent) 50%, transparent 50%); }
+.dot.done { border-color: var(--ok); background: var(--ok); }
+.dot.blocked { border-color: var(--bad); background: var(--bad); }
+.trow .tt { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 14px; }
+.trow.done .tt { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line); }
+.trow .owner { flex: none; display: inline-flex; gap: 5px; align-items: center; font-size: 12.5px; color: var(--muted); max-width: 40%; }
+.trow .owner span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.slabel { flex: none; font-size: 11.5px; font-weight: 700; }
+.slabel.doing { color: var(--accent); } .slabel.blocked { color: var(--bad); }
+.tdetail { margin: 0 6px 6px 30px; padding: 8px 10px; border-left: 3px solid var(--line); font-size: 13.5px; }
+.tdetail p { margin: 2px 0 6px; }
+.showdone { font-size: 13px; margin: 2px 6px 4px 30px; }
+
 /* composer */
 #composer { border-top: 1px solid var(--line); padding: 10px 16px 14px; background: var(--surface); }
 #composer .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
@@ -323,6 +358,8 @@ function decodeInvite(code) {
   } catch { return null; }
 }
 const inviteCode = () => btoa(JSON.stringify({ s: location.origin, t: auth.token, p: auth.project })).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+// the name I go by in this project, after any merge ("Fei" -> "tszfei")
+const myName = () => (S && S.aliases && S.aliases[auth.name]) || auth.name;
 const me = () => ({ id: 'human:' + (auth.name || 'guest'), name: auth.name || 'guest', kind: 'human', host: 'dashboard' });
 const api = (ep, body) => fetch(`/api/p/${encodeURIComponent(auth.project)}/${ep}`, {
   method: body ? 'POST' : 'GET',
@@ -331,7 +368,7 @@ const api = (ep, body) => fetch(`/api/p/${encodeURIComponent(auth.project)}/${ep
 }).then(r => r.json().then(j => { if (!r.ok) throw new Error(j.error || r.status); return j; }));
 
 // ---------- state ----------
-const S = { settings: {}, agents: {}, locks: {}, files: {}, board: null, shared: null, entries: [], filter: 'all', who: null, file: null, content: {} };
+const S = { aliases: {}, settings: {}, agents: {}, locks: {}, files: {}, board: null, shared: null, entries: [], filter: 'all', who: null, file: null, content: {} };
 // distinct, white-text-safe colours so people are easy to tell apart
 const PALETTE = ['#1d5bd6', '#b4235a', '#0f7a43', '#9a4a00', '#6b3fd1', '#0e7490', '#a21caf', '#475569', '#b42323', '#3f6212'];
 const color = (name) => { let h = 2166136261; for (const c of String(name)) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return PALETTE[(h >>> 0) % PALETTE.length]; };
@@ -393,13 +430,15 @@ function entryHtml(e) {
   const who = `<b>${esc(e.who)}</b>`;
   switch (e.kind) {
     case 'msg': {
-      const toYou = e.to && auth.name && e.to.toLowerCase() === auth.name.toLowerCase();
+      const toYou = e.to && auth.name && e.to.toLowerCase() === myName().toLowerCase();
       return `<div class="e msg${toYou ? ' toyou' : ''}">${avatar(e.who)}<div class="body"><div class="head">${who} → ${e.to ? esc(e.to) : 'everyone'} · ${clock(e.at)}</div><div class="bubble">${esc(e.text)}</div></div></div>`;
     }
     case 'prompt': return `<div class="e prompt">${avatar(e.who)}<div class="body"><div class="head">${who} asked their Claude · ${clock(e.at)}</div><div class="bubble">${esc(e.text)}</div></div></div>`;
     case 'reply': {
-      const long = e.text.length > 500;
-      return `<div class="e reply">${avatar(e.who)}<div class="body"><div class="head">${who}'s Claude replied · ${clock(e.at)}</div><div class="text${long ? ' clamp' : ''}">${esc(e.text)}</div>${long ? '<button class="link small" data-more>Show all</button>' : ''}</div></div>`;
+      const sum = summarize(e.text);
+      const more = sum !== e.text.trim();
+      return `<div class="e reply">${avatar(e.who)}<div class="body"><div class="head">${who}'s Claude replied · ${clock(e.at)}</div>
+        <div class="sumline"${more ? ' tabindex="0" data-full' : ''}><span class="st">${esc(sum)}</span>${more ? '<span class="more">full reply ▾</span><div class="full">' + md(e.text) + '</div>' : ''}</div></div></div>`;
     }
     case 'tool': return `<div class="e tools">${avatar(e.who)}<div class="body"><div class="head">${who}'s Claude is working · ${clock(e.at)}</div><ul>${toolLi(e)}</ul></div></div>`;
     case 'end': return `<div class="note">${who}'s Claude finished · ${clock(e.at)}</div>`;
@@ -415,6 +454,43 @@ function entryHtml(e) {
   }
   return '';
 }
+// one line: the reply's first sentence or line, without markdown
+function summarize(text) {
+  const t = String(text || '').trim();
+  const first = (t.split('\n').map(l => l.replace(/^#+\s*|^[-*]\s+|\*\*|`/g, '').trim()).find(Boolean) || '');
+  const sentence = (first.match(/^.{20,}?[.!?](\s|$)/) || [first])[0].trim();
+  return sentence.length > 160 ? sentence.slice(0, 157).replace(/\s+\S*$/, '') + '…' : sentence;
+}
+// hovering (or tapping) a summary shows the whole reply in a floating card
+const pop = document.createElement('div');
+pop.id = 'pop'; pop.hidden = true;
+document.body.appendChild(pop);
+let popFor = null, popPinned = false;
+function showPop(el) {
+  popFor = el;
+  pop.innerHTML = el.querySelector('.full').innerHTML;
+  pop.hidden = false;
+  const r = el.getBoundingClientRect(), h = pop.offsetHeight, w = pop.offsetWidth;
+  const below = r.bottom + 6 + h < window.innerHeight || r.top < h + 12;
+  pop.style.top = (below ? Math.min(r.bottom + 6, window.innerHeight - h - 8) : r.top - h - 6) + 'px';
+  pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + 'px';
+}
+function hidePop() { if (!popPinned) { pop.hidden = true; popFor = null; } }
+document.addEventListener('mouseover', (e) => { const el = e.target.closest('[data-full]'); if (el && el !== popFor && !popPinned) showPop(el); });
+document.addEventListener('mouseout', (e) => {
+  const el = e.target.closest('[data-full]');
+  if (el && !el.contains(e.relatedTarget) && !pop.contains(e.relatedTarget)) setTimeout(() => { if (!pop.matches(':hover')) hidePop(); }, 120);
+});
+pop.addEventListener('mouseleave', () => hidePop());
+document.addEventListener('focusin', (e) => { const el = e.target.closest('[data-full]'); if (el) showPop(el); });
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('[data-full]');
+  if (el) { popPinned = !(popPinned && popFor === el); if (popPinned) showPop(el); else hidePop(); return; }
+  if (!pop.contains(e.target) && popPinned) { popPinned = false; hidePop(); }
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { popPinned = false; hidePop(); } });
+$('feed').addEventListener('scroll', () => { popPinned = false; hidePop(); });
+
 function toolLi(e) {
   const w = toolWords(e.text);
   return `<li><span class="verb">${esc(w.verb)}</span> ${w.arg ? (w.code ? `<code>${esc(w.arg)}</code>` : esc(w.arg)) : ''}</li>`;
@@ -475,10 +551,11 @@ for (const c of document.querySelectorAll('[data-f]')) c.onclick = () => {
 };
 
 // ---------- team strip ----------
+function people_hasClaude(name) { return Object.values(S.agents).some(x => x.name === name && x.kind !== 'human'); }
 function people() {
   const by = {};
   for (const a of Object.values(S.agents)) {
-    if (a.kind === 'human' && a.host === 'dashboard' && a.name === auth.name) continue;
+    if (a.kind === 'human' && (a.host === 'dashboard' || a.host === 'cli') && !people_hasClaude(a.name)) continue; // dashboard-only visitors aren't cards
     const p = by[a.name] = by[a.name] || { name: a.name, online: false, lastSeen: 0, status: '', branch: null, runner: null };
     p.online = p.online || a.online;
     if (a.online && a.runner && a.runner !== 'off' && (p.runner !== 'full')) p.runner = a.runner;
@@ -534,15 +611,15 @@ function renderTeam() {
   };
   document.documentElement.style.setProperty('--teamh', $('team').offsetHeight + 'px');
   // who the composer can address
-  const names = ps.map(p => p.name).filter(n => n !== auth.name);
+  const names = ps.map(p => p.name).filter(n => n !== myName());
   const sel = $('to'), cur = sel.value;
   sel.innerHTML = `<option value="">Full team</option>${names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}`;
   sel.value = [...sel.options].some(o => o.value === cur) ? cur : '';
   updateHint();
   // my own setting, if I'm one of the people in this project
-  const mine = auth.name && Object.values(S.agents).some(a => a.name === auth.name && a.kind !== 'human');
+  const mine = auth.name && people_hasClaude(myName());
   $('mineWrap').hidden = !mine;
-  if (mine && document.activeElement !== $('mine')) $('mine').value = (S.settings[auth.name] && S.settings[auth.name].autopilot) || 'requests';
+  if (mine && document.activeElement !== $('mine')) $('mine').value = (S.settings[myName()] && S.settings[myName()].autopilot) || 'requests';
 }
 $('mine').onchange = async (e) => {
   try { await api('setting', { autopilot: e.target.value }); }
@@ -550,18 +627,53 @@ $('mine').onchange = async (e) => {
 };
 
 // ---------- side panel ----------
+S.tf = 'open'; S.openTask = null; S.goalOpen = {}; S.showDone = {};
+const ORDER = { blocked: 0, doing: 1, todo: 2, done: 3 };
+function taskRow(t, b) {
+  const open = S.openTask === t.id;
+  const waits = (t.after || []).map(id => b.tasks.find(x => x.id === id)).filter(x => x && x.status !== 'done');
+  const note = t.notes && t.notes.length ? t.notes[t.notes.length - 1] : null;
+  return `<button class="trow ${t.status}" data-task="${esc(t.id)}" aria-expanded="${open}">
+      <span class="dot ${t.status}" title="${statusWord(t.status)}"></span>
+      <span class="tt">${esc(t.title)}</span>
+      ${t.status === 'doing' || t.status === 'blocked' ? `<span class="slabel ${t.status}">${statusWord(t.status)}</span>` : ''}
+      <span class="owner">${t.owner ? avatar(t.owner, true) + `<span>${esc(t.owner)}</span>` : '<span>anyone</span>'}</span>
+    </button>
+    ${open ? `<div class="tdetail">
+      <div class="small muted">${statusWord(t.status)} · ${t.owner ? 'owned by ' + esc(t.owner) : 'nobody has taken it yet'} · from ${esc(t.by)} ${ago(t.at)}</div>
+      ${t.detail ? `<p>${esc(t.detail)}</p>` : ''}
+      ${waits.length ? `<p><b>Waiting for:</b> ${waits.map(x => esc(x.title)).join('; ')}</p>` : ''}
+      ${note ? `<p><b>Latest note</b> (${esc(note.by)}, ${ago(note.at)}): ${esc(note.text)}</p>` : ''}
+      ${t.owner ? `<button class="link small" data-person-filter="${esc(t.owner)}">Show what ${esc(t.owner)} is doing</button>` : ''}
+    </div>` : ''}`;
+}
 function renderSide() {
   const b = S.board;
-  const goals = b ? b.goals.slice().reverse().filter(g => g.status !== 'done' || Date.now() - g.at < 3 * 86400e3).slice(0, 8) : [];
-  $('tasks').innerHTML = goals.map(g => {
-    const ts = b.tasks.filter(t => t.goalId === g.id);
-    const done = ts.filter(t => t.status === 'done').length;
-    return `<div class="goal"><div style="display:flex;gap:8px;align-items:flex-start"><span class="gt" style="flex:1">${esc(g.text.split('\n')[0].slice(0, 140))}</span><span class="pill ${g.status === 'done' ? 'done' : g.status === 'open' ? 'open' : 'doing'}">${statusWord(g.status)}</span></div>
-      <div class="small muted">from ${esc(g.byName)}${g.to ? ' for ' + esc(g.to) + "'s Claude" : ''}${g.planner && !g.to ? ' · planned by ' + esc(g.planner) + "'s Claude" : ''}</div>
-      ${ts.length ? `<div class="bar" title="${done} of ${ts.length} done"><span style="width:${Math.round(100 * done / ts.length)}%"></span></div>
-      ${ts.map(t => `<div class="task"><span class="pill ${t.status}">${statusWord(t.status)}</span><span class="tt">${esc(t.title)}${t.notes && t.notes.length && t.status !== 'todo' ? `<div class="small muted">${esc(t.notes[t.notes.length - 1].text.slice(0, 160))}</div>` : ''}</span>${t.owner ? avatar(t.owner, true) : ''}</div>`).join('')}` : '<div class="small muted" style="margin-top:6px">Waiting for a Claude to split this into tasks…</div>'}
-    </div>`;
-  }).join('') || '<div class="empty small" style="margin:0">No tasks yet. Use <b>Message Claude</b> below to describe what you want built.</div>';
+  const me = myName();
+  let goals = b ? b.goals.slice().reverse() : [];
+  if (S.tf === 'open') goals = goals.filter(g => g.status !== 'done');
+  if (S.tf === 'mine') goals = goals.filter(g => b.tasks.some(t => t.goalId === g.id && t.owner === me));
+  goals = goals.slice(0, 15);
+  const filt = `<div class="tfilter" role="tablist">${[['open', 'Open'], ['mine', 'Mine'], ['all', 'All']].map(([k, l]) => `<button data-tf="${k}" class="${S.tf === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+  const body = goals.map((g, i) => {
+    let ts = b.tasks.filter(t => t.goalId === g.id);
+    if (S.tf === 'mine') ts = ts.filter(t => t.owner === me);
+    ts.sort((x, y) => ORDER[x.status] - ORDER[y.status]);
+    const all = b.tasks.filter(t => t.goalId === g.id);
+    const done = all.filter(t => t.status === 'done').length;
+    const isOpen = S.goalOpen[g.id] ?? (g.status !== 'done' && i < 4);
+    const doneTs = ts.filter(t => t.status === 'done'), liveTs = ts.filter(t => t.status !== 'done');
+    const showDone = S.showDone[g.id] || !liveTs.length;
+    return `<details class="goal" data-goal="${esc(g.id)}" ${isOpen ? 'open' : ''}>
+      <summary><div class="gtitle"><span class="chev">▶</span><span class="gt">${esc(g.text.split('\n')[0].slice(0, 160))}</span><span class="pill ${g.status === 'done' ? 'done' : g.status === 'open' ? 'open' : 'doing'}">${statusWord(g.status)}</span></div>
+        ${all.length ? `<div class="bar" title="${done} of ${all.length} done"><span style="width:${Math.round(100 * done / all.length)}%"></span></div>` : ''}
+        <div class="gmeta"><span>${all.length ? `${done} of ${all.length} done` : 'waiting for a Claude to split it up'}</span><span>${g.to ? 'for ' + esc(g.to) + "'s Claude" : 'whole team'} · from ${esc(g.byName)}</span></div></summary>
+      <div class="tlist">${liveTs.map(t => taskRow(t, b)).join('')}
+        ${doneTs.length ? (showDone ? doneTs.map(t => taskRow(t, b)).join('') : `<button class="link showdone" data-showdone="${esc(g.id)}">Show ${doneTs.length} done</button>`) : ''}
+        ${!ts.length && all.length ? '<div class="small muted" style="padding:4px 6px">None of these are yours.</div>' : ''}</div>
+    </details>`;
+  }).join('');
+  $('tasks').innerHTML = filt + (body || `<div class="empty small" style="margin:0">${S.tf === 'mine' ? 'No tasks assigned to you.' : S.tf === 'open' ? 'Nothing open. Use <b>Message Claude</b> below to describe what you want built.' : 'No tasks yet. Use <b>Message Claude</b> below to describe what you want built.'}</div>`);
   const locks = Object.values(S.locks);
   $('locks').innerHTML = locks.map(l => `<button class="row-item" data-file="${esc(l.path)}" data-branch="${esc(l.branch || '')}">${avatar(l.holderName, true)}<span class="grow"><b>${esc(l.path)}</b><br><span class="small muted">${esc(l.holderName)} · since ${ago(l.since)}${l.branch ? ' · ' + esc(l.branch) : ''}</span></span>🔒</button>`).join('')
     || '<div class="small muted">Nobody is editing a file right now.</div>';
@@ -569,6 +681,18 @@ function renderSide() {
   $('files').innerHTML = files.map(f => `<button class="row-item" data-file="${esc(f.path)}" data-branch="${esc(f.branch || '')}">${avatar(f.byName, true)}<span class="grow">${esc(f.path)}<br><span class="small muted">${esc(f.byName)} · ${ago(f.at)}</span></span></button>`).join('')
     || '<div class="small muted">No files changed through huddle yet.</div>';
 }
+
+document.addEventListener('click', (e) => {
+  const tf = e.target.closest('[data-tf]');
+  if (tf) { S.tf = tf.dataset.tf; return renderSide(); }
+  const row = e.target.closest('[data-task]');
+  if (row) { S.openTask = S.openTask === row.dataset.task ? null : row.dataset.task; return renderSide(); }
+  const sd = e.target.closest('[data-showdone]');
+  if (sd) { S.showDone[sd.dataset.showdone] = true; return renderSide(); }
+  const pf = e.target.closest('[data-person-filter]');
+  if (pf) { const card = document.querySelector(`[data-person="${CSS.escape(pf.dataset.personFilter)}"]`); showView('timeline'); if (card && S.who !== pf.dataset.personFilter) card.click(); }
+});
+document.addEventListener('toggle', (e) => { const d = e.target.closest && e.target.closest('details.goal'); if (d) S.goalOpen[d.dataset.goal] = d.open; }, true);
 
 // ---------- file viewer ----------
 async function openFile(p, branch) {
@@ -806,6 +930,8 @@ function applySnapshot(s) {
   for (const l of s.locks) S.locks[(l.branch || '') + '::' + l.path] = l;
   for (const f of s.files) S.files[(f.branch || '') + '::' + f.path] = f;
   S.settings = s.settings || {};
+  S.aliases = s.aliases || {};
+  if (auth.name) $('pname').textContent = $('projsel').hidden ? `${auth.project} · you're ${myName()}` : `you're ${myName()}`;
   renderTeam(); renderSide();
 }
 function onEvent(ev) {
@@ -823,6 +949,7 @@ function onEvent(ev) {
     case 'shared': loadShared().catch(() => {}); break;
     case 'activity': S.agents[ev.agent.id] = ev.agent; break;
     case 'setting': S.settings[ev.name] = ev.settings; break;
+    case 'merge': location.reload(); return;
     case 'forget': for (const [id, x] of Object.entries(S.agents)) if (x.name === ev.name) delete S.agents[id]; break;
   }
   if (ev.type !== 'leave' && ev.type !== 'status') addEntries(fromEvent(ev));

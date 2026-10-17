@@ -66,6 +66,7 @@ class Project {
     // team prompts ("goals") and the tasks the agents split them into
     this.board = { version: 0, goals: [], tasks: [] };
     this.settings = {};   // per person: { autopilot: 'off' | 'requests' | 'full' }
+    this.aliases = {};    // other names a person has used ("Kelly-Wang" -> "Kelly")
     this.waiters = new Set();
     if (saved) Object.assign(this, saved);
     this.waiters = new Set();
@@ -119,10 +120,16 @@ class Project {
       locks: Object.values(this.locks),
       files: Object.values(this.files).map(f => this.fileMeta(f)),
       settings: this.settings || {},
+      aliases: this.aliases || {},
     };
   }
   touch(agent) {
     if (!agent || !agent.id) throw httpError(400, 'agent.id required');
+    // a dashboard tab that never set a name is a visitor, not a teammate
+    if (agent.kind === 'human' && agent.host === 'dashboard' && ['human', 'guest'].includes(agent.name)) {
+      return { id: agent.id, name: agent.name, kind: 'human', status: '', lastSeen: now(), readSeq: this.seq, transient: true };
+    }
+    agent = { ...agent, name: (this.aliases || {})[agent.name] || agent.name };
     let a = this.agents[agent.id];
     const fresh = !a || !this.online(a);
     if (!a) {
@@ -183,6 +190,30 @@ const routes = {
       p.emit('leave', { agent: p.publicAgent(a) });
       p.dirty = true;
     }
+    return { ok: true };
+  },
+  // two names are the same person: fold "from" into "into" everywhere, and keep it that way
+  'POST merge-person': (p, b) => {
+    p.touch(b.agent);
+    const from = String(b.from || ''), into = String(b.into || '');
+    if (!from || !into || from === into) throw httpError(400, 'from and into required');
+    if (!Object.values(p.agents).some(a => a.name === from) && !p.messages.some(m => m.fromName === from)) throw httpError(404, `nobody called ${from}`);
+    p.aliases = p.aliases || {};
+    for (const [k, v] of Object.entries(p.aliases)) if (v === from) p.aliases[k] = into;
+    p.aliases[from] = into;
+    const fix = (o, k) => { if (o && o[k] === from) o[k] = into; };
+    for (const a of Object.values(p.agents)) fix(a, 'name');
+    for (const m of p.messages) { fix(m, 'fromName'); fix(m, 'to'); }
+    for (const it of p.activity) fix(it, 'name');
+    for (const g of p.board.goals) { fix(g, 'byName'); fix(g, 'to'); fix(g, 'planner'); }
+    for (const t of p.board.tasks) { fix(t, 'owner'); fix(t, 'by'); for (const n of t.notes || []) fix(n, 'by'); }
+    for (const l of Object.values(p.locks)) fix(l, 'holderName');
+    for (const f of Object.values(p.files)) fix(f, 'byName');
+    for (const m of p.shared.memories) fix(m, 'byName');
+    if (p.settings && p.settings[from]) { p.settings[into] = p.settings[into] || p.settings[from]; delete p.settings[from]; }
+    p.activityChanged = p.sharedChanged = true;
+    p.board.version++;
+    p.emit('merge', { from, into });
     return { ok: true };
   },
   // drop someone who isn't around any more (test runs, a name typo); never someone online or holding files
