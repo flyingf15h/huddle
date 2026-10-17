@@ -18,6 +18,13 @@ function deny(reason) {
   return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } };
 }
 
+// Secrets and anything git ignores (.env files, build output, local config) stay on
+// this machine: no lock, no live copy sent to the team.
+function private_(root, rel) {
+  if (/(^|\/)\.env(\.|$)|(^|\/)\.dev\.vars$|\.(pem|key)$/.test(rel)) return true;
+  return gitx.isRepo(root) && gitx.git(root, ['check-ignore', '-q', '--', rel]).ok;
+}
+
 function targetOf(input) {
   const ti = input.tool_input || {};
   return ti.file_path || ti.notebook_path || null;
@@ -207,7 +214,7 @@ const handlers = {
   async pre(input, client, cfg) {
     if (!EDIT_TOOLS.has(input.tool_name)) return null;
     const rel = relPath(cfg.root, targetOf(input));
-    if (!rel) return null;
+    if (!rel || private_(cfg.root, rel)) return null;
     const abs = path.join(cfg.root, ...rel.split('/'));
     const local = hashFile(abs);
     const branch = client.agent.branch;
@@ -242,7 +249,7 @@ const handlers = {
   async post(input, client, cfg) {
     const notes = [];
     const rel = EDIT_TOOLS.has(input.tool_name) ? relPath(cfg.root, targetOf(input)) : null;
-    if (rel) {
+    if (rel && !private_(cfg.root, rel)) {
       const abs = path.join(cfg.root, ...rel.split('/'));
       try {
         const content = fs.readFileSync(abs, 'utf8');

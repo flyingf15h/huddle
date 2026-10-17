@@ -258,7 +258,16 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
     assert.equal((await api('board')).tasks.find(t => t.title === 'do this later').status, 'todo');
     ok("requests to someone's Claude run while it's open; full autopilot takes team goals; off makes them wait");
 
-    // open mode: anyone can create a project, and each project's token only opens that project
+    // secrets never leave the machine: no lock, no live copy
+    fs.writeFileSync(path.join(alice.root, '.env.local'), 'GEMINI_API_KEY=secret123\n');
+    const envEdit = { tool_name: 'Edit', tool_input: { file_path: path.join(alice.root, '.env.local') } };
+    assert.equal(alice.hook('pre', envEdit), null);
+    alice.hook('post', envEdit);
+    const st2 = await api('state');
+    assert(!st2.locks.some(l => l.path === '.env.local') && !st2.files.some(f => f.path === '.env.local'), '.env.local must not be shared');
+    ok('.env files and git-ignored files are never locked or shared');
+
+        // open mode: anyone can create a project, and each project's token only opens that project
     const mk = async (name) => (await fetch(pub.url + '/api/new', { method: 'POST', body: JSON.stringify({ name }) })).json();
     const p1 = await mk('My App'), p2 = await mk('other');
     assert.match(p1.project, /^my-app-[0-9a-f]{6,8}$/);
