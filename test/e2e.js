@@ -9,6 +9,13 @@ const { spawn, spawnSync } = require('child_process');
 
 const CLI = path.join(__dirname, '..', 'src', 'cli.js');
 const tmp = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), 'huddle-e2e-'));
+// a stand-in `claude` for autopilot runs: records the prompt it was given
+const fakeBin = path.join(tmp, 'bin');
+fs.mkdirSync(fakeBin);
+fs.writeFileSync(path.join(fakeBin, 'claude'), `#!/usr/bin/env node
+const p = process.argv[process.argv.indexOf('-p') + 1] || '';
+require('fs').appendFileSync(require('path').join(process.cwd(), 'claude-runs.txt'), p.split('\\n').find(l => l.startsWith('Your task')) + '\\n');
+`, { mode: 0o755 });
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 async function until(fn, ms = 8000, what = 'condition') {
   const end = Date.now() + ms;
@@ -24,7 +31,7 @@ function checkout(name, pid, server, token, project = 'demo') {
   fs.mkdirSync(path.join(root, '.huddle'), { recursive: true });
   fs.writeFileSync(path.join(root, '.huddle', 'config.json'), JSON.stringify({ server, token, project, name }));
   fs.writeFileSync(path.join(root, 'shared.txt'), 'v0\n');
-  const env = { ...process.env, HUDDLE_SESSION: String(pid), HUDDLE_ROOT: root };
+  const env = { ...process.env, HUDDLE_SESSION: String(pid), HUDDLE_ROOT: root, PATH: fakeBin + path.delimiter + process.env.PATH };
   const hook = (event, input) => {
     const r = spawnSync(process.execPath, [CLI, 'hook', event], { input: JSON.stringify({ cwd: root, ...input }), env, encoding: 'utf8' });
     if (r.status !== 0) throw new Error(r.stderr);
@@ -229,7 +236,29 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
     assert.match(after, /user asked: back to work: run the tests/);
     ok('a prompt starting with "private:" keeps that whole turn out of the feed');
 
-        // open mode: anyone can create a project, and each project's token only opens that project
+        // autopilot: by default, requests sent to someone's Claude run while their session is open
+    const api = (ep, body) => fetch(`${url}/api/p/${project}/${ep}`, { method: body ? 'POST' : 'GET', headers: { authorization: 'Bearer ' + token }, body: body && JSON.stringify(body) }).then(r => r.json());
+    const runs = () => { try { return fs.readFileSync(path.join(alice.root, 'claude-runs.txt'), 'utf8'); } catch { return ''; } };
+    const human = { id: 'human:carol', name: 'carol', kind: 'human' };
+    await until(async () => (await api('state')).agents.some(a => a.name === 'alice' && a.runner === 'requests'), 8000, "alice's runner");
+    await api('goal', { agent: human, text: 'rename add to plus', to: 'alice' });
+    await until(() => /rename add to plus/.test(runs()), 10000, 'request run by alice\'s Claude');
+    await until(async () => (await api('board')).tasks.some(t => t.title === 'rename add to plus' && t.status === 'done'), 8000, 'request marked done');
+    await api('goal', { agent: human, text: 'whole team: write docs' });
+    await sleep(1500);
+    assert(!/write docs/.test(runs()), 'requests mode must not take team-wide goals');
+    assert.match(await alice.tool('huddle_autopilot', { mode: 'on' }), /full autopilot/);
+    await until(async () => (await api('board')).goals.some(g => g.text === 'whole team: write docs' && g.planner), 10000, 'full autopilot plans the team goal');
+    assert.match(await alice.tool('huddle_autopilot', { mode: 'off' }), /off/);
+    await sleep(500);
+    const before = runs();
+    await api('goal', { agent: human, text: 'do this later', to: 'alice' });
+    await sleep(2000);
+    assert.equal(runs(), before, 'off means requests wait');
+    assert.equal((await api('board')).tasks.find(t => t.title === 'do this later').status, 'todo');
+    ok("requests to someone's Claude run while it's open; full autopilot takes team goals; off makes them wait");
+
+    // open mode: anyone can create a project, and each project's token only opens that project
     const mk = async (name) => (await fetch(pub.url + '/api/new', { method: 'POST', body: JSON.stringify({ name }) })).json();
     const p1 = await mk('My App'), p2 = await mk('other');
     assert.match(p1.project, /^my-app-[0-9a-f]{6,8}$/);

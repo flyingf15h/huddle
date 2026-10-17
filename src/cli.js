@@ -31,9 +31,13 @@ Talk to the whole team of Claudes:
   huddle ask "build X"          give every agent a goal; one plans it, all of them work it
   huddle ask "fix Y" --to alex  hand a task straight to alex's Claude
   huddle board                  goals, tasks, who owns what
+  huddle autopilot on|requests|off
+                                what YOUR Claude does with work from the team (uses your
+                                Claude subscription; runs claude -p in this folder):
+                                requests (default) = does what people send to your Claude,
+                                on = also plans team goals and takes open tasks, off = waits
   huddle autopilot [--allow "Bash(npm test:*)"] [--model M]
-                                let YOUR Claude take team work on its own (uses your
-                                Claude subscription; runs claude -p in this folder)
+                                run it in this terminal (when no Claude session is open here)
 
 Versions, branches and merging (git history travels through huddle, no shared remote needed):
   huddle sync                   compare your copy with the team's and merge / branch / switch
@@ -220,6 +224,19 @@ function installHooks(root, dir, projectRoot) {
   fs.writeFileSync(file, JSON.stringify(s, null, 2) + '\n');
 }
 
+// /autopilot inside Claude Code
+const AUTOPILOT_COMMAND = `---
+description: Turn huddle autopilot on, off, or back to taking requests
+argument-hint: on | requests | off
+---
+Use the huddle_autopilot tool with mode "$ARGUMENTS". If no mode was given, just show the current setting. Then say in one short line what that means: whether teammates can start this Claude on things, and what still waits for me.
+`;
+function installCommand(root) {
+  const file = path.join(root, '.claude', 'commands', 'autopilot.md');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, AUTOPILOT_COMMAND);
+}
+
 function installMcp(root, dir, projectRoot) {
   const spec = JSON.stringify({ type: 'stdio', command: process.execPath, args: [path.join(dir, 'src', 'cli.js'), 'mcp'], env: { HUDDLE_ROOT: projectRoot || root } });
   spawnSync('claude', ['mcp', 'remove', '-s', 'local', 'huddle'], { cwd: root, stdio: 'ignore' });
@@ -236,7 +253,7 @@ function ignoreLocally(root) {
   if (!fs.existsSync(path.join(root, '.git'))) return;
   let cur = '';
   try { cur = fs.readFileSync(exclude, 'utf8'); } catch {}
-  const want = ['.huddle/', '.claude/settings.local.json'].filter(l => !cur.split('\n').includes(l));
+  const want = ['.huddle/', '.claude/settings.local.json', '.claude/commands/autopilot.md'].filter(l => !cur.split('\n').includes(l));
   if (!want.length) return;
   fs.mkdirSync(path.dirname(exclude), { recursive: true });
   fs.appendFileSync(exclude, (cur && !cur.endsWith('\n') ? '\n' : '') + want.join('\n') + '\n');
@@ -292,6 +309,7 @@ async function cmdJoin({ pos, flags }) {
   ignoreLocally(root);
   const dir = selfInstall();
   installHooks(root, dir);
+  installCommand(root);
   const mcp = installMcp(root, dir);
   console.log(`
 joined "${inv.project}" as ${name} in ${root}
@@ -301,6 +319,10 @@ Live dashboard: ${inv.server}/#invite=${pos[0]}
 
 Your Claude sessions here are shared with the team (your prompts, Claude's replies,
 its tool calls) so everyone can follow along. Change that with: huddle sharing tools|off
+
+While Claude is open here, things teammates send to YOUR Claude run automatically,
+using your Claude subscription. Change it any time: /autopilot off (in Claude),
+huddle autopilot off, or the dashboard. /autopilot on also takes team-wide work.
 
 Next: start (or restart) Claude Code in this folder, then just prompt it as usual.
 It already knows who else is working, what's locked, and the team's PROJECT.md,
@@ -476,6 +498,7 @@ function cmdLink({ pos }) {
   need(target !== here, 'that is this folder; it is already connected');
   const dir = selfInstall();
   installHooks(here, dir, target);
+  installCommand(here);
   const mcp = installMcp(here, dir, target);
   console.log(`Claude sessions started in ${here} now join the huddle of ${path.relative(here, target) || target}.
 Only files inside that folder are shared and locked; everything else here stays local.${mcp ? '' : '\n(register the MCP server as shown above)'}
@@ -604,8 +627,17 @@ async function cmdBoard() {
   console.log(require('./board').format(await humanClient('human').get('board')));
 }
 
-async function cmdAutopilot({ flags }) {
-  await require('./autopilot').runAutopilot(configured(), flags);
+async function cmdAutopilot({ pos, flags }) {
+  const ap = require('./autopilot');
+  const cfg = configured();
+  if (pos[0] && pos[0] !== 'run') {
+    const mode = ap.normMode(pos[0]);
+    need(mode, 'usage: huddle autopilot [on|requests|off]   (no argument: run here in the foreground)');
+    await humanClient('human').post('setting', { autopilot: mode });
+    return console.log(`autopilot: ${ap.MODE_WORDS[mode]}.
+${mode === 'off' ? '' : 'It runs while you have Claude open in this folder, or while `huddle autopilot` runs in a terminal here.'}`);
+  }
+  await ap.runAutopilot(cfg, flags);
 }
 
 function cmdLeave() {

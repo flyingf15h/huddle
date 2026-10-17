@@ -21,7 +21,7 @@ function isRepo(root) { return git(root, ['rev-parse', '--is-inside-work-tree'])
 
 // .huddle/ holds the project token and .claude/settings.local.json our hooks:
 // neither may ever be committed, or they'd travel to everyone with the history
-const PRIVATE = ['.huddle/', '.claude/settings.local.json'];
+const PRIVATE = ['.huddle/', '.claude/settings.local.json', '.claude/commands/autopilot.md'];
 function ensureExcluded(root) {
   const dir = git(root, ['rev-parse', '--git-dir']);
   if (!dir.ok) return;

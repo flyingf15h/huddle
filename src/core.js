@@ -65,6 +65,7 @@ class Project {
     this.git = { refs: {}, bundles: [], bytes: 0, uploads: {}, snapshots: {} };
     // team prompts ("goals") and the tasks the agents split them into
     this.board = { version: 0, goals: [], tasks: [] };
+    this.settings = {};   // per person: { autopilot: 'off' | 'requests' | 'full' }
     this.waiters = new Set();
     if (saved) Object.assign(this, saved);
     this.waiters = new Set();
@@ -103,7 +104,7 @@ class Project {
     return ev;
   }
   publicAgent(a) {
-    return { id: a.id, name: a.name, host: a.host, checkout: a.checkout, kind: a.kind, branch: a.branch || null,
+    return { id: a.id, name: a.name, host: a.host, checkout: a.checkout, kind: a.kind, branch: a.branch || null, runner: a.runner || null,
       status: a.status, lastSeen: a.lastSeen, online: this.online(a) };
   }
   fileMeta(f) {
@@ -117,6 +118,7 @@ class Project {
       agents: Object.values(this.agents).map(a => this.publicAgent(a)),
       locks: Object.values(this.locks),
       files: Object.values(this.files).map(f => this.fileMeta(f)),
+      settings: this.settings || {},
     };
   }
   touch(agent) {
@@ -165,6 +167,7 @@ class Project {
 const routes = {
   'POST hello': (p, b) => {
     const a = p.touch(b.agent);
+    if (b.runner !== undefined) a.runner = ['off', 'requests', 'full'].includes(b.runner) ? b.runner : null;
     if (b.status !== undefined) a.status = String(b.status).slice(0, 300);
     p.dirty = true;
     return { ...p.snapshot(), you: p.publicAgent(a) };
@@ -174,6 +177,7 @@ const routes = {
     const a = p.agents[b.agent && b.agent.id];
     if (a) {
       a.lastSeen = now() - ONLINE_MS; // shows as just gone offline
+      a.runner = null;
       a.wasOnline = false;
       a.status = '';
       p.emit('leave', { agent: p.publicAgent(a) });
@@ -414,6 +418,17 @@ const routes = {
 
   // ---- team board: a person gives the team a goal, one Claude plans it, everyone works it ----
   'GET board': (p) => p.board,
+  'GET settings': (p) => ({ settings: p.settings || {} }),
+  // your own settings only: whether others can start your Claude on things
+  'POST setting': (p, b) => {
+    const a = p.touch(b.agent);
+    const mode = String(b.autopilot || '');
+    if (!['off', 'requests', 'full'].includes(mode)) throw httpError(400, 'autopilot must be off, requests or full');
+    p.settings = p.settings || {};
+    p.settings[a.name] = { ...(p.settings[a.name] || {}), autopilot: mode, at: now() };
+    p.emit('setting', { name: a.name, settings: p.settings[a.name] });
+    return { ok: true, settings: p.settings[a.name] };
+  },
   'POST goal': (p, b) => {
     const a = p.touch(b.agent);
     const text = String(b.text || '').trim().slice(0, 8000);
@@ -425,7 +440,7 @@ const routes = {
     if (b.to) {
       goal.status = 'planned';
       goal.planner = b.to;
-      pushTask(p, { goalId: goal.id, title: text.split('\n')[0].slice(0, 200), detail: text, owner: b.to }, a);
+      pushTask(p, { goalId: goal.id, title: text.split('\n')[0].slice(0, 200), detail: text, owner: b.to, direct: true }, a);
     }
     boardChanged(p, 'goal', { goal }, a);
     return { ok: true, goal };
@@ -608,7 +623,8 @@ function pushTask(p, t, a) {
   if (!title) throw httpError(400, 'every task needs a title');
   if (p.board.tasks.length >= MAX_TASKS) p.board.tasks.splice(0, p.board.tasks.findIndex(x => x.status === 'done') + 1 || 1);
   const task = { id: crypto.randomBytes(4).toString('hex'), goalId: t.goalId, title, detail: String(t.detail || '').slice(0, 6000),
-    owner: t.owner || null, status: 'todo', by: a.name, at: now(), updated: now(), after: Array.isArray(t.after) ? t.after.slice(0, 10) : [] };
+    owner: t.owner || null, status: 'todo', by: a.name, at: now(), updated: now(), after: Array.isArray(t.after) ? t.after.slice(0, 10) : [],
+    direct: !!t.direct };
   p.board.tasks.push(task);
   return task;
 }

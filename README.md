@@ -60,7 +60,7 @@ GitHub isn't involved in any of this. Everything goes through the huddle server 
 - **Edits are live.** When two people are on the same branch, every edit one Claude makes lands in the other person's copy of the file within a second or two. While a Claude is editing a file it's locked: the file goes read-only for everyone else, and their Claude is told who has it instead of overwriting their work.
 - **Commits are shared automatically.** Whenever a Claude finishes a turn, any new commits are sent to the rest of the team through huddle. People on other branches get them when they merge (see [branches and merging](#different-versions-branches-and-merging)).
 - **The Claudes message each other.** A Claude can message the whole team or one person's Claude, and the message shows up in the other Claude's context at its next step. A Claude that gets a direct message has to answer it before it stops. They also coordinate through the shared task list.
-- **One limitation: an idle Claude doesn't wake up.** A Claude that's waiting for its person to type something sees new messages and tasks at its next step, not instantly. If you want your Claude to react with nobody at the keyboard, run `huddle autopilot` (below).
+- **Requests start right away, messages wait.** Something sent to a person's Claude with *Message Claude* starts immediately if their Claude takes requests (the default, see [Autopilot](#autopilot-what-your-claude-does-with-work-from-the-team)). Messages between Claudes are read at their next step.
 
 ## Talking to all the Claudes at once
 
@@ -69,13 +69,19 @@ Write it in the **Message Claude** box at the bottom of the dashboard (or run `h
 - **Full team:** the first free Claude claims it, looks at the code, splits it into tasks with an owner each (split by file so nobody collides, with dependencies where needed), and tells the team. Every Claude is told which tasks are theirs, works on them, commits, and marks them done. Progress shows under **Tasks** on the right side of the dashboard.
 - **One person:** only that person's Claude gets it, as a task of its own (`huddle ask "..." --to alex` from the terminal).
 
-A Claude only acts when it's running. In a normal Claude Code session, it sees new goals and tasks at its next step and works on them if you say so. To let your Claude take team work by itself, run
+### Autopilot: what your Claude does with work from the team
 
-```sh
-huddle autopilot --allow "Bash(npm test:*)"
-```
+Each person chooses, and can change it any time:
 
-in your folder. It waits for team work, then runs `claude -p` with your own subscription to plan goals and do your tasks, commits the results and shares them. By default it can edit files and run git. Use `--allow` to add other commands, such as your test runner. Stop it with ctrl-c.
+| Setting | What happens |
+|---|---|
+| **Takes requests** (default) | When someone sends something to *your* Claude, it starts on it automatically in the background, as long as you have Claude Code open in the project folder. Team-wide requests still wait for you. |
+| **Full autopilot** | Also plans team-wide requests and picks up unassigned tasks. |
+| **Off** | Nothing starts on its own. Requests wait until you tell your Claude to work on them. |
+
+Change it from the **My Claude** menu at the top of the dashboard, with `/autopilot on`, `/autopilot requests` or `/autopilot off` inside Claude Code (or just ask Claude), or with `huddle autopilot on|requests|off` in a terminal. The team can see each person's setting on their card: **Takes requests**, **Autopilot**, **Online** (open but not taking requests) or **Away**.
+
+Autopilot runs Claude on *your* computer with *your* Claude subscription, so your laptop has to be on. It needs either a Claude Code session open in the folder, or `huddle autopilot` running in a terminal there (for when you don't want Claude open). By default it can edit files and use git. Allow more with `--allow`, for example `huddle autopilot --allow "Bash(npm test:*)"`, or set `"autopilotAllow": ["Bash(npm test:*)"]` in `.huddle/config.json` so it also applies in the background.
 
 ## Different versions, branches and merging
 

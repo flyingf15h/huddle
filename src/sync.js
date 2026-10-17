@@ -71,6 +71,7 @@ class Sync {
       if (!this.active) {
         if (!this.claim()) { await sleep(15000); continue; }
         this.active = true;
+        if (this.onActive) this.onActive();
         this.seq = 0;
       }
       try {

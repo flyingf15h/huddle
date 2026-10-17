@@ -187,6 +187,12 @@ ol.steps { padding-left: 20px; } ol.steps li { margin-bottom: 10px; }
     <span class="proj" id="pname"></span>
     <select id="projsel" hidden aria-label="Switch project"></select>
     <span class="grow"></span>
+    <label id="mineWrap" class="small" hidden title="Applies to your Claude sessions in this project (the ones named like you)">My Claude:
+      <select id="mine">
+        <option value="requests">takes requests</option>
+        <option value="full">full autopilot</option>
+        <option value="off">off (requests wait for me)</option>
+      </select></label>
     <span class="conn" id="conn">connecting</span>
     <button id="btn-invite">Invite people</button>
     <button id="btn-help" aria-label="How huddle works">?</button>
@@ -269,7 +275,8 @@ ol.steps { padding-left: 20px; } ol.steps li { margin-bottom: 10px; }
     <ol class="steps">
       <li><b>The cards at the top</b> are the people on the team. Each one says what that person and their Claude are doing right now. Click a card to see only them.</li>
       <li><b>The timeline</b> shows everything as it happens: messages, what each Claude was asked, what it ran and edited, and what it replied.</li>
-      <li><b>Message Claude</b> (bottom) gives the Claudes a job. Pick <i>Full team</i> and one Claude splits it into tasks they share, or pick a person to give it to just their Claude.</li>
+      <li><b>Message Claude</b> (bottom) gives the Claudes a job. Pick <i>Full team</i> and one Claude splits it into tasks they share, or pick a person to give it to just their Claude. A card that says <i>Takes requests</i> or <i>Autopilot</i> means that Claude starts right away.</li>
+      <li><b>My Claude</b> (top right) is your own setting: <i>takes requests</i> (default) runs what teammates send you while your Claude is open, <i>full autopilot</i> also takes team-wide work, <i>off</i> makes everything wait for you.</li>
       <li><b>On the right</b>: task progress, and which files are being edited. A file someone is editing is locked for everyone else until they're done. Click any file to see it live.</li>
     </ol>
     <p class="muted small"><b>Code</b> shows each person's shared branch file by file, and live edits as they happen. <b>Brief &amp; memory</b> is what every Claude reads when it starts. <b>Invite people</b> shows the exact steps to send a teammate.</p>
@@ -324,7 +331,7 @@ const api = (ep, body) => fetch(`/api/p/${encodeURIComponent(auth.project)}/${ep
 }).then(r => r.json().then(j => { if (!r.ok) throw new Error(j.error || r.status); return j; }));
 
 // ---------- state ----------
-const S = { agents: {}, locks: {}, files: {}, board: null, shared: null, entries: [], filter: 'all', who: null, file: null, content: {} };
+const S = { settings: {}, agents: {}, locks: {}, files: {}, board: null, shared: null, entries: [], filter: 'all', who: null, file: null, content: {} };
 // distinct, white-text-safe colours so people are easy to tell apart
 const PALETTE = ['#1d5bd6', '#b4235a', '#0f7a43', '#9a4a00', '#6b3fd1', '#0e7490', '#a21caf', '#475569', '#b42323', '#3f6212'];
 const color = (name) => { let h = 2166136261; for (const c of String(name)) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return PALETTE[(h >>> 0) % PALETTE.length]; };
@@ -472,11 +479,11 @@ function people() {
   const by = {};
   for (const a of Object.values(S.agents)) {
     if (a.kind === 'human' && a.host === 'dashboard' && a.name === auth.name) continue;
-    const p = by[a.name] = by[a.name] || { name: a.name, online: false, lastSeen: 0, status: '', branch: null, autopilot: false };
+    const p = by[a.name] = by[a.name] || { name: a.name, online: false, lastSeen: 0, status: '', branch: null, runner: null };
     p.online = p.online || a.online;
+    if (a.online && a.runner && a.runner !== 'off' && (p.runner !== 'full')) p.runner = a.runner;
     if (a.lastSeen > p.lastSeen) { p.lastSeen = a.lastSeen; if (a.branch) p.branch = a.branch; }
     if (a.status && (!p.status || a.online)) p.status = a.status;
-    if (a.kind === 'autopilot' && a.online) p.autopilot = true;
   }
   return Object.values(by).sort((x, y) => y.online - x.online || y.lastSeen - x.lastSeen);
 }
@@ -493,6 +500,20 @@ function nowDoing(name) {
   }
   return '';
 }
+// what happens if you send this person's Claude something right now
+function reachWords(p) {
+  if (!p) return 'The first free Claude splits this into tasks and they share the work. Claudes on autopilot start right away; others see it at their next step.';
+  if (p.online && p.runner === 'full') return `${p.name}'s Claude is on full autopilot, so it starts on this right away.`;
+  if (p.online && p.runner === 'requests') return `${p.name}'s Claude takes requests, so it starts on this right away.`;
+  if (p.online) return `${p.name}'s Claude is open but not taking requests, so it sees this at its next step.`;
+  return `${p.name} isn't around. This waits until their Claude is back.`;
+}
+function updateHint() {
+  const who = $('to').value;
+  $('hint').textContent = reachWords(who ? people().find(x => x.name === who) || { name: who } : null);
+}
+$('to').addEventListener('change', updateHint);
+
 function renderTeam() {
   const ps = people();
   const doingCount = (n) => S.board ? S.board.tasks.filter(t => t.owner === n && t.status === 'doing').length : 0;
@@ -500,7 +521,7 @@ function renderTeam() {
     const doing = nowDoing(p.name) || p.status || (p.online ? 'Online' : '');
     const t = doingCount(p.name);
     return `<button class="person${S.who === p.name ? ' sel' : ''}" data-person="${esc(p.name)}" title="Show only ${esc(p.name)} in the timeline">
-      <div class="top">${avatar(p.name)}<span class="name">${esc(p.name)}</span><span class="state ${p.online ? 'on' : 'off'}">${p.online ? (p.autopilot ? 'Autopilot' : 'Online') : 'Away ' + ago(p.lastSeen).replace(' ago', '')}</span></div>
+      <div class="top">${avatar(p.name)}<span class="name">${esc(p.name)}</span><span class="state ${p.online ? 'on' : 'off'}" title="${esc(reachWords(p))}">${p.online ? (p.runner === 'full' ? 'Autopilot' : p.runner === 'requests' ? 'Takes requests' : 'Online') : 'Away ' + ago(p.lastSeen).replace(' ago', '')}</span></div>
       <div class="doing">${esc(doing) || '<span class="muted">No activity yet</span>'}</div>
       <div class="meta">${[p.branch ? '⎇ ' + esc(p.branch) : '', t ? `${t} task${t === 1 ? '' : 's'} in progress` : ''].filter(Boolean).join(' · ') || '&nbsp;'}</div>
     </button>`;
@@ -517,7 +538,16 @@ function renderTeam() {
   const sel = $('to'), cur = sel.value;
   sel.innerHTML = `<option value="">Full team</option>${names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}`;
   sel.value = [...sel.options].some(o => o.value === cur) ? cur : '';
+  updateHint();
+  // my own setting, if I'm one of the people in this project
+  const mine = auth.name && Object.values(S.agents).some(a => a.name === auth.name && a.kind !== 'human');
+  $('mineWrap').hidden = !mine;
+  if (mine && document.activeElement !== $('mine')) $('mine').value = (S.settings[auth.name] && S.settings[auth.name].autopilot) || 'requests';
 }
+$('mine').onchange = async (e) => {
+  try { await api('setting', { autopilot: e.target.value }); }
+  catch (err) { alert("Couldn't change it: " + err.message); }
+};
 
 // ---------- side panel ----------
 function renderSide() {
@@ -775,6 +805,7 @@ function applySnapshot(s) {
   for (const a of s.agents) S.agents[a.id] = a;
   for (const l of s.locks) S.locks[(l.branch || '') + '::' + l.path] = l;
   for (const f of s.files) S.files[(f.branch || '') + '::' + f.path] = f;
+  S.settings = s.settings || {};
   renderTeam(); renderSide();
 }
 function onEvent(ev) {
@@ -791,6 +822,7 @@ function onEvent(ev) {
     case 'git': if (S.view === 'code' && ev.action === 'snapshot') loadCodeRefs().catch(() => {}); break;
     case 'shared': loadShared().catch(() => {}); break;
     case 'activity': S.agents[ev.agent.id] = ev.agent; break;
+    case 'setting': S.settings[ev.name] = ev.settings; break;
     case 'forget': for (const [id, x] of Object.entries(S.agents)) if (x.name === ev.name) delete S.agents[id]; break;
   }
   if (ev.type !== 'leave' && ev.type !== 'status') addEntries(fromEvent(ev));

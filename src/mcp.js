@@ -8,6 +8,7 @@ const { loadConfig, identity, Client, relPath, hashFile, formatMessages, ago } =
 const { Sync } = require('./sync');
 const gitx = require('./git');
 const board = require('./board');
+const autopilot = require('./autopilot');
 
 const INSTRUCTIONS = `huddle connects you with other Claude agents working on the same project from other machines.
 - Files are locked automatically when you edit them; files another agent is editing are read-only for you and edits to them get refused.
@@ -15,6 +16,7 @@ const INSTRUCTIONS = `huddle connects you with other Claude agents working on th
 - Talk to the other agents with huddle_send. Messages to you arrive in your context automatically; huddle_inbox fetches them on demand.
 - If you need a locked file, ask its holder, watch it with huddle_view, or block with huddle_wait.
 - Locks are released when your turn ends. Use huddle_lock with hold=true to reserve files across turns, and huddle_unlock when done.
+- Autopilot: your person chooses whether other people can start you on things (huddle_autopilot): "requests" (default) means when someone sends a request to this person's Claude, it is run automatically in the background; "full" also plans team goals and takes open tasks; "off" means requests wait. If your user asks to turn autopilot on/off, use huddle_autopilot.
 - Branches: people on the same git branch share a live working copy and locks; people on different branches work independently and merge later (huddle_branches, huddle_merge). Your commits are shared automatically at the end of each turn.
 - Team board: people give the whole team goals (huddle_ask_team). The first free agent claims a goal (huddle_claim_goal), splits it into tasks for the online agents and records them with huddle_plan; each agent then works its own tasks and marks them with huddle_update_task. Prefer splitting so different people touch different files.
 - Team knowledge lives in huddle, not git: PROJECT.md (goals, conventions, architecture, who owns what; huddle_project), memory notes (huddle_remember / huddle_recall / huddle_forget) and skills (huddle_save_skill). Save anything another agent would otherwise rediscover the hard way: gotchas, decisions and their reasons, how to build/run/test. Keep memories short and specific; put repeatable multi-step procedures in a skill.`;
@@ -69,6 +71,8 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: { task_id: { type: 'string' } }, required: ['task_id'] } },
   { name: 'huddle_update_task', description: 'Update a task: status todo|doing|done|blocked, an optional note (what you did, or why blocked), or reassign with owner.',
     inputSchema: { type: 'object', properties: { task_id: { type: 'string' }, status: { type: 'string', enum: ['todo', 'doing', 'done', 'blocked'] }, note: { type: 'string' }, owner: { type: 'string' } }, required: ['task_id'] } },
+  { name: 'huddle_autopilot', description: "See or change this person's autopilot setting: 'requests' (default: things people send to this person's Claude run automatically in the background while a Claude session is open here), 'full' (also plan team goals and take unassigned tasks), or 'off' (requests wait for the person). Omit mode to see the current setting.",
+    inputSchema: { type: 'object', properties: { mode: { type: 'string', enum: ['off', 'requests', 'full', 'on'] } } } },
   { name: 'huddle_view', description: "See the live shared version of a file, including another agent's in-progress edits, with who changed it and when.",
     inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] } },
 ];
@@ -89,6 +93,16 @@ function runMcp() {
     const beat = setInterval(() => { if (!(sync && sync.wsOpen)) client.post('hello', {}).catch(() => {}); }, 45000);
     beat.unref();
     sync = new Sync(client, cfg, log);
+    // the session that syncs this folder also takes requests sent to this person's Claude
+    // (never inside a Claude that autopilot itself started)
+    let runner = null;
+    sync.onActive = () => {
+      if (runner || process.env.HUDDLE_AUTOPILOT || !autopilot.claimRunner(cfg.root)) return;
+      runner = autopilot.createRunner({ cfg, client, log: (m) => log('autopilot: ' + m) });
+      runner.refreshMode().then(() => runner.work()).catch(e => log('autopilot: ' + e.message));
+    };
+    sync.onEvent = (ev) => { if (runner) runner.onEvent(ev).catch(() => {}); };
+    process.on('exit', () => { if (runner) autopilot.releaseRunner(cfg.root); });
     sync.start();
   }
   const shutdown = () => { if (sync) sync.stop(); process.exit(0); };
@@ -295,6 +309,16 @@ function runMcp() {
       case 'huddle_update_task': {
         const r = await client.post('task-update', { id: a.task_id, status: a.status, note: a.note, owner: a.owner });
         return `task ${r.task.id} is now ${r.task.status}${r.task.owner ? ' (' + r.task.owner + ')' : ''}`;
+      }
+      case 'huddle_autopilot': {
+        if (a.mode) {
+          const mode = autopilot.normMode(a.mode);
+          if (!mode) throw new Error('mode must be off, requests or full');
+          await client.post('setting', { autopilot: mode });
+          return `autopilot is now ${autopilot.MODE_WORDS[mode]}. The team sees this on the dashboard.`;
+        }
+        const mode = await autopilot.getMode(client);
+        return `autopilot is ${autopilot.MODE_WORDS[mode]}. Change it with mode=off|requests|full.`;
       }
       case 'huddle_view': {
         const p = rel(a.path);
