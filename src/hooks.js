@@ -173,6 +173,9 @@ const handlers = {
     const s = await client.post('hello', {});
     const sh = await client.get('shared');
     shared.writeShared(cfg.root, sh);
+    const here = input.cwd ? path.resolve(input.cwd) : cfg.root;
+    const linked = here !== cfg.root && !path.relative(here, cfg.root).startsWith('..');
+    if (linked) shared.writeSkills(here, sh); // skills are discovered from where Claude started
     const st = sessionState(cfg, client.agent);
     st.data.shared = shared.signature(sh);
     newActivity(input, st, cfg.shareActivity); // just positions us at the end of the transcript
@@ -183,6 +186,7 @@ const handlers = {
     if (gitx.isRepo(cfg.root)) gitx.fetchAll(client, cfg.root).catch(() => {});
     return ctx('SessionStart',
       `You are "${client.agent.name}" in huddle project "${client.cfg.project}", shared with other Claude agents working in the same codebase from other machines.\n` +
+      (linked ? `The huddle project is the folder ./${path.relative(here, cfg.root)} (work and run git there). Only files inside it are shared with the team; other folders here are yours alone.\n` : '') +
       'Rules: before you edit a file it is locked for you automatically; files other agents are editing are read-only and edits to them will be refused. ' +
       'If that happens, work on something else, message the holder with huddle_send, look at their live copy with huddle_view, or block with huddle_wait. ' +
       'Set huddle_set_status to say what you are working on, and check huddle_status before starting larger changes so you do not overlap. ' +

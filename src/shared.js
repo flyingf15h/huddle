@@ -26,6 +26,25 @@ function memoriesMarkdown(shared) {
     `## ${m.title}\n_${m.byName}, ${new Date(m.at).toISOString().slice(0, 10)} · id ${m.id}_\n\n${m.text}\n`).join('\n');
 }
 
+// Just the skills, for a parent folder linked to the project (huddle link)
+function writeSkills(root, shared, log = () => {}) {
+  const manifestFile = path.join(sharedDir(root), 'skills.json');
+  let manifest = [];
+  try { manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8')); } catch {}
+  const skillsRoot = path.join(root, '.claude', 'skills');
+  const keep = [];
+  for (const sk of shared.skills) {
+    const skDir = path.join(skillsRoot, sk.name);
+    if (fs.existsSync(skDir) && !manifest.includes(sk.name)) { log(`skill ${sk.name} exists already, skipped`); continue; }
+    fs.mkdirSync(skDir, { recursive: true });
+    writeIfChanged(path.join(skDir, 'SKILL.md'), sk.body);
+    keep.push(sk.name);
+  }
+  for (const name of manifest) if (!keep.includes(name)) fs.rmSync(path.join(skillsRoot, name), { recursive: true, force: true });
+  fs.mkdirSync(path.dirname(manifestFile), { recursive: true });
+  fs.writeFileSync(manifestFile, JSON.stringify(keep));
+}
+
 // Write everything to disk. Skills we created are tracked in a manifest so we
 // can remove them later without ever touching skills the project owns.
 function writeShared(root, shared, log = () => {}) {
@@ -121,4 +140,4 @@ function oneLine(s, n) {
   return t.length > n ? t.slice(0, n - 1) + '…' : t;
 }
 
-module.exports = { writeShared, signature, briefing, describeChanges, memoriesMarkdown, sharedDir, ago };
+module.exports = { writeSkills, writeShared, signature, briefing, describeChanges, memoriesMarkdown, sharedDir, ago };

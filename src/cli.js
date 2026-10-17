@@ -25,6 +25,7 @@ Everyone (in the project folder):
   huddle join <invite> [--name YOUR_NAME]
       Set up this folder: config, Claude Code hooks and the huddle MCP tools.
   huddle leave                  remove huddle from this folder
+  huddle link FOLDER            run in a parent folder: Claude started here joins FOLDER's huddle
 
 Talk to the whole team of Claudes:
   huddle ask "build X"          give every agent a goal; one plans it, all of them work it
@@ -177,8 +178,10 @@ function selfInstall() {
 
 function q(s) { return process.platform === 'win32' ? `"${s}"` : `'${s.replace(/'/g, `'\\''`)}'`; }
 
-function hookCmd(dir, event) {
-  return `${q(process.execPath)} ${q(path.join(dir, 'src', 'cli.js'))} hook ${event} #${HOOK_MARK}`;
+// projectRoot is set when the hooks live in a parent folder linked to a joined project
+function hookCmd(dir, event, projectRoot) {
+  const env = projectRoot ? (process.platform === 'win32' ? '' : `HUDDLE_ROOT=${q(projectRoot)} `) : '';
+  return `${env}${q(process.execPath)} ${q(path.join(dir, 'src', 'cli.js'))} hook ${event} #${HOOK_MARK}`;
 }
 
 function settingsPath(root) { return path.join(root, '.claude', 'settings.local.json'); }
@@ -195,14 +198,14 @@ function stripHooks(settings) {
   return settings;
 }
 
-function installHooks(root, dir) {
+function installHooks(root, dir, projectRoot) {
   const file = settingsPath(root);
   let s = {};
   try { s = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
   stripHooks(s);
   s.hooks = s.hooks || {};
   const add = (ev, matcher, name, timeout = 15) => {
-    (s.hooks[ev] = s.hooks[ev] || []).push({ ...(matcher ? { matcher } : {}), hooks: [{ type: 'command', command: hookCmd(dir, name), timeout }] });
+    (s.hooks[ev] = s.hooks[ev] || []).push({ ...(matcher ? { matcher } : {}), hooks: [{ type: 'command', command: hookCmd(dir, name, projectRoot), timeout }] });
   };
   add('SessionStart', null, 'session-start');
   add('UserPromptSubmit', null, 'prompt');
@@ -217,8 +220,8 @@ function installHooks(root, dir) {
   fs.writeFileSync(file, JSON.stringify(s, null, 2) + '\n');
 }
 
-function installMcp(root, dir) {
-  const spec = JSON.stringify({ type: 'stdio', command: process.execPath, args: [path.join(dir, 'src', 'cli.js'), 'mcp'], env: { HUDDLE_ROOT: root } });
+function installMcp(root, dir, projectRoot) {
+  const spec = JSON.stringify({ type: 'stdio', command: process.execPath, args: [path.join(dir, 'src', 'cli.js'), 'mcp'], env: { HUDDLE_ROOT: projectRoot || root } });
   spawnSync('claude', ['mcp', 'remove', '-s', 'local', 'huddle'], { cwd: root, stdio: 'ignore' });
   const r = spawnSync('claude', ['mcp', 'add-json', '-s', 'local', 'huddle', spec], { cwd: root, encoding: 'utf8' });
   if (r.status === 0) return true;
@@ -462,6 +465,33 @@ function ownBranchName(root, name, base) {
   let b = `${gitx.refSafe(name)}/${base || 'work'}`, i = 2;
   while (gitx.git(root, ['rev-parse', '--verify', '-q', `refs/heads/${b}`]).ok) b = `${gitx.refSafe(name)}/${base || 'work'}-${i++}`;
   return b;
+}
+
+// Connect Claude sessions started in this (parent) folder to a joined project inside it.
+function cmdLink({ pos }) {
+  need(pos[0], 'usage: huddle link PROJECT_FOLDER   (run in a folder that contains the joined project)');
+  const here = process.cwd();
+  const target = path.resolve(pos[0]);
+  need(fs.existsSync(path.join(target, CONFIG_DIR, 'config.json')), `${target} isn't joined to a huddle yet (run huddle join there first)`);
+  need(target !== here, 'that is this folder; it is already connected');
+  const dir = selfInstall();
+  installHooks(here, dir, target);
+  const mcp = installMcp(here, dir, target);
+  console.log(`Claude sessions started in ${here} now join the huddle of ${path.relative(here, target) || target}.
+Only files inside that folder are shared and locked; everything else here stays local.${mcp ? '' : '\n(register the MCP server as shown above)'}
+Undo with: huddle unlink`);
+}
+
+function cmdUnlink() {
+  const here = process.cwd();
+  const file = settingsPath(here);
+  try {
+    const s = stripHooks(JSON.parse(fs.readFileSync(file, 'utf8')));
+    if (s.permissions && s.permissions.allow) s.permissions.allow = s.permissions.allow.filter(p => p !== 'mcp__huddle');
+    fs.writeFileSync(file, JSON.stringify(s, null, 2) + '\n');
+  } catch {}
+  spawnSync('claude', ['mcp', 'remove', '-s', 'local', 'huddle'], { cwd: here, stdio: 'ignore' });
+  console.log('Claude sessions started here are no longer connected to huddle');
 }
 
 async function cmdSync({ flags }) { await syncCopy(configured(), flags); }
@@ -770,7 +800,7 @@ async function main() {
     lock: cmdLock, unlock: cmdUnlock, watch: cmdWatch, invite: cmdInvite, open: cmdOpen,
     project: cmdProject, sharing: cmdSharing,
     sync: cmdSync, branches: cmdBranches, branch: cmdBranch, publish: cmdPublish, fetch: cmdFetch, merge: cmdMerge,
-    ask: cmdAsk, board: cmdBoard, autopilot: cmdAutopilot, unpublish: cmdUnpublish, forget: cmdForget, memory: cmdMemory, memories: cmdMemory, skill: cmdSkill, skills: cmdSkill,
+    ask: cmdAsk, board: cmdBoard, autopilot: cmdAutopilot, unpublish: cmdUnpublish, forget: cmdForget, link: cmdLink, unlink: cmdUnlink, memory: cmdMemory, memories: cmdMemory, skill: cmdSkill, skills: cmdSkill,
     hook: () => require('./hooks').runHook(args.pos[0]),
     mcp: () => require('./mcp').runMcp(),
   };

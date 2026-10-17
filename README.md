@@ -105,6 +105,7 @@ If you're in several projects, each one has its own dashboard address (`…/#p=p
 - Only Claude Code sessions started **inside the joined folder** are connected. Claude anywhere else on your computer never sees huddle and nothing from it is shared.
 - Inside the folder, your prompts, Claude's replies and its tool calls show up in the team's timeline (so everyone can follow along). To keep one turn to yourself, start the prompt with **`private:`**, e.g. `private: draft a message to my manager`. That whole turn, prompt, replies and tool calls, stays out of the feed, and Claude is told not to repeat it to the team. File edits still sync, since they're project work.
 - `huddle sharing tools` shares only which tools ran (no conversation), and `huddle sharing off` shares neither.
+- Keep your huddle projects together in one parent folder? Run `huddle link PROJECT_FOLDER` in the parent, and Claude started in the parent joins that project's huddle too. Only files inside the project folder are shared; anything else in the parent stays yours. `huddle unlink` undoes it.
 - The Claudes' huddle tools only reach the project the folder is joined to. Each project has its own token, and nothing crosses between projects.
 
 ## Shared team knowledge
