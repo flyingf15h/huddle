@@ -71,6 +71,24 @@ async function inbox(client, cfg, force) {
   return out.join('\n\n');
 }
 
+// Requests other people sent to this person's Claude that aren't finished, shown on every prompt.
+// The request runner does them in the background unless the person turned it off; either way the
+// Claude in front of the person should know about them.
+async function openRequests(client) {
+  const me = client.agent.name;
+  const b = await client.get('board');
+  const open = b.tasks.filter(t => t.direct && t.owner === me && t.status !== 'done');
+  if (!open.length) return '';
+  const settings = await client.get('settings').catch(() => ({ settings: {} }));
+  const mode = ((settings.settings || {})[me] || {}).autopilot || 'requests';
+  const how = mode === 'off'
+    ? 'Your requests runner is off, so these wait for you: do them now if your user agrees, or tell your user they are waiting.'
+    : 'Your request runner works through these in the background; don\'t redo them, but mention them to your user. A blocked one needs your user.';
+  return `Requests sent to you (${me}'s Claude):\n` +
+    open.map(t => `- [${t.id}] from ${t.by}, ${t.status}: ${t.title}${t.status === 'blocked' && t.notes && t.notes.length ? ` (${t.notes[t.notes.length - 1].text})` : ''}`).join('\n') +
+    '\n' + how;
+}
+
 // After a turn, share the branch if it has new commits so others can merge it.
 async function autoPublish(client, cfg, st) {
   if (cfg.shareGit === false || !gitx.isRepo(cfg.root)) return;
@@ -338,7 +356,11 @@ const handlers = {
     const theirs = s.locks.filter(l => l.holder !== client.agent.id);
     const lockLine = theirs.length ? 'huddle: files currently locked by other agents: ' + theirs.map(l => `${l.path} (${l.holderName})`).join(', ') : '';
     const privateNote = isPrivate ? 'This turn is private: huddle is not sharing your user\'s prompt, your replies or your tool calls with the team. Do not put what is discussed here into huddle messages, team memory or PROJECT.md unless the user asks you to. File edits and commits in the project still sync as usual.' : '';
-    return ctx('UserPromptSubmit', [privateNote, mail, lockLine].filter(Boolean).join('\n\n'));
+    const asks = await openRequests(client).catch(() => '');
+    // whatever the prompt is about, the team's messages and requests come first
+    const team = [mail, asks].filter(Boolean).join('\n\n');
+    const first = team ? `huddle: read this first, before your user's prompt, and tell your user about anything that needs them.\n\n${team}` : '';
+    return ctx('UserPromptSubmit', [first, privateNote, lockLine].filter(Boolean).join('\n\n'));
   },
 
   async stop(input, client, cfg) {

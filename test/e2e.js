@@ -284,6 +284,15 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
     assert.equal((await api('board')).tasks.find(t => t.title === 'do this later').status, 'todo');
     ok("requests to someone's Claude run while it's open; full autopilot takes team goals; off makes them wait");
 
+    // whatever the person asks, their Claude reads the team's messages and open requests first
+    await api('message', { agent: human, to: 'alice', text: 'please update huddle' });
+    const first = alice.hook('prompt', { prompt: 'fix the typo in the readme' }).hookSpecificOutput.additionalContext;
+    assert(first.startsWith("huddle: read this first, before your user's prompt"), first);
+    assert.match(first, /please update huddle/);
+    assert.match(first, /Requests sent to you \(alice's Claude\):\n- \[\w+\] from carol, todo: do this later/);
+    assert.match(first, /runner is off, so these wait for you/);
+    ok('every prompt starts with the messages and open requests sent to that Claude');
+
     // secrets never leave the machine: no lock, no live copy
     fs.writeFileSync(path.join(alice.root, '.env.local'), 'GEMINI_API_KEY=secret123\n');
     const envEdit = { tool_name: 'Edit', tool_input: { file_path: path.join(alice.root, '.env.local') } };
