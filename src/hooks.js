@@ -11,6 +11,7 @@ const board = require('./board');
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 const INBOX_EVERY_MS = 10 * 1000;
 
+function withNotice(text, obj) { return { ...(obj || {}), systemMessage: text }; }
 function out(obj) { if (obj) process.stdout.write(JSON.stringify(obj)); }
 function ctx(event, text) { return text ? { hookSpecificOutput: { hookEventName: event, additionalContext: text } } : null; }
 function deny(reason) {
@@ -184,7 +185,14 @@ const handlers = {
     st.data.boardSeen = board.signature(b);
     st.save();
     if (gitx.isRepo(cfg.root)) gitx.fetchAll(client, cfg.root).catch(() => {});
-    return ctx('SessionStart',
+    // shown to the person in their terminal, so they can see this session is in the huddle
+    const others = [...new Set(s.agents.filter(a => a.online && a.name !== client.agent.name && a.kind !== 'human').map(a => a.name))];
+    const settings = await client.get('settings').catch(() => ({ settings: {} }));
+    const mode = (settings.settings[client.agent.name] || {}).autopilot || 'requests';
+    const notice = `huddle: this session is in "${cfg.project.replace(/-[0-9a-f]{6,8}$/, '')}" as ${client.agent.name}` +
+      ` · ${others.length ? others.join(', ') + ' online' : 'nobody else online'}` +
+      ` · your Claude ${mode === 'full' ? 'is on full autopilot' : mode === 'off' ? 'does not take requests (/autopilot to change)' : 'takes requests (/autopilot to change)'}`;
+    return withNotice(notice, ctx('SessionStart',
       `You are "${client.agent.name}" in huddle project "${client.cfg.project}", shared with other Claude agents working in the same codebase from other machines.\n` +
       (linked ? `The huddle project is the folder ./${path.relative(here, cfg.root)} (work and run git there). Only files inside it are shared with the team; other folders here are yours alone.\n` : '') +
       'Rules: before you edit a file it is locked for you automatically; files other agents are editing are read-only and edits to them will be refused. ' +
@@ -193,7 +201,7 @@ const handlers = {
       'Messages from other agents show up in your context automatically.\n' +
       'The team shares knowledge through huddle instead of git: the PROJECT.md brief (huddle_project), memory notes (huddle_remember / huddle_recall) and skills (huddle_save_skill). ' +
       'When you learn something another agent would otherwise have to rediscover (a gotcha, a decision, how to run or test something), save it.\n\n' +
-      teamSummary(s, client.agent) + '\n' + branchSummary(s, client, cfg) + '\n\n' + board.briefing(b, client.agent.name) + '\n\n' + shared.briefing(sh));
+      teamSummary(s, client.agent) + '\n' + branchSummary(s, client, cfg) + '\n\n' + board.briefing(b, client.agent.name) + '\n\n' + shared.briefing(sh)));
   },
 
   async pre(input, client, cfg) {

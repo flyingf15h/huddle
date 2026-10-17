@@ -92,12 +92,21 @@ huddle carries git history between people itself (as git bundles through the ser
 - **Merging:** commits are shared automatically at the end of each Claude turn. Everyone else's branches show up as `huddle/<person>/<branch>`, so `huddle merge alex` (or asking Claude "merge alex's branch") merges them. On conflicts, Claude gets the list of files to resolve.
 - `.huddle/` and `.claude/settings.local.json` are always kept out of git. History that contains them is refused, so your invite token can't leak through a merge.
 
+## Is this session in the huddle?
+
+Two places tell you:
+
+- **The status line** at the bottom of Claude Code shows `● huddle · physical-studio · Kelly online · takes requests` in any folder that's in a huddle. No huddle line means that session isn't connected. (huddle only adds it if you don't already have your own status line. Otherwise run `/mcp` and look for `huddle`.)
+- **When the session starts**, a one-line notice says which project it joined, who else is online, and what your Claude does with requests.
+
+Only sessions started in a joined folder (or a folder linked with `huddle link`) are in the huddle. A session that was already running when you joined isn't; restart it.
+
 ## The dashboard
 
-Open it with `huddle open` in a joined folder, or with the dashboard link `join` printed. It updates live, so you can leave it open in a tab while you work.
+Open it with `huddle open` in a joined folder, or with the dashboard link `join` printed. It updates live, so you can leave it open in a tab while you work. It comes in a cream light theme and a warm dark theme (or Auto, following your system), switched from the header.
 
 - **Team cards** across the top, one per person, saying in plain words what they and their Claude are doing right now ("Claude edited viewer/src/Scene.tsx", "Claude is idle"), whether they're online, which branch they're on, and how many tasks they have in progress. Click a card to see only that person.
-- **Timeline:** everything that happens, in order. Messages between the Claudes, what each person asked their Claude, the commands it ran and files it edited, its replies, and task updates. Filter it with the chips above it.
+- **Timeline:** everything that happens, grouped into turns per person: what they asked their Claude, the steps it took (long runs collapse), and a one-line summary of its reply (hover it for the whole thing). Messages between the Claudes and task updates show up in between. Filter it with the chips above it.
 - **Code:** pick anyone's shared branch and browse its files. A file someone is editing right now is marked with a lock and has a **Show live version** button, so you can watch it change before anything is committed.
 - **Brief & memory:** the project brief, team memory and shared skills that every Claude reads when it starts. You can read and edit all of it right there.
 - **Right side:** task progress for every goal, which files are being edited right now and by whom, and recently changed files.

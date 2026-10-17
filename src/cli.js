@@ -185,8 +185,15 @@ function q(s) { return process.platform === 'win32' ? `"${s}"` : `'${s.replace(/
 
 // projectRoot is set when the hooks live in a parent folder linked to a joined project
 function hookCmd(dir, event, projectRoot) {
+  return cliCmd(dir, `hook ${event}`, projectRoot);
+}
+function cliCmd(dir, args, projectRoot) {
   const env = projectRoot ? (process.platform === 'win32' ? '' : `HUDDLE_ROOT=${q(projectRoot)} `) : '';
-  return `${env}${q(process.execPath)} ${q(path.join(dir, 'src', 'cli.js'))} hook ${event} #${HOOK_MARK}`;
+  return `${env}${q(process.execPath)} ${q(path.join(dir, 'src', 'cli.js'))} ${args} #${HOOK_MARK}`;
+}
+
+function globalStatusLine() {
+  try { return !!JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude', 'settings.json'), 'utf8')).statusLine; } catch { return false; }
 }
 
 function settingsPath(root) { return path.join(root, '.claude', 'settings.local.json'); }
@@ -200,6 +207,7 @@ function stripHooks(settings) {
     if (!settings.hooks[ev].length) delete settings.hooks[ev];
   }
   if (!Object.keys(settings.hooks).length) delete settings.hooks;
+  if (settings.statusLine && String(settings.statusLine.command || '').includes(HOOK_MARK)) delete settings.statusLine;
   return settings;
 }
 
@@ -218,6 +226,8 @@ function installHooks(root, dir, projectRoot) {
   add('PostToolUse', '*', 'post');
   add('Stop', null, 'stop');
   add('SessionEnd', null, 'session-end');
+  // a status line that shows this folder is in a huddle, unless the person already has their own
+  if (!s.statusLine && !globalStatusLine()) s.statusLine = { type: 'command', command: cliCmd(dir, 'statusline', projectRoot), padding: 0 };
   // let the agent use huddle's own tools without a permission prompt each time
   s.permissions = s.permissions || {};
   s.permissions.allow = [...new Set([...(s.permissions.allow || []), 'mcp__huddle'])];
@@ -516,6 +526,33 @@ function cmdUnlink() {
   } catch {}
   spawnSync('claude', ['mcp', 'remove', '-s', 'local', 'huddle'], { cwd: here, stdio: 'ignore' });
   console.log('Claude sessions started here are no longer connected to huddle');
+}
+
+// Claude Code's status line in a huddled folder: "● huddle · project · who's online · autopilot".
+// Cached for a few seconds so it never slows the prompt down.
+async function cmdStatusline() {
+  let input = {};
+  try { let raw = ''; for await (const c of process.stdin) raw += c; input = JSON.parse(raw || '{}'); } catch {}
+  const cfg = loadConfig((input.workspace && input.workspace.current_dir) || input.cwd || process.cwd());
+  if (!cfg || !cfg.server) return;
+  const cache = path.join(cfg.root, CONFIG_DIR, 'statusline.json');
+  let c = null;
+  try { c = JSON.parse(fs.readFileSync(cache, 'utf8')); } catch {}
+  if (!c || Date.now() - c.at > 15000) {
+    try {
+      const client = new Client(cfg, identity(cfg, 'status'));
+      const [s, st] = await Promise.all([client.get('state', null, { timeout: 1500 }), client.get('settings', null, { timeout: 1500 })]);
+      const others = [...new Set(s.agents.filter(a => a.online && a.name !== cfg.name && a.kind !== 'human').map(a => a.name))];
+      const mode = (st.settings[cfg.name] || {}).autopilot || 'requests';
+      c = { at: Date.now(), ok: true, others, mode };
+    } catch { c = { at: Date.now(), ok: false }; }
+    try { fs.writeFileSync(cache, JSON.stringify(c)); } catch {}
+  }
+  const green = (t) => `\x1b[32m${t}\x1b[0m`, dim = (t) => `\x1b[2m${t}\x1b[0m`;
+  if (!c.ok) return process.stdout.write(`${dim('○')} huddle · ${cfg.project} ${dim('· server unreachable')}`);
+  const who = c.others.length ? `${c.others.join(', ')} online` : 'nobody else online';
+  const mode = { requests: 'takes requests', full: 'autopilot', off: 'requests wait' }[c.mode];
+  process.stdout.write(`${green('●')} huddle · ${cfg.project.replace(/-[0-9a-f]{6,8}$/, '')} ${dim('·')} ${who} ${dim('·')} ${mode}`);
 }
 
 async function cmdSync({ flags }) { await syncCopy(configured(), flags); }
@@ -839,7 +876,7 @@ async function main() {
     lock: cmdLock, unlock: cmdUnlock, watch: cmdWatch, invite: cmdInvite, open: cmdOpen,
     project: cmdProject, sharing: cmdSharing,
     sync: cmdSync, branches: cmdBranches, branch: cmdBranch, publish: cmdPublish, fetch: cmdFetch, merge: cmdMerge,
-    ask: cmdAsk, board: cmdBoard, autopilot: cmdAutopilot, unpublish: cmdUnpublish, forget: cmdForget, 'same-person': cmdSamePerson, link: cmdLink, unlink: cmdUnlink, memory: cmdMemory, memories: cmdMemory, skill: cmdSkill, skills: cmdSkill,
+    ask: cmdAsk, board: cmdBoard, autopilot: cmdAutopilot, unpublish: cmdUnpublish, forget: cmdForget, 'same-person': cmdSamePerson, link: cmdLink, unlink: cmdUnlink, statusline: cmdStatusline, memory: cmdMemory, memories: cmdMemory, skill: cmdSkill, skills: cmdSkill,
     hook: () => require('./hooks').runHook(args.pos[0]),
     mcp: () => require('./mcp').runMcp(),
   };

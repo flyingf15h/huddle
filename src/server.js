@@ -168,6 +168,9 @@ function createServer(opts = {}) {
   function isAdmin(req, url) { return sameSecret(given(req, url), token); }
   function checkAdmin(req, url) { if (!isAdmin(req, url)) throw httpError(401, 'bad token'); }
 
+  // outlive clients' idle sockets, or a reused connection can be closed under a request
+  server.keepAliveTimeout = 70 * 1000;
+  server.headersTimeout = 75 * 1000;
   server.huddleToken = token;
   server.huddleOpen = open;
   server.huddleFlush = flush;
