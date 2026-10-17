@@ -38,7 +38,9 @@ Day to day:
   huddle status                 who's online, locks, recent edits
   huddle send <text> [--to N]   message the agents
   huddle inbox                  read messages for you
-  huddle watch                  live feed + keep files synced (for humans editing by hand)
+  huddle watch                  live feed of everything, incl. each Claude's prompts, replies
+                                and tool calls; keeps files synced while you edit by hand
+  huddle sharing [full|tools|off]   how much of YOUR Claude sessions others can see
   huddle lock <file> / unlock [file]
   huddle invite                 print this project's invite code again
   huddle open                   open the live dashboard in your browser
@@ -272,6 +274,9 @@ joined "${inv.project}" as ${name} in ${root}
   tools   → ${mcp ? 'huddle MCP server registered for this folder' : 'see above'}
 Live dashboard: ${inv.server}/#invite=${pos[0]}
 
+Your Claude sessions here are shared with the team (your prompts, Claude's replies,
+its tool calls) so everyone can follow along. Change that with: huddle sharing tools|off
+
 Next: start (or restart) Claude Code in this folder, then just prompt it as usual.
 It already knows who else is working, what's locked, and the team's PROJECT.md,
 memory and skills. Ask it things like "what is everyone working on?" or
@@ -359,6 +364,8 @@ async function cmdWatch() {
       unlock: () => `🔓 ${ev.holderName} released ${ev.path}${ev.reason === 'stale' ? ' (timed out)' : ''}`,
       file: () => `✎ ${ev.file.byName} edited ${ev.file.path} (v${ev.file.version})`,
       message: () => `💬 ${ev.message.fromName}${ev.message.to ? ' → ' + ev.message.to : ''}: ${ev.message.text}`,
+      activity: () => ev.items.map(it => `🤖 ${ev.agent.name}: ${it.kind === 'prompt' ? '❯ ' + it.text : it.kind === 'tool' ? '→ ' + it.text : it.kind === 'end' ? '(done)' : it.text}`.replace(/\n/g, '\n      ')).join('\n' + t() + '  '),
+      shared: () => `📚 ${ev.byName} ${ev.action === 'delete' ? 'deleted' : ev.action === 'add' ? 'added' : 'updated'} ${ev.kind === 'doc' ? 'PROJECT.md' : ev.kind + ' ' + (ev.title || ev.name)}`,
     }[ev.type];
     if (line) console.log(`${t()}  ${line()}`);
   };
@@ -432,6 +439,23 @@ async function cmdSkill({ pos, flags }) {
   for (const k of sh.skills) console.log(`${k.name}  v${k.version} by ${k.byName}\n    ${k.description}\n`);
 }
 
+function cmdSharing({ pos }) {
+  const cfg = configured();
+  const file = path.join(cfg.root, CONFIG_DIR, 'config.json');
+  const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+  if (pos[0]) {
+    need(['full', 'tools', 'off'].includes(pos[0]), 'usage: huddle sharing full|tools|off');
+    raw.shareActivity = pos[0];
+    fs.writeFileSync(file, JSON.stringify(raw, null, 2) + '\n', { mode: 0o600 });
+  }
+  const level = raw.shareActivity || 'full';
+  console.log({
+    full: 'sharing: full. Others see your prompts, Claude\'s replies and its tool calls.',
+    tools: 'sharing: tools. Others see which tools your Claude runs (commands, files), not the conversation.',
+    off: 'sharing: off. Others only see locks, edits and messages.',
+  }[level] + (pos[0] ? '' : '\nchange with: huddle sharing full|tools|off'));
+}
+
 function cmdInvite() {
   const cfg = configured();
   const code = encodeInvite(cfg.server, cfg.token, cfg.project);
@@ -452,7 +476,7 @@ async function main() {
   const cmds = {
     server: cmdServer, new: cmdNew, join: cmdJoin, leave: cmdLeave, status: cmdStatus, send: cmdSend, inbox: cmdInbox,
     lock: cmdLock, unlock: cmdUnlock, watch: cmdWatch, invite: cmdInvite, open: cmdOpen,
-    project: cmdProject, memory: cmdMemory, memories: cmdMemory, skill: cmdSkill, skills: cmdSkill,
+    project: cmdProject, sharing: cmdSharing, memory: cmdMemory, memories: cmdMemory, skill: cmdSkill, skills: cmdSkill,
     hook: () => require('./hooks').runHook(args.pos[0]),
     mcp: () => require('./mcp').runMcp(),
   };

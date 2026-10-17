@@ -89,6 +89,7 @@ export class HuddleProject extends DurableObject {
       }
       p.messages = (await s.get('msgs')) || [];
       p.shared = (await s.get('shared')) || p.shared;
+      p.activity = (await s.get('activity')) || [];
     }
     p.limits = { ...LIMITS };
     p.isConnected = (id) => this.ctx.getWebSockets(id).length > 0;
@@ -114,9 +115,16 @@ export class HuddleProject extends DurableObject {
     delete meta.events;
     delete meta.messages;
     delete meta.shared;
+    delete meta.activity;
     for (const f of Object.values(meta.files)) delete f.content;
     const puts = { meta };
     if (p.sharedChanged) { puts.shared = p.shared; p.sharedChanged = false; }
+    if (p.activityChanged) {
+      let act = p.activity;
+      while (act.length > 1 && JSON.stringify(act).length > MSGS_BYTES) act = act.slice(Math.ceil(act.length / 4));
+      puts.activity = act;
+      p.activityChanged = false;
+    }
     for (const fp of p.changedFiles) if (p.files[fp] && p.files[fp].content != null) puts['f:' + fp] = p.files[fp].content;
     p.changedFiles.clear();
     const msgSeq = lastSeq(p.messages);

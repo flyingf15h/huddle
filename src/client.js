@@ -34,6 +34,8 @@ function loadConfig(start) {
     name: process.env.HUDDLE_NAME || cfg.name || `${os.userInfo().username}@${os.hostname()}`,
     releaseOnStop: cfg.releaseOnStop !== false,
     failClosed: !!cfg.failClosed,
+    // how much of this person's Claude session others can watch: full | tools | off
+    shareActivity: process.env.HUDDLE_SHARE || cfg.shareActivity || 'full',
   };
 }
 

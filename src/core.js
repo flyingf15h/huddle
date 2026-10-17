@@ -23,6 +23,8 @@ const DOC_BYTES = 64 * 1024;        // PROJECT.md and each skill
 const MEMORY_BYTES = 4 * 1024;      // each memory note
 const MAX_MEMORIES = 300;
 const MAX_SKILLS = 40;
+const MAX_ACTIVITY = 600;           // per project, newest kept
+const ACTIVITY_TEXT = 4000;
 
 function sha(s) { return crypto.createHash('sha256').update(s).digest('hex').slice(0, 16); }
 function now() { return Date.now(); }
@@ -51,17 +53,19 @@ class Project {
     this.lastActive = now();
     // knowledge every agent in the project shares: a brief, notes and skills
     this.shared = { version: 0, doc: null, memories: [], skills: [] };
+    this.activity = [];   // what each agent's Claude is doing: prompts, replies, tool calls
     this.waiters = new Set();
     if (saved) Object.assign(this, saved);
     this.waiters = new Set();
     this.dirty = false;
     this.changedFiles = new Set();     // paths whose content changed since the last save
     this.sharedChanged = false;
+    this.activityChanged = false;
     this.isConnected = () => false;    // servers with live sockets count those agents as online
     this.limits = { ...DEFAULT_LIMITS };
   }
   toJSON() {
-    const { waiters, dirty, changedFiles, sharedChanged, isConnected, limits, ...rest } = this;
+    const { waiters, dirty, changedFiles, sharedChanged, activityChanged, isConnected, limits, ...rest } = this;
     return rest;
   }
   // events after `since`, or null if they've been dropped and the client must resync
@@ -277,6 +281,27 @@ const routes = {
     return { messages: msgs, sharedVersion: p.shared.version };
   },
   'GET shared': (p) => p.shared,
+  'POST activity': (p, b) => {
+    const a = p.touch(b.agent);
+    const items = (Array.isArray(b.items) ? b.items : []).slice(0, 50).map(it => ({
+      kind: ['prompt', 'text', 'tool', 'end'].includes(it.kind) ? it.kind : 'text',
+      text: String(it.text || '').slice(0, ACTIVITY_TEXT),
+      tool: it.tool ? String(it.tool).slice(0, 80) : undefined,
+      at: now(), agent: a.id, name: a.name,
+    })).filter(it => it.text || it.kind === 'end');
+    if (!items.length) return { ok: true };
+    p.activity.push(...items);
+    if (p.activity.length > MAX_ACTIVITY) p.activity.splice(0, p.activity.length - MAX_ACTIVITY);
+    p.activityChanged = true;
+    p.emit('activity', { agent: p.publicAgent(a), items });
+    return { ok: true };
+  },
+  'GET activity': (p, b, q) => {
+    const who = q.get('agent');
+    const limit = Math.min(Number(q.get('limit') || 200), MAX_ACTIVITY);
+    const mine = who ? p.activity.filter(it => it.agent === who || it.name === who) : p.activity;
+    return { activity: mine.slice(-limit) };
+  },
   // the project brief; base_version guards against overwriting someone else's edit
   'POST doc': (p, b) => {
     const a = p.touch(b.agent);

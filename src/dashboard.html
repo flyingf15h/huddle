@@ -48,6 +48,13 @@ h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: v
 #team .card pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0 0; font: 12.5px/1.5 ui-monospace, Menlo, Consolas, monospace; }
 #team .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
 #team .row input { flex: 1; min-width: 140px; }
+.act { padding: 6px 0; border-bottom: 1px solid var(--line); }
+.act .who { font-size: 12px; color: var(--muted); }
+.act.prompt .body { font-weight: 600; }
+.act.prompt .body::before { content: '❯ '; color: var(--accent); }
+.act.tool .body { font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace; color: var(--muted); }
+.act.end .body { font-size: 12px; color: var(--muted); font-style: italic; }
+.act .body { white-space: pre-wrap; overflow-wrap: anywhere; }
 .linkbtn { background: none; color: var(--muted); padding: 0 4px; font-size: 12px; }
 #code { margin: 0; flex: 1; overflow: auto; background: var(--code); font: 12.5px/1.5 ui-monospace, Menlo, Consolas, monospace; }
 #code .ln { display: flex; }
@@ -98,7 +105,8 @@ h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: v
     </section>
     <section id="viewer">
       <div id="tabs">
-        <button data-tab="file" class="on">Live file</button>
+        <button data-tab="activity" class="on">Activity</button>
+        <button data-tab="file">Live file</button>
         <button data-tab="doc">PROJECT.md</button>
         <button data-tab="memory">Memory</button>
         <button data-tab="skills">Skills</button>
@@ -137,7 +145,8 @@ function decodeInvite(code) {
   } catch { return null; }
 }
 
-const S = { agents: {}, locks: {}, files: {}, sel: null, content: {}, seq: 0, tab: 'file', shared: null, editing: false };
+const S = { agents: {}, locks: {}, files: {}, sel: null, content: {}, seq: 0, tab: 'activity', shared: null, editing: false,
+  activity: [], who: '' };
 
 // ---- shared team knowledge ----
 document.addEventListener('click', (e) => {
@@ -149,10 +158,26 @@ document.addEventListener('click', (e) => {
   showTab();
 });
 async function loadShared() { S.shared = await api('shared'); if (S.tab !== 'file' && !S.editing) showTab(); }
+function actItem(it) {
+  const body = it.kind === 'end' ? 'finished its turn' : it.kind === 'tool' ? '→ ' + it.text : it.text;
+  return `<div class="act ${it.kind}"><div class="who">${esc(it.name)}${it.kind === 'prompt' ? ' (user prompt)' : it.kind === 'text' ? ' (Claude)' : ''} · ${new Date(it.at).toLocaleTimeString()}</div><div class="body">${esc(body)}</div></div>`;
+}
+function renderActivity() {
+  const el = $('team');
+  const names = [...new Set(S.activity.map(it => it.name))];
+  const list = S.activity.filter(it => !S.who || it.name === S.who);
+  const stick = el.scrollTop + el.clientHeight > el.scrollHeight - 60;
+  el.innerHTML = `<div class="row"><span class="sub">What everyone's Claude is doing, live</span><span class="grow"></span>
+    <select id="actwho"><option value="">everyone</option>${names.map(n => `<option ${n === S.who ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></div>
+    ${list.map(actItem).join('') || '<p class="sub">Nothing yet. Prompts, replies and tool calls show up here as people work (unless they turned sharing off).</p>'}`;
+  $('actwho').onchange = (e) => { S.who = e.target.value; renderActivity(); el.scrollTop = el.scrollHeight; };
+  if (stick) el.scrollTop = el.scrollHeight;
+}
 function showTab() {
   const file = S.tab === 'file';
   $('vhead').hidden = $('code').hidden = !file;
   $('team').hidden = file;
+  if (S.tab === 'activity') return renderActivity();
   if (file || !S.shared) return;
   const sh = S.shared, el = $('team');
   if (S.tab === 'doc') {
@@ -234,7 +259,10 @@ function render() {
 }
 document.addEventListener('click', (e) => {
   const el = e.target.closest('[data-p]');
-  if (el) { S.sel = el.dataset.p; render(); loadFile(S.sel, false); }
+  if (el) {
+    S.sel = el.dataset.p; render(); loadFile(S.sel, false);
+    if (S.tab !== 'file') document.querySelector('[data-tab=file]').click();
+  }
 });
 
 async function loadFile(p, highlight) {
@@ -272,6 +300,11 @@ function addChat(html) {
 }
 function onEvent(ev) {
   switch (ev.type) {
+    case 'activity':
+      S.activity.push(...ev.items);
+      if (S.activity.length > 600) S.activity.splice(0, S.activity.length - 600);
+      if (S.tab === 'activity') renderActivity();
+      break;
     case 'shared': {
       const what = ev.kind === 'doc' ? 'PROJECT.md' : ev.kind === 'memory' ? `memory “${esc(ev.title)}”` : `skill “${esc(ev.name)}”`;
       addChat(`<div class="ev">📚 ${esc(ev.byName)} ${ev.action === 'delete' ? 'deleted' : ev.action === 'add' ? 'added' : 'updated'} ${what}</div>`);
@@ -314,7 +347,9 @@ async function start() {
   store.set('huddle.token', auth.token); store.set('huddle.project', auth.project); store.set('huddle.name', auth.name);
   $('login').hidden = true; $('app').hidden = false;
   $('pname').textContent = auth.project + ' · you are ' + auth.name;
+  showTab();
   loadShared().catch(() => {});
+  api('activity?limit=300').then(r => { S.activity = r.activity; showTab(); $('team').scrollTop = $('team').scrollHeight; }).catch(() => {});
   const hist = await api('messages?limit=100');
   for (const m of hist.messages) onEvent({ type: 'message', message: m });
   connect();

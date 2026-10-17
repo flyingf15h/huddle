@@ -51,6 +51,74 @@ async function inbox(client, cfg, force) {
   return out.join('\n\n');
 }
 
+// One line saying what a tool call does, e.g. "Bash: npm test" or "Edit: src/app.js".
+function toolSummary(name, input = {}) {
+  const short = name.replace(/^mcp__huddle__/, '').replace(/^mcp__/, '');
+  const root = process.env.CLAUDE_PROJECT_DIR || '';
+  const rel = (f) => (root && f && f.startsWith(root + path.sep) ? f.slice(root.length + 1) : f);
+  const detail = input.command || rel(input.file_path || input.notebook_path) || input.pattern || input.url ||
+    input.query || input.description || input.text || input.path || input.prompt || '';
+  return `${short}${detail ? ': ' + String(detail).replace(/\s+/g, ' ').slice(0, 300) : ''}`;
+}
+
+// New assistant text and tool calls since we last looked, read from the
+// session transcript. Prompts come from the UserPromptSubmit hook instead.
+function newActivity(input, st, level) {
+  const file = input.transcript_path;
+  if (!file || level === 'off') return [];
+  let size;
+  try { size = fs.statSync(file).size; } catch { return []; }
+  if (st.data.transcript !== file || st.data.offset > size) { st.data.transcript = file; st.data.offset = size; return []; }
+  if (size === st.data.offset) return [];
+  const fd = fs.openSync(file, 'r');
+  const buf = Buffer.alloc(Math.min(size - st.data.offset, 4 * 1024 * 1024));
+  fs.readSync(fd, buf, 0, buf.length, st.data.offset);
+  fs.closeSync(fd);
+  const text = buf.toString('utf8');
+  const end = text.lastIndexOf('\n');
+  if (end < 0) return [];
+  st.data.offset += Buffer.byteLength(text.slice(0, end + 1));
+  const items = [];
+  for (const line of text.slice(0, end).split('\n')) {
+    let d;
+    try { d = JSON.parse(line); } catch { continue; }
+    if (d.type !== 'assistant' || d.isSidechain || !d.message || !Array.isArray(d.message.content)) continue;
+    for (const c of d.message.content) {
+      if (c.type === 'text' && c.text.trim() && level === 'full') {
+        // the Stop hook already shared the final reply from last_assistant_message
+        if (st.data.sentReply && c.text.trim() === st.data.sentReply) { delete st.data.sentReply; continue; }
+        items.push({ kind: 'text', text: c.text.trim() });
+      }
+      else if (c.type === 'tool_use') items.push({ kind: 'tool', tool: c.name, text: toolSummary(c.name, c.input) });
+    }
+  }
+  return items;
+}
+
+async function shareActivity(input, client, cfg, before = [], after = []) {
+  if (cfg.shareActivity === 'off') return;
+  const st = sessionState(cfg, client.agent);
+  const items = [...before, ...newActivity(input, st, cfg.shareActivity), ...after];
+  st.save();
+  if (items.length) await client.post('activity', { items });
+}
+
+// Claude Code writes the final reply to the transcript only after Stop hooks
+// run, so take it from the hook input instead.
+async function shareStop(input, client, cfg) {
+  if (cfg.shareActivity === 'off') return;
+  const st = sessionState(cfg, client.agent);
+  const items = newActivity(input, st, cfg.shareActivity);
+  const reply = String(input.last_assistant_message || '').trim();
+  if (reply && cfg.shareActivity === 'full' && !items.some(it => it.kind === 'text' && it.text === reply)) {
+    items.push({ kind: 'text', text: reply });
+    st.data.sentReply = reply;
+  }
+  items.push({ kind: 'end', text: '' });
+  st.save();
+  await client.post('activity', { items });
+}
+
 function teamSummary(s, me) {
   const others = s.agents.filter(a => a.online && a.id !== me.id && a.kind !== 'watcher');
   const lines = [];
@@ -69,6 +137,7 @@ const handlers = {
     shared.writeShared(cfg.root, sh);
     const st = sessionState(cfg, client.agent);
     st.data.shared = shared.signature(sh);
+    newActivity(input, st, cfg.shareActivity); // just positions us at the end of the transcript
     st.save();
     return ctx('SessionStart',
       `You are "${client.agent.name}" in huddle project "${client.cfg.project}", shared with other Claude agents working in the same codebase from other machines.\n` +
@@ -122,12 +191,15 @@ const handlers = {
         if (e.code !== 'ENOENT') notes.push(`huddle could not share ${rel}: ${e.message}`);
       }
     }
+    await shareActivity(input, client, cfg).catch(() => {});
     const mail = await inbox(client, cfg, false);
     if (mail) notes.push(mail);
     return ctx('PostToolUse', notes.join('\n\n'));
   },
 
   async prompt(input, client, cfg) {
+    const prompt = String(input.prompt || '').trim();
+    await shareActivity(input, client, cfg, [], cfg.shareActivity === 'full' && prompt ? [{ kind: 'prompt', text: prompt }] : []).catch(() => {});
     const mail = await inbox(client, cfg, true);
     const s = await client.get('state');
     const theirs = s.locks.filter(l => l.holder !== client.agent.id);
@@ -136,6 +208,7 @@ const handlers = {
   },
 
   async stop(input, client, cfg) {
+    await shareStop(input, client, cfg).catch(() => {});
     if (cfg.releaseOnStop) await client.post('unlock', { all: true, keepHeld: true, reason: 'turn finished' });
     if (input.stop_hook_active) return null;
     const peek = await client.post('inbox', { peek: true });

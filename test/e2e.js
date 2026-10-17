@@ -195,7 +195,29 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
     carol.hook('session-end', {});
     ok('PROJECT.md, memories and skills reach every agent, on disk and in context');
 
-    // open mode: anyone can create a project, and each project's token only opens that project
+    // activity: prompts, replies and tool calls stream to the others
+    const transcript = path.join(alice.root, 'transcript.jsonl');
+    fs.writeFileSync(transcript, JSON.stringify({ type: 'user', message: { content: 'old prompt' } }) + '\n');
+    fs.rmSync(path.join(alice.root, '.huddle', 'sessions'), { recursive: true, force: true });
+    alice.hook('session-start', { transcript_path: transcript });
+    alice.hook('prompt', { transcript_path: transcript, prompt: 'add a multiply function' });
+    fs.appendFileSync(transcript, [
+      { type: 'assistant', message: { content: [{ type: 'thinking', thinking: 'secret' }, { type: 'text', text: "I'll add multiply." }] } },
+      { type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Bash', input: { command: 'pytest -q' } }] } },
+      { type: 'assistant', isSidechain: true, message: { content: [{ type: 'text', text: 'subagent chatter' }] } },
+    ].map(x => JSON.stringify(x)).join('\n') + '\n');
+    alice.hook('post', { tool_name: 'Bash', tool_input: {}, transcript_path: transcript });
+    alice.hook('stop', { transcript_path: transcript, stop_hook_active: true, last_assistant_message: 'Done, multiply is in.' });
+    // Claude Code writes the final reply after the Stop hook; it must not be sent twice
+    fs.appendFileSync(transcript, JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Done, multiply is in.' }] } }) + '\n');
+    alice.hook('prompt', { transcript_path: transcript, prompt: 'thanks' });
+    const seen = await bob.tool('huddle_activity', { agent: 'alice' });
+    assert.match(seen, /user asked: add a multiply function[\s\S]*said: I'll add multiply\.[\s\S]*→ Bash: pytest -q[\s\S]*said: Done, multiply is in\.[\s\S]*finished its turn[\s\S]*user asked: thanks/);
+    assert.equal(seen.split('Done, multiply is in.').length, 2);
+    assert(!/old prompt|secret|subagent chatter/.test(seen));
+    ok("each Claude's prompts, replies and tool calls show up for the others");
+
+        // open mode: anyone can create a project, and each project's token only opens that project
     const mk = async (name) => (await fetch(pub.url + '/api/new', { method: 'POST', body: JSON.stringify({ name }) })).json();
     const p1 = await mk('My App'), p2 = await mk('other');
     assert.match(p1.project, /^my-app-[0-9a-f]{6,8}$/);

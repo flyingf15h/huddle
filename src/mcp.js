@@ -42,6 +42,8 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: { name: { type: 'string', description: 'kebab-case' }, description: { type: 'string', description: 'when an agent should use it' }, instructions: { type: 'string', description: 'the SKILL.md body (markdown)' } }, required: ['name', 'description', 'instructions'] } },
   { name: 'huddle_delete_skill', description: 'Remove a shared skill from every agent.',
     inputSchema: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] } },
+  { name: 'huddle_activity', description: "See what the other agents' Claude sessions are doing: their prompts, replies and tool calls, newest last. Useful before starting work that might overlap, or to follow up on someone's progress.",
+    inputSchema: { type: 'object', properties: { agent: { type: 'string', description: 'agent name; omit for everyone' }, limit: { type: 'number', minimum: 1, maximum: 200 } } } },
   { name: 'huddle_view', description: "See the live shared version of a file, including another agent's in-progress edits, with who changed it and when.",
     inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] } },
 ];
@@ -194,6 +196,14 @@ function runMcp() {
       case 'huddle_delete_skill':
         await client.post('skill-delete', { name: a.name });
         return `skill "${a.name}" removed for everyone`;
+      case 'huddle_activity': {
+        const q = { limit: String(a.limit || 40) };
+        if (a.agent) q.agent = a.agent;
+        const r = await client.get('activity', q);
+        const items = r.activity.filter(it => it.agent !== me.id);
+        if (!items.length) return a.agent ? `no recent activity from ${a.agent}` : 'no recent activity from other agents';
+        return items.map(it => `[${it.name}, ${ago(it.at)}] ${formatItem(it)}`).join('\n');
+      }
       case 'huddle_view': {
         const p = rel(a.path);
         let f;
@@ -210,6 +220,13 @@ function runMcp() {
       default: throw new Error('unknown tool ' + name);
     }
   }
+}
+
+function formatItem(it) {
+  if (it.kind === 'prompt') return `user asked: ${it.text}`;
+  if (it.kind === 'tool') return `→ ${it.text}`;
+  if (it.kind === 'end') return '(finished its turn)';
+  return `said: ${it.text}`;
 }
 
 function text(s, isError) { return { content: [{ type: 'text', text: s }], isError: !!isError }; }
