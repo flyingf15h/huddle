@@ -105,6 +105,7 @@ function createServer(opts = {}) {
     return {
       async put(key, data) { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(file(key), data); },
       async get(key) { try { return fs.readFileSync(file(key), 'utf8'); } catch { return null; } },
+      async del(key) { fs.rmSync(file(key), { force: true }); },
     };
   }
 

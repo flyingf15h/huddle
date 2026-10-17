@@ -55,6 +55,10 @@ function person(name, pid, url, token, project, { git = true } = {}) {
     dave.write('calc.py', 'def add(a, b):\n    return a + b\n');
     dave.git('add', '-A'); dave.git('commit', '-qm', 'add');
     assert.match(dave.cli('sync', '--sync', 'share'), /shared main/);
+    const tree = await fetch(`${url}/api/p/${project}/git-tree?ref=dave/main`, { headers: { authorization: 'Bearer ' + token } }).then(r => r.json());
+    assert.deepEqual(tree.files.map(f => f.path), ['calc.py']);
+    const blob = await fetch(`${url}/api/p/${project}/git-blob?ref=dave/main&path=calc.py`, { headers: { authorization: 'Bearer ' + token } }).then(r => r.json());
+    assert.match(blob.content, /def add/);
     ok('the first person shares their git history');
 
     // huddle's own files never get into history, and history that has them is refused

@@ -25,7 +25,8 @@ const MAX_MEMORIES = 300;
 const MAX_SKILLS = 40;
 const MAX_ACTIVITY = 600;
 const GIT_CHUNK = 900 * 1024;       // raw bytes per uploaded bundle piece
-const MAX_TASKS = 400;           // per project, newest kept
+const MAX_TASKS = 400;
+const SNAP_PART = 900 * 1024;       // JSON bytes per uploaded piece of a branch's file listing           // per project, newest kept
 const ACTIVITY_TEXT = 4000;
 
 function sha(s) { return crypto.createHash('sha256').update(s).digest('hex').slice(0, 16); }
@@ -61,7 +62,7 @@ class Project {
     this.shared = { version: 0, doc: null, memories: [], skills: [] };
     this.activity = [];   // what each agent's Claude is doing: prompts, replies, tool calls
     // git history people published, as bundles; refs are "<person>/<branch>"
-    this.git = { refs: {}, bundles: [], bytes: 0, uploads: {} };
+    this.git = { refs: {}, bundles: [], bytes: 0, uploads: {}, snapshots: {} };
     // team prompts ("goals") and the tasks the agents split them into
     this.board = { version: 0, goals: [], tasks: [] };
     this.waiters = new Set();
@@ -314,7 +315,8 @@ const routes = {
   },
   'GET shared': (p) => p.shared,
   // ---- git: people publish branches as bundles, everyone fetches them ----
-  'GET git': (p) => ({ refs: p.git.refs, bundles: p.git.bundles, bytes: p.git.bytes, limit: p.limits.gitBytes }),
+  'GET git': (p) => ({ refs: p.git.refs, bundles: p.git.bundles, bytes: p.git.bytes, limit: p.limits.gitBytes,
+    snapshots: Object.fromEntries(Object.entries(p.git.snapshots || {}).map(([k, v]) => [k, { sha: v.sha, at: v.at }])) }),
   // a bundle arrives in pieces (requests are size-limited); the last piece registers it
   'POST git-upload': async (p, b, q, ctx) => {
     const a = p.touch(b.agent);
@@ -362,6 +364,47 @@ const routes = {
       p.emit('git', { action: 'forget', owner: r.owner, branch: r.branch });
     }
     return { ok: true, removed: drop.map(r => `${r.owner}/${r.branch}`) };
+  },
+  // a readable copy of a published branch's files, so the dashboard can show the project
+  'POST git-snapshot': async (p, b, q, ctx) => {
+    const a = p.touch(b.agent);
+    const branch = String(b.branch || '');
+    if (!branch || !/^[0-9a-f]{40}$/.test(b.sha || '')) throw httpError(400, 'branch and sha required');
+    const n = Number(b.n), i = Number(b.i);
+    if (!(n >= 1 && n <= 32 && i >= 0 && i < n)) throw httpError(400, 'bad part index');
+    const files = (Array.isArray(b.files) ? b.files : []).map(f => ({ path: normPath(f.path), content: String(f.content || '') }));
+    const data = JSON.stringify(files);
+    if (data.length > SNAP_PART + 4096) throw httpError(413, 'snapshot part too large');
+    const key = `${a.name}/${branch}`;
+    await ctx.blobs.put(`snap:${key}:${b.sha}:${i}`, data);
+    p.git.snapshots = p.git.snapshots || {};
+    const up = p.git.uploads['snap:' + key] = (p.git.uploads['snap:' + key] && p.git.uploads['snap:' + key].sha === b.sha) ? p.git.uploads['snap:' + key] : { sha: b.sha, got: [], files: {} };
+    if (!up.got.includes(i)) up.got.push(i);
+    for (const f of files) up.files[f.path] = { i, size: f.content.length };
+    if (up.got.length < n) { p.dirty = true; return { ok: true, pending: n - up.got.length }; }
+    delete p.git.uploads['snap:' + key];
+    const old = p.git.snapshots[key];
+    p.git.snapshots[key] = { owner: a.name, branch, sha: b.sha, n, at: now(), files: up.files, skipped: (b.skipped || []).slice(0, 200).map(String) };
+    if (old && old.sha !== b.sha && ctx.blobs.del) for (let j = 0; j < old.n; j++) await ctx.blobs.del(`snap:${key}:${old.sha}:${j}`);
+    p.emit('git', { action: 'snapshot', ref: p.git.refs[key] || { owner: a.name, branch, sha: b.sha } });
+    return { ok: true };
+  },
+  'GET git-tree': (p, b, q) => {
+    const snaps = p.git.snapshots || {};
+    if (!q.get('ref')) return { refs: Object.values(snaps).map(x => ({ owner: x.owner, branch: x.branch, sha: x.sha, at: x.at, count: Object.keys(x.files).length })) };
+    const sn = snaps[q.get('ref')];
+    if (!sn) throw httpError(404, 'no snapshot for ' + q.get('ref'));
+    return { owner: sn.owner, branch: sn.branch, sha: sn.sha, at: sn.at, skipped: sn.skipped,
+      files: Object.entries(sn.files).map(([path, f]) => ({ path, size: f.size })).sort((x, y) => x.path.localeCompare(y.path)) };
+  },
+  'GET git-blob': async (p, b, q, ctx) => {
+    const sn = (p.git.snapshots || {})[q.get('ref')];
+    const fp = normPath(q.get('path'));
+    if (!sn || !sn.files[fp]) throw httpError(404, 'no such file in ' + q.get('ref'));
+    const part = await ctx.blobs.get(`snap:${q.get('ref')}:${sn.sha}:${sn.files[fp].i}`);
+    const f = part && JSON.parse(part).find(x => x.path === fp);
+    if (!f) throw httpError(404, 'file content missing');
+    return { path: fp, content: f.content, sha: sn.sha, owner: sn.owner, branch: sn.branch };
   },
   'GET git-chunk': async (p, b, q, ctx) => {
     const data = await ctx.blobs.get(`git:${q.get('id')}:${Number(q.get('i'))}`);

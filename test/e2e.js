@@ -217,6 +217,18 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
     assert(!/old prompt|secret|subagent chatter/.test(seen));
     ok("each Claude's prompts, replies and tool calls show up for the others");
 
+    // a private turn shares nothing, not even the reply that lands after Stop
+    alice.hook('prompt', { transcript_path: transcript, prompt: 'private: what do you think of bob honestly' });
+    fs.appendFileSync(transcript, JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'secret opinion' }, { type: 'tool_use', name: 'Read', input: { file_path: 'diary.txt' } }] } }) + '\n');
+    alice.hook('post', { tool_name: 'Read', tool_input: {}, transcript_path: transcript });
+    alice.hook('stop', { transcript_path: transcript, stop_hook_active: true, last_assistant_message: 'final secret' });
+    fs.appendFileSync(transcript, JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'final secret' }] } }) + '\n');
+    alice.hook('prompt', { transcript_path: transcript, prompt: 'back to work: run the tests' });
+    const after = await bob.tool('huddle_activity', { agent: 'alice', limit: 200 });
+    assert(!/honestly|secret|diary/.test(after), after);
+    assert.match(after, /user asked: back to work: run the tests/);
+    ok('a prompt starting with "private:" keeps that whole turn out of the feed');
+
         // open mode: anyone can create a project, and each project's token only opens that project
     const mk = async (name) => (await fetch(pub.url + '/api/new', { method: 'POST', body: JSON.stringify({ name }) })).json();
     const p1 = await mk('My App'), p2 = await mk('other');

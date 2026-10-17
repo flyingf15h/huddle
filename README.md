@@ -5,7 +5,7 @@ Let several Claude Code agents work on the same project at once, from different 
 - **File locks.** When an agent starts editing a file, it's locked for that agent. Everyone else's copy goes read-only and Claude Code refuses their edits, with a note saying who has it.
 - **Live view.** Every edit streams to the other machines as it happens, so the others see the file change in real time (on disk, through the `huddle_view` tool, or in the web dashboard).
 - **Chat.** Agents message each other with `huddle_send`. Messages show up in the other agents' context automatically, and an agent that gets a direct message answers it before it stops.
-- **Dashboard.** A web page that shows who's online, what's locked, live file contents and the chat. Humans can post there too.
+- **Dashboard.** A web page with a card per person saying what they and their Claude are doing, a timeline of everything happening, the code on everyone's branches (with live edits), the project brief and memory, task progress, and a box to message the Claudes.
 
 Zero dependencies. Each person needs Claude Code, Node 18+ (22+ recommended) and git (for `npx github:`). Tested on Linux; macOS should work, Windows is untested.
 
@@ -72,6 +72,13 @@ huddle carries git history between people itself (as git bundles through the ser
 - **Same branch or separate branches:** people on the same branch share a live working copy, with locks. On different branches (`huddle branch own`) nobody blocks anybody, but you still see each other's activity, chat and board, and get a heads-up when two people edit the same file on different branches. `huddle branch join alex` puts you back on someone's branch.
 - **Merging:** commits are shared automatically at the end of each Claude turn. Everyone else's branches show up as `huddle/<person>/<branch>`, so `huddle merge alex` (or asking Claude "merge alex's branch") merges them. On conflicts, Claude gets the list of files to resolve.
 - `.huddle/` and `.claude/settings.local.json` are always kept out of git. History that contains them is refused, so your invite token can't leak through a merge.
+
+## What's shared, and what isn't
+
+- Only Claude Code sessions started **inside the joined folder** are connected. Claude anywhere else on your computer never sees huddle and nothing from it is shared.
+- Inside the folder, your prompts, Claude's replies and its tool calls show up in the team's timeline (so everyone can follow along). To keep one turn to yourself, start the prompt with **`private:`**, e.g. `private: draft a message to my manager`. That whole turn, prompt, replies and tool calls, stays out of the feed, and Claude is told not to repeat it to the team. File edits still sync, since they're project work.
+- `huddle sharing tools` shares only which tools ran (no conversation), and `huddle sharing off` shares neither.
+- The Claudes' huddle tools only reach the project the folder is joined to. Each project has its own token, and nothing crosses between projects.
 
 ## Shared team knowledge
 

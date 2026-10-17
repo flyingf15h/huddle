@@ -115,9 +115,14 @@ function newActivity(input, st, level) {
   return items;
 }
 
+// A prompt starting with "private:" (or "#private") keeps that whole turn, its
+// prompt, replies and tool calls, out of the team's activity feed.
+const PRIVATE_PROMPT = /^\s*(private\s*:|#private\b|\(private\))/i;
+
 async function shareActivity(input, client, cfg, before = [], after = []) {
   if (cfg.shareActivity === 'off') return;
   const st = sessionState(cfg, client.agent);
+  if (st.data.private) { newActivity(input, st, cfg.shareActivity); st.save(); return; } // read past it, share nothing
   const items = [...before, ...newActivity(input, st, cfg.shareActivity), ...after];
   st.save();
   if (items.length) await client.post('activity', { items });
@@ -128,6 +133,7 @@ async function shareActivity(input, client, cfg, before = [], after = []) {
 async function shareStop(input, client, cfg) {
   if (cfg.shareActivity === 'off') return;
   const st = sessionState(cfg, client.agent);
+  if (st.data.private) { newActivity(input, st, cfg.shareActivity); st.save(); return; }
   const items = newActivity(input, st, cfg.shareActivity);
   const reply = String(input.last_assistant_message || '').trim();
   if (reply && cfg.shareActivity === 'full' && !items.some(it => it.kind === 'text' && it.text === reply)) {
@@ -241,12 +247,19 @@ const handlers = {
 
   async prompt(input, client, cfg) {
     const prompt = String(input.prompt || '').trim();
-    await shareActivity(input, client, cfg, [], cfg.shareActivity === 'full' && prompt ? [{ kind: 'prompt', text: prompt }] : []).catch(() => {});
+    const isPrivate = PRIVATE_PROMPT.test(prompt);
+    // whatever is left from the previous turn goes out (or is dropped) under that turn's privacy
+    await shareActivity(input, client, cfg).catch(() => {});
+    const st = sessionState(cfg, client.agent);
+    st.data.private = isPrivate;
+    st.save();
+    if (!isPrivate && cfg.shareActivity === 'full' && prompt) await client.post('activity', { items: [{ kind: 'prompt', text: prompt }] }).catch(() => {});
     const mail = await inbox(client, cfg, true);
     const s = await client.get('state');
     const theirs = s.locks.filter(l => l.holder !== client.agent.id);
     const lockLine = theirs.length ? 'huddle: files currently locked by other agents: ' + theirs.map(l => `${l.path} (${l.holderName})`).join(', ') : '';
-    return ctx('UserPromptSubmit', [mail, lockLine].filter(Boolean).join('\n\n'));
+    const privateNote = isPrivate ? 'This turn is private: huddle is not sharing your user\'s prompt, your replies or your tool calls with the team. Do not put what is discussed here into huddle messages, team memory or PROJECT.md unless the user asks you to. File edits and commits in the project still sync as usual.' : '';
+    return ctx('UserPromptSubmit', [privateNote, mail, lockLine].filter(Boolean).join('\n\n'));
   },
 
   async stop(input, client, cfg) {

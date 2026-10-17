@@ -176,7 +176,7 @@ export class HuddleProject extends DurableObject {
       const store = this.ctx.storage;
       const ctx = {
         waitFor: (pred, ms) => waitOn(p, pred, Math.min(ms, 60 * 1000)),
-        blobs: { put: (k, v) => store.put('blob:' + k, v), get: async (k) => (await store.get('blob:' + k)) ?? null },
+        blobs: { put: (k, v) => store.put('blob:' + k, v), get: async (k) => (await store.get('blob:' + k)) ?? null, del: (k) => store.delete('blob:' + k) },
       };
       const out = await route(p, body, url.searchParams, ctx);
       await this.save();

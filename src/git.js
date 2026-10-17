@@ -76,11 +76,16 @@ async function publish(client, root, { branch } = {}) {
   const me = client.agent.name;
   const st = await client.get('git');
   const mine = st.refs[`${me}/${branch}`];
-  if (mine && mine.sha === tip) return { unchanged: true, branch, tip };
+  const snap = st.snapshots && st.snapshots[`${me}/${branch}`];
+  if (mine && mine.sha === tip) {
+    if (!snap || snap.sha !== tip) await uploadSnapshot(client, root, branch, tip);
+    return { unchanged: true, branch, tip };
+  }
   const known = [...new Set([...st.bundles.map(b => b.tip), ...Object.values(st.refs).map(r => r.sha)])].filter(s => hasCommit(root, s));
   const subj = subject(root, tip);
   if (known.includes(tip)) {
     await client.post('git-ref', { branch, tip, subject: subj });
+    await uploadSnapshot(client, root, branch, tip);
     return { branch, tip, bytes: 0 };
   }
   if (leaksPrivate(root, [tip, ...known.map(s => `^${s}`)])) {
@@ -90,7 +95,7 @@ async function publish(client, root, { branch } = {}) {
   try {
     const r = git(root, ['bundle', 'create', file, `refs/heads/${branch}`, ...known.map(s => `^${s}`)]);
     if (!r.ok) {
-      if (/empty bundle/i.test(r.err)) { await client.post('git-ref', { branch, tip, subject: subj }); return { branch, tip, bytes: 0 }; }
+      if (/empty bundle/i.test(r.err)) { await client.post('git-ref', { branch, tip, subject: subj }); await uploadSnapshot(client, root, branch, tip); return { branch, tip, bytes: 0 }; }
       throw new Error('git bundle failed: ' + r.err);
     }
     const buf = fs.readFileSync(file);
@@ -104,8 +109,40 @@ async function publish(client, root, { branch } = {}) {
     const s = loadState(root);
     s.applied = [...new Set([...(s.applied || []), id])];
     saveState(root, s);
+    await uploadSnapshot(client, root, branch, tip);
     return { branch, tip, bytes: buf.length };
   } finally { fs.rmSync(file, { force: true }); }
+}
+
+// A readable copy of the branch's text files for the dashboard's Code view.
+// Binary and very large files are listed as skipped instead.
+const SNAP_FILE_MAX = 256 * 1024, SNAP_TOTAL_MAX = 4 * 1024 * 1024, SNAP_PART = 800 * 1024;
+async function uploadSnapshot(client, root, branch, sha) {
+  const ls = git(root, ['ls-tree', '-r', '-l', '-z', sha]);
+  if (!ls.ok) return;
+  const files = [], skipped = [];
+  let total = 0;
+  for (const rec of ls.out.split('\0').filter(Boolean)) {
+    const m = /^\d+ (\w+) ([0-9a-f]+)\s+(-|\d+)\t([\s\S]*)$/.exec(rec);
+    if (!m || m[1] !== 'blob') continue;
+    const [, , obj, size, fp] = m;
+    if (Number(size) > SNAP_FILE_MAX || total + Number(size) > SNAP_TOTAL_MAX) { skipped.push(fp); continue; }
+    const buf = spawnSync('git', ['cat-file', 'blob', obj], { cwd: root, maxBuffer: SNAP_FILE_MAX * 2 }).stdout;
+    if (!buf || buf.includes(0)) { skipped.push(fp); continue; }
+    files.push({ path: fp, content: buf.toString('utf8') });
+    total += buf.length;
+  }
+  const parts = [[]];
+  let cur = 0;
+  for (const f of files) {
+    const sz = JSON.stringify(f).length;
+    if (cur + sz > SNAP_PART && parts[parts.length - 1].length) { parts.push([]); cur = 0; }
+    parts[parts.length - 1].push(f);
+    cur += sz;
+  }
+  for (let i = 0; i < parts.length; i++) {
+    await client.post('git-snapshot', { branch, sha, i, n: parts.length, files: parts[i], skipped: i === parts.length - 1 ? skipped : [] }, { timeout: 120000 });
+  }
 }
 
 // "-<sha>" lines in a bundle header are commits the receiver must already have

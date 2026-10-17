@@ -89,6 +89,29 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) 360px; height: calc(
 .card .title { font-weight: 700; }
 .goalcard { border-left: 4px solid var(--warn); }
 
+/* views */
+#views { display: flex; gap: 2px; padding: 8px 16px 0; border-bottom: 1px solid var(--line); }
+#views button { border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: none; padding: 8px 12px; font-weight: 600; color: var(--muted); }
+#views button.on { color: var(--ink); border-bottom-color: var(--accent); }
+#codeview { flex: 1; min-height: 0; display: grid; grid-template-columns: 280px minmax(0, 1fr); }
+#codeside { border-right: 1px solid var(--line); overflow-y: auto; padding: 10px 0; }
+#codeside .ref { padding: 0 12px 8px; }
+#codeside select { width: 100%; }
+.tree button { display: block; width: 100%; text-align: left; border: 0; border-radius: 0; background: none; padding: 3px 12px; font-weight: 400; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tree button:hover { background: var(--surface); }
+.tree button.sel { background: var(--accent-soft); color: var(--ink); font-weight: 600; }
+.tree .dir { padding: 6px 12px 2px; font-size: 13px; font-weight: 700; color: var(--muted); }
+#codemain { overflow: auto; padding: 12px 16px; }
+#codemain .crumb { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+.codebox { margin: 0; background: var(--code); border: 1px solid var(--line); border-radius: 10px; overflow: auto; }
+.codebox .ln { display: flex; }
+.codebox .ln span:first-child { width: 52px; flex: none; text-align: right; padding-right: 12px; color: var(--faint); user-select: none; }
+.codebox .ln span:last-child { white-space: pre-wrap; overflow-wrap: anywhere; padding-right: 12px; }
+.livebar { background: var(--warn-soft); color: var(--warn); border-radius: 8px; padding: 6px 10px; font-weight: 600; font-size: 14px; }
+#briefview { flex: 1; overflow-y: auto; padding: 14px 16px; }
+.start { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin: 16px 0; background: var(--surface); }
+.start h3 { margin: 0 0 6px; font-size: 16px; }
+
 /* composer */
 #composer { border-top: 1px solid var(--line); padding: 10px 16px 14px; background: var(--surface); }
 #composer .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
@@ -165,13 +188,17 @@ ol.steps { padding-left: 20px; } ol.steps li { margin-bottom: 10px; }
     <select id="projsel" hidden aria-label="Switch project"></select>
     <span class="grow"></span>
     <span class="conn" id="conn">connecting</span>
-    <button id="btn-know">Team knowledge</button>
     <button id="btn-invite">Invite people</button>
     <button id="btn-help" aria-label="How huddle works">?</button>
   </header>
   <div id="team"></div>
   <main>
     <section id="left">
+      <div id="views">
+        <button data-view="timeline" class="on">Timeline</button>
+        <button data-view="code">Code</button>
+        <button data-view="brief">Brief &amp; memory</button>
+      </div>
       <div id="filters">
         <button class="chip on" data-f="all">Everything</button>
         <button class="chip" data-f="talk">Messages</button>
@@ -181,6 +208,15 @@ ol.steps { padding-left: 20px; } ol.steps li { margin-bottom: 10px; }
         <span id="whof" class="small muted"></span>
       </div>
       <div id="feed"></div>
+      <div id="codeview" hidden>
+        <div id="codeside"><div class="ref"><select id="coderef" aria-label="Whose branch"></select></div><div class="tree" id="tree"></div></div>
+        <div id="codemain"><div class="muted">Pick a file.</div></div>
+      </div>
+      <div id="briefview" hidden>
+        <p class="muted small" style="margin-top:0">Every Claude in the project reads this when it starts. It lives in huddle, not in git, so nothing here gets committed.</p>
+        <div class="tabs"><button data-k="doc" class="on">Project brief</button><button data-k="memory">Memory</button><button data-k="skills">Skills</button></div>
+        <div id="kbody"></div>
+      </div>
       <form id="composer">
         <div class="row">
           <b>Message Claude</b>
@@ -209,14 +245,7 @@ ol.steps { padding-left: 20px; } ol.steps li { margin-bottom: 10px; }
   <div class="dlg-body"><pre id="fcode"></pre></div>
 </dialog>
 
-<dialog id="dlg-know">
-  <div class="dlg-head"><h3>Team knowledge</h3><span class="grow"></span><button data-close>Close</button></div>
-  <div class="dlg-body">
-    <p class="muted small" style="margin-top:0">Every Claude in the project reads this when it starts. It lives in huddle, not in git.</p>
-    <div class="tabs"><button data-k="doc" class="on">Project brief</button><button data-k="memory">Memory</button><button data-k="skills">Skills</button></div>
-    <div id="kbody"></div>
-  </div>
-</dialog>
+
 
 <dialog id="dlg-invite">
   <div class="dlg-head"><h3>Invite people</h3><span class="grow"></span><button data-close>Close</button></div>
@@ -243,7 +272,7 @@ ol.steps { padding-left: 20px; } ol.steps li { margin-bottom: 10px; }
       <li><b>Message Claude</b> (bottom) gives the Claudes a job. Pick <i>Full team</i> and one Claude splits it into tasks they share, or pick a person to give it to just their Claude.</li>
       <li><b>On the right</b>: task progress, and which files are being edited. A file someone is editing is locked for everyone else until they're done. Click any file to see it live.</li>
     </ol>
-    <p class="muted small">Team knowledge (the project brief, shared notes and skills) is what every Claude reads when it starts. Invite people shows the exact steps to send a teammate.</p>
+    <p class="muted small"><b>Code</b> shows each person's shared branch file by file, and live edits as they happen. <b>Brief &amp; memory</b> is what every Claude reads when it starts. <b>Invite people</b> shows the exact steps to send a teammate.</p>
   </div>
 </dialog>
 
@@ -406,9 +435,11 @@ function renderFeed() {
   feed.innerHTML = '';
   const list = S.entries.filter(visible).slice(-600);
   if (!list.length) {
-    feed.innerHTML = `<div class="empty">${S.who ? `Nothing from ${esc(S.who)} here yet.` : S.filter === 'all'
-      ? 'Nothing has happened yet. When someone opens Claude Code in their joined folder, what their Claude is doing shows up here. Use Message Claude below to give the Claudes something to build.'
-      : 'Nothing of this kind yet.'}</div>`;
+    feed.innerHTML = S.who || S.filter !== 'all'
+      ? `<div class="empty">${S.who ? `Nothing from ${esc(S.who)} here yet.` : 'Nothing of this kind yet.'}</div>`
+      : `<div class="start"><h3>Nothing has happened yet</h3>
+          <p style="margin:0 0 8px">This timeline fills up once someone opens Claude Code in their joined folder: what each Claude is asked, what it does, and what it says.</p>
+          <p style="margin:0">Meanwhile: <button class="link" data-goto="brief">read the project brief and team memory</button>, <button class="link" data-goto="code">browse the code</button>, or use <b>Message Claude</b> below to give the Claudes something to build.</p></div>`;
     return;
   }
   for (const e of list) appendEntry(e, feed);
@@ -543,6 +574,27 @@ async function loadFile(highlight) {
   }
 }
 
+// small markdown renderer for the brief and memories: headings, lists, bold, code
+function md(text) {
+  const inline = (t) => esc(t).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/(^|[^*])\*([^*\s][^*]*)\*/g, '$1<i>$2</i>');
+  const out = [];
+  let list = null, code = null;
+  const close = () => { if (list) { out.push(`</${list}>`); list = null; } };
+  for (const line of String(text).split('\n')) {
+    if (code !== null) { if (/^```/.test(line)) { out.push(`<pre class="codebox" style="padding:8px 12px">${esc(code)}</pre>`); code = null; } else code += (code ? '\n' : '') + line; continue; }
+    if (/^```/.test(line)) { close(); code = ''; continue; }
+    const h = /^(#{1,4})\s+(.*)/.exec(line);
+    if (h) { close(); out.push(`<h${Math.min(h[1].length + 2, 6)} style="margin:14px 0 6px">${inline(h[2])}</h${Math.min(h[1].length + 2, 6)}>`); continue; }
+    const li = /^\s*([-*]|\d+\.)\s+(.*)/.exec(line);
+    if (li) { const k = /\d/.test(li[1]) ? 'ol' : 'ul'; if (list !== k) { close(); out.push(`<${k} style="margin:4px 0;padding-left:22px">`); list = k; } out.push(`<li>${inline(li[2])}</li>`); continue; }
+    close();
+    if (line.trim()) out.push(`<p style="margin:6px 0">${inline(line)}</p>`);
+  }
+  close();
+  if (code !== null) out.push(`<pre class="codebox">${esc(code)}</pre>`);
+  return out.join('');
+}
+
 // ---------- team knowledge ----------
 let ktab = 'doc', kediting = false;
 for (const t of document.querySelectorAll('[data-k]')) t.onclick = () => {
@@ -557,7 +609,7 @@ function renderKnow() {
     if (kediting) return;
     const d = sh.doc;
     el.innerHTML = `<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><span class="small muted" style="flex:1">${d ? `Version ${d.version}, last edited by ${esc(d.byName)} ${ago(d.at)}` : 'No project brief yet'}</span><button class="primary" id="docedit">${d ? 'Edit' : 'Write one'}</button></div>
-      <div class="kcard"><pre>${esc(d && d.text.trim() ? d.text : 'Nothing yet. A good brief covers the goal, how the code is laid out, how to run and test it, conventions, and who is working on what.')}</pre></div>`;
+      <div class="kcard" style="padding:6px 16px 10px">${d && d.text.trim() ? md(d.text) : '<p class="muted">Nothing yet. A good brief covers the goal, how the code is laid out, how to run and test it, conventions, and who is working on what.</p>'}</div>`;
     $('docedit').onclick = () => {
       kediting = true;
       const base = d ? d.version : 0;
@@ -574,7 +626,7 @@ function renderKnow() {
       <input id="mtitle" placeholder="Short title, e.g. tests need Docker running" style="width:100%;margin-top:8px">
       <textarea id="mtext" placeholder="The detail, and why it matters" style="width:100%;margin-top:6px;min-height:60px"></textarea>
       <div style="margin-top:6px"><button class="primary" id="madd">Save to team memory</button> <span id="mmsg" class="err small"></span></div></div>
-      ${sh.memories.slice().reverse().map(m => `<div class="kcard"><div style="display:flex;gap:8px"><b style="flex:1">${esc(m.title)}</b><span class="small muted">${esc(m.byName)} · ${ago(m.at)}</span><button class="link small" data-forget="${esc(m.id)}">Delete</button></div><pre>${esc(m.text)}</pre></div>`).join('') || '<p class="muted">No memories yet.</p>'}`;
+      ${sh.memories.slice().reverse().map(m => `<div class="kcard"><div style="display:flex;gap:8px"><b style="flex:1">${esc(m.title)}</b><span class="small muted">${esc(m.byName)} · ${ago(m.at)}</span><button class="link small" data-forget="${esc(m.id)}">Delete</button></div><div>${md(m.text)}</div></div>`).join('') || '<p class="muted">No memories yet.</p>'}`;
     $('madd').onclick = async () => {
       const title = $('mtitle').value.trim(), text = $('mtext').value.trim();
       if (!title || !text) return;
@@ -587,7 +639,77 @@ function renderKnow() {
     for (const b of el.querySelectorAll('[data-skilldel]')) b.onclick = async () => { await api('skill-delete', { name: b.dataset.skilldel }).catch(() => {}); await loadShared(); };
   }
 }
-async function loadShared() { S.shared = await api('shared'); if ($('dlg-know').open && !kediting) renderKnow(); }
+async function loadShared() { S.shared = await api('shared'); if (S.view === 'brief' && !kediting) renderKnow(); }
+
+// ---------- views ----------
+S.view = 'timeline';
+function showView(v) {
+  S.view = v;
+  for (const b of document.querySelectorAll('[data-view]')) b.classList.toggle('on', b.dataset.view === v);
+  $('feed').hidden = $('filters').hidden = v !== 'timeline';
+  $('codeview').hidden = v !== 'code';
+  $('briefview').hidden = v !== 'brief';
+  if (v === 'code') loadCodeRefs().catch(() => {});
+  if (v === 'brief') { renderKnow(); loadShared().catch(() => {}); }
+}
+for (const b of document.querySelectorAll('[data-view]')) b.onclick = () => showView(b.dataset.view);
+document.addEventListener('click', (e) => { const g = e.target.closest('[data-goto]'); if (g) showView(g.dataset.goto); });
+
+// ---------- code: a person's published branch, file by file ----------
+S.code = { refs: [], ref: null, files: [], path: null, live: false };
+async function loadCodeRefs() {
+  const r = await api('git-tree');
+  S.code.refs = r.refs.sort((a, b) => b.at - a.at);
+  const sel = $('coderef');
+  if (!S.code.refs.length) {
+    sel.innerHTML = '<option>nothing shared yet</option>';
+    $('tree').innerHTML = '';
+    $('codemain').innerHTML = `<div class="empty">No code has been shared yet. It appears here when someone in the project commits (it's shared automatically when their Claude finishes a turn) or runs <code>huddle publish</code>.</div>`;
+    return;
+  }
+  if (!S.code.ref || !S.code.refs.some(x => x.owner + '/' + x.branch === S.code.ref)) S.code.ref = S.code.refs[0].owner + '/' + S.code.refs[0].branch;
+  sel.innerHTML = S.code.refs.map(x => { const k = x.owner + '/' + x.branch; return `<option value="${esc(k)}" ${k === S.code.ref ? 'selected' : ''}>${esc(x.owner)}'s ${esc(x.branch)} · ${x.count} files · ${ago(x.at)}</option>`; }).join('');
+  await loadTree();
+}
+$('coderef').onchange = (e) => { S.code.ref = e.target.value; S.code.path = null; loadTree(); };
+async function loadTree() {
+  const t = await api('git-tree?ref=' + encodeURIComponent(S.code.ref));
+  S.code.files = t.files; S.code.branch = t.branch; S.code.sha = t.sha; S.code.skipped = t.skipped || [];
+  let html = '', lastDir = null;
+  for (const f of t.files) {
+    const i = f.path.lastIndexOf('/');
+    const dir = i < 0 ? '' : f.path.slice(0, i);
+    if (dir !== lastDir) { if (dir) html += `<div class="dir">${esc(dir)}/</div>`; lastDir = dir; }
+    const live = Object.values(S.locks).some(l => l.path === f.path && (l.branch || null) === (t.branch || null));
+    html += `<button data-code="${esc(f.path)}" class="${f.path === S.code.path ? 'sel' : ''}" style="padding-left:${dir ? 24 : 12}px" title="${esc(f.path)}">${live ? '🔒 ' : ''}${esc(f.path.slice(i + 1))}</button>`;
+  }
+  if (t.skipped && t.skipped.length) html += `<div class="dir">not shown (binary or large)</div>` + t.skipped.slice(0, 30).map(p => `<div class="small muted" style="padding:1px 12px 1px 24px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p)}</div>`).join('');
+  $('tree').innerHTML = html;
+  if (!S.code.path || !t.files.some(f => f.path === S.code.path)) S.code.path = (t.files.find(f => /^readme/i.test(f.path)) || t.files[0] || {}).path;
+  if (S.code.path) openCode(S.code.path);
+}
+document.addEventListener('click', (e) => { const b = e.target.closest('[data-code]'); if (b) openCode(b.dataset.code); });
+async function openCode(p, wantLive) {
+  S.code.path = p;
+  for (const b of document.querySelectorAll('[data-code]')) b.classList.toggle('sel', b.dataset.code === p);
+  const lock = Object.values(S.locks).find(l => l.path === p && (l.branch || null) === (S.code.branch || null));
+  const liveCopy = Object.values(S.files).find(f => f.path === p && (f.branch || null) === (S.code.branch || null) && f.size);
+  let content, label;
+  try {
+    if (wantLive && liveCopy) {
+      const f = await api('file?path=' + encodeURIComponent(p) + (S.code.branch ? '&branch=' + encodeURIComponent(S.code.branch) : ''));
+      content = f.content; label = `live, saved by ${esc(f.byName)} ${ago(f.at)}`;
+    } else {
+      const f = await api('git-blob?ref=' + encodeURIComponent(S.code.ref) + '&path=' + encodeURIComponent(p));
+      content = f.content; label = `as committed on ${esc(S.code.ref)} (${f.sha.slice(0, 7)})`;
+    }
+  } catch (err) { $('codemain').innerHTML = `<div class="empty">${esc(err.message)}</div>`; return; }
+  $('codemain').innerHTML = `<div class="crumb"><b class="mono">${esc(p)}</b><span class="small muted">${label}</span></div>
+    ${lock || liveCopy ? `<div class="crumb">${lock ? `<span class="livebar">🔒 ${esc(lock.holderName)} is editing this right now</span>` : ''}${liveCopy ? `<button data-live="${wantLive ? '0' : '1'}">${wantLive ? 'Show committed version' : 'Show live version'}</button>` : ''}</div>` : ''}
+    <pre class="codebox">${content.split('\n').map((l, i) => `<div class="ln"><span>${i + 1}</span><span>${esc(l) || ' '}</span></div>`).join('')}</pre>`;
+  const lb = document.querySelector('[data-live]');
+  if (lb) lb.onclick = () => openCode(p, lb.dataset.live === '1');
+}
 async function loadBoard() { S.board = await api('board'); renderSide(); renderTeam(); }
 
 // ---------- composer ----------
@@ -612,7 +734,6 @@ $('composer').onsubmit = async (e) => {
 for (const b of document.querySelectorAll('[data-close]')) b.onclick = () => b.closest('dialog').close();
 for (const d of document.querySelectorAll('dialog')) d.addEventListener('click', (e) => { if (e.target === d) d.close(); });
 $('dlg-file').addEventListener('close', () => { S.file = null; });
-$('btn-know').onclick = () => { renderKnow(); $('dlg-know').showModal(); loadShared().catch(() => {}); };
 $('btn-invite').onclick = () => { $('joincmd').textContent = `npx -y github:flyingf15h/huddle join ${inviteCode()} --name THEIR_NAME`; $('dlg-invite').showModal(); };
 const copy = (text, btn, label) => navigator.clipboard.writeText(text).then(() => { btn.textContent = 'Copied'; setTimeout(() => { btn.textContent = label; }, 1500); });
 $('copyjoin').onclick = () => copy($('joincmd').textContent, $('copyjoin'), 'Copy');
@@ -664,8 +785,10 @@ function onEvent(ev) {
     case 'file':
       S.files[(ev.file.branch || '') + '::' + ev.file.path] = ev.file;
       if (S.file && S.file.path === ev.file.path && (S.file.branch || null) === (ev.file.branch || null)) loadFile(true);
+      if (S.view === 'code' && S.code.path === ev.file.path && document.querySelector('[data-live="0"]')) openCode(ev.file.path, true);
       break;
     case 'board': loadBoard().catch(() => {}); break;
+    case 'git': if (S.view === 'code' && ev.action === 'snapshot') loadCodeRefs().catch(() => {}); break;
     case 'shared': loadShared().catch(() => {}); break;
     case 'activity': S.agents[ev.agent.id] = ev.agent; break;
     case 'forget': for (const [id, x] of Object.entries(S.agents)) if (x.name === ev.name) delete S.agents[id]; break;
