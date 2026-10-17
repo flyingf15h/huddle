@@ -9,7 +9,7 @@ const { loadConfig, identity, Client, relPath, hashFile, formatMessages, ago, CO
 const PKG_DIR = path.resolve(__dirname, '..');
 const INSTALL_DIR = process.env.HUDDLE_HOME || path.join(os.homedir(), '.huddle', 'app');
 const HOOK_MARK = 'huddle-hook';
-const PUBLIC_SERVER = process.env.HUDDLE_PUBLIC_SERVER || 'https://huddle-relay.fly.dev';
+const PUBLIC_SERVER = process.env.HUDDLE_PUBLIC_SERVER || 'https://huddle.sage-hill.workers.dev';
 
 const HELP = `huddle — let Claude agents on different machines work on one project together
 
