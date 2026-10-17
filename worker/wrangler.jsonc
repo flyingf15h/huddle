@@ -1,5 +1,6 @@
 {
   "name": "huddle",
+  "account_id": "7345bf7b7a188e7d7ad299986bde3bcc",
   "main": "src/index.js",
   "compatibility_date": "2026-09-01",
   "compatibility_flags": ["nodejs_compat"],
