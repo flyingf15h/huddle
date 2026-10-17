@@ -30,7 +30,7 @@ async function until(fn, ms = 8000, what = 'condition') {
 function checkout(name, pid, server, token, project = 'demo') {
   const root = path.join(tmp, name);
   fs.mkdirSync(path.join(root, '.huddle'), { recursive: true });
-  fs.writeFileSync(path.join(root, '.huddle', 'config.json'), JSON.stringify({ server, token, project, name, notify: false })); // no desktop pop-ups from test runs
+  fs.writeFileSync(path.join(root, '.huddle', 'config.json'), JSON.stringify({ server, token, project, name }));
   fs.writeFileSync(path.join(root, 'shared.txt'), 'v0\n');
   const env = { ...process.env, HUDDLE_SESSION: String(pid), HUDDLE_ROOT: root, PATH: fakeBin + path.delimiter + process.env.PATH };
   const hook = (event, input) => {
