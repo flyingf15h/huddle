@@ -3,8 +3,9 @@
 Let several Claude Code agents work on the same project at once, from different computers and different Claude subscriptions, without stepping on each other.
 
 - **File locks.** When an agent starts editing a file, it's locked for that agent. Everyone else's copy goes read-only and Claude Code refuses their edits, with a note saying who has it.
-- **Live view.** Every edit streams to the other machines as it happens, so the others see the file change in real time (on disk, through the `huddle_view` tool, or in the web dashboard).
-- **Chat.** Agents message each other with `huddle_send`. Messages show up in the other agents' context automatically, and an agent that gets a direct message answers it before it stops.
+- **Live edits.** Every edit streams to the other machines as it happens, so the others see the file change in real time (on disk, through the `huddle_view` tool, or in the web dashboard). No GitHub push needed.
+- **Claudes talk to each other.** Agents message each other with `huddle_send`. Messages show up in the other agents' context automatically, and an agent that gets a direct message answers it before it stops.
+- **Shared work.** Give the whole team a goal and the Claudes split it into tasks among themselves.
 - **Dashboard.** A web page with a card per person saying what they and their Claude are doing, a timeline of everything happening, the code on everyone's branches (with live edits), the project brief and memory, task progress, and a box to message the Claudes.
 
 Zero dependencies. Each person needs Claude Code, Node 18+ (22+ recommended) and git (for `npx github:`). Tested on Linux; macOS should work, Windows is untested.
@@ -52,9 +53,21 @@ After `join`, open Claude Code in that folder (restart it if it was already open
 
 Check `/mcp` in Claude Code if the tools don't show up: `huddle` should be listed as connected.
 
+## Working together in real time
+
+GitHub isn't involved in any of this. Everything goes through the huddle server as it happens.
+
+- **Edits are live.** When two people are on the same branch, every edit one Claude makes lands in the other person's copy of the file within a second or two. While a Claude is editing a file it's locked: the file goes read-only for everyone else, and their Claude is told who has it instead of overwriting their work.
+- **Commits are shared automatically.** Whenever a Claude finishes a turn, any new commits are sent to the rest of the team through huddle. People on other branches get them when they merge (see [branches and merging](#different-versions-branches-and-merging)).
+- **The Claudes message each other.** A Claude can message the whole team or one person's Claude, and the message shows up in the other Claude's context at its next step. A Claude that gets a direct message has to answer it before it stops. They also coordinate through the shared task list.
+- **One limitation: an idle Claude doesn't wake up.** A Claude that's waiting for its person to type something sees new messages and tasks at its next step, not instantly. If you want your Claude to react with nobody at the keyboard, run `huddle autopilot` (below).
+
 ## Talking to all the Claudes at once
 
-Type a goal into the dashboard's **Ask the Claudes** bar (or run `huddle ask "add a history feature with tests"`). The first free Claude claims it, looks at the code, splits it into tasks with an owner each (split by file so nobody collides, with dependencies where needed), and tells the team. Every Claude is told which tasks are theirs, works on them, commits, and marks them done on the **Board** tab. Pick a person in the bar (or `--to alex`) to hand something to just their Claude.
+Write it in the **Message Claude** box at the bottom of the dashboard (or run `huddle ask "add a history feature with tests"`) and pick who it's for:
+
+- **Full team:** the first free Claude claims it, looks at the code, splits it into tasks with an owner each (split by file so nobody collides, with dependencies where needed), and tells the team. Every Claude is told which tasks are theirs, works on them, commits, and marks them done. Progress shows under **Tasks** on the right side of the dashboard.
+- **One person:** only that person's Claude gets it, as a task of its own (`huddle ask "..." --to alex` from the terminal).
 
 A Claude only acts when it's running. In a normal Claude Code session, it sees new goals and tasks at its next step and works on them if you say so. To let your Claude take team work by itself, run
 
@@ -72,6 +85,20 @@ huddle carries git history between people itself (as git bundles through the ser
 - **Same branch or separate branches:** people on the same branch share a live working copy, with locks. On different branches (`huddle branch own`) nobody blocks anybody, but you still see each other's activity, chat and board, and get a heads-up when two people edit the same file on different branches. `huddle branch join alex` puts you back on someone's branch.
 - **Merging:** commits are shared automatically at the end of each Claude turn. Everyone else's branches show up as `huddle/<person>/<branch>`, so `huddle merge alex` (or asking Claude "merge alex's branch") merges them. On conflicts, Claude gets the list of files to resolve.
 - `.huddle/` and `.claude/settings.local.json` are always kept out of git. History that contains them is refused, so your invite token can't leak through a merge.
+
+## The dashboard
+
+Open it with `huddle open` in a joined folder, or with the dashboard link `join` printed. It updates live, so you can leave it open in a tab while you work.
+
+- **Team cards** across the top, one per person, saying in plain words what they and their Claude are doing right now ("Claude edited viewer/src/Scene.tsx", "Claude is idle"), whether they're online, which branch they're on, and how many tasks they have in progress. Click a card to see only that person.
+- **Timeline:** everything that happens, in order. Messages between the Claudes, what each person asked their Claude, the commands it ran and files it edited, its replies, and task updates. Filter it with the chips above it.
+- **Code:** pick anyone's shared branch and browse its files. A file someone is editing right now is marked with a lock and has a **Show live version** button, so you can watch it change before anything is committed.
+- **Brief & memory:** the project brief, team memory and shared skills that every Claude reads when it starts. You can read and edit all of it right there.
+- **Right side:** task progress for every goal, which files are being edited right now and by whom, and recently changed files.
+- **Message Claude:** the box at the bottom, for giving the Claudes something to build (see above).
+- **Invite people** shows the exact steps and command to send a teammate.
+
+If you're in several projects, each one has its own dashboard address (`…/#p=project-name`), so separate tabs and bookmarks stay on their own project. The plain address opens the project you used last, and a switcher in the header lists every project you've opened in that browser.
 
 ## What's shared, and what isn't
 
