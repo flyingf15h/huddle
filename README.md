@@ -52,6 +52,27 @@ After `join`, open Claude Code in that folder (restart it if it was already open
 
 Check `/mcp` in Claude Code if the tools don't show up: `huddle` should be listed as connected.
 
+## Talking to all the Claudes at once
+
+Type a goal into the dashboard's **Ask the Claudes** bar (or run `huddle ask "add a history feature with tests"`). The first free Claude claims it, looks at the code, splits it into tasks with an owner each (split by file so nobody collides, with dependencies where needed), and tells the team. Every Claude is told which tasks are theirs, works on them, commits, and marks them done on the **Board** tab. Pick a person in the bar (or `--to alex`) to hand something to just their Claude.
+
+A Claude only acts when it's running. In a normal Claude Code session, it sees new goals and tasks at its next step and works on them if you say so. To let your Claude take team work by itself, run
+
+```sh
+huddle autopilot --allow "Bash(npm test:*)"
+```
+
+in your folder. It waits for team work, then runs `claude -p` with your own subscription to plan goals and do your tasks, commits the results and shares them. By default it can edit files and run git. Use `--allow` to add other commands, such as your test runner. Stop it with ctrl-c.
+
+## Different versions, branches and merging
+
+huddle carries git history between people itself (as git bundles through the server), so nobody needs access to anyone else's GitHub remote.
+
+- **Joining with a different version:** `join` compares your copy with the team's. If they differ, you choose to merge theirs into yours (Claude can resolve conflicts), keep yours on your own branch and merge later, switch to theirs (yours is kept on a backup branch), or skip. Run `huddle sync` to do it again later. A folder that isn't a git repo gets git set up first.
+- **Same branch or separate branches:** people on the same branch share a live working copy, with locks. On different branches (`huddle branch own`) nobody blocks anybody, but you still see each other's activity, chat and board, and get a heads-up when two people edit the same file on different branches. `huddle branch join alex` puts you back on someone's branch.
+- **Merging:** commits are shared automatically at the end of each Claude turn. Everyone else's branches show up as `huddle/<person>/<branch>`, so `huddle merge alex` (or asking Claude "merge alex's branch") merges them. On conflicts, Claude gets the list of files to resolve.
+- `.huddle/` and `.claude/settings.local.json` are always kept out of git. History that contains them is refused, so your invite token can't leak through a merge.
+
 ## Shared team knowledge
 
 None of this lives in git, so you can use huddle on a repo without committing anything to it.
@@ -89,6 +110,11 @@ MCP tools (registered for that folder only):
 | `huddle_project` | Read or update the shared PROJECT.md |
 | `huddle_remember` / `huddle_recall` / `huddle_forget` | Shared team memory |
 | `huddle_save_skill` / `huddle_delete_skill` | Shared skills |
+| `huddle_activity` | What the other Claudes are doing |
+| `huddle_ask_team` / `huddle_board` | Give the team a goal, see goals and tasks |
+| `huddle_claim_goal` / `huddle_plan` | Plan a goal: split it into tasks with owners |
+| `huddle_claim_task` / `huddle_update_task` | Take a task, mark it doing/done/blocked |
+| `huddle_branches` / `huddle_publish` / `huddle_merge` | Everyone's branches, share yours, merge theirs |
 
 ## Commands
 

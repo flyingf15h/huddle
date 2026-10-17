@@ -98,6 +98,16 @@ function createServer(opts = {}) {
 
   const dashboard = fs.readFileSync(path.join(__dirname, 'dashboard.html'), 'utf8');
 
+  // large blobs (git bundle pieces) live next to the project file, not inside it
+  function blobStore(name) {
+    const dir = path.join(dataDir, 'blobs', name);
+    const file = (key) => path.join(dir, key.replace(/[^\w.-]/g, '_'));
+    return {
+      async put(key, data) { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(file(key), data); },
+      async get(key) { try { return fs.readFileSync(file(key), 'utf8'); } catch { return null; } },
+    };
+  }
+
   function sse(p, since, req, res) {
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache',
       connection: 'keep-alive', 'x-accel-buffering': 'no' });
@@ -143,7 +153,7 @@ function createServer(opts = {}) {
       if (!route) return send(404, { error: 'no such endpoint' });
       let body = {};
       if (req.method === 'POST') body = await readBody(req);
-      const ctx = { waitFor: (pred, ms) => waitOn(p, pred, ms, (abort) => req.on('close', abort)) };
+      const ctx = { waitFor: (pred, ms) => waitOn(p, pred, ms, (abort) => req.on('close', abort)), blobs: blobStore(p.name) };
       send(200, await route(p, body, url.searchParams, ctx));
     } catch (e) {
       send(e.code && e.code >= 400 && e.code < 600 ? e.code : 500, { error: e.message });

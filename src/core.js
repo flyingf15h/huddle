@@ -18,12 +18,14 @@ const OPEN_IDLE_MS = 30 * 24 * 60 * 60 * 1000;
 const OPEN_CREATES_PER_HOUR = 20;
 
 const DEFAULT_LIMITS = { fileBytes: MAX_FILE_BYTES, files: MAX_FILES, projectBytes: MAX_PROJECT_BYTES,
-  sharedBytes: 1536 * 1024 };
+  sharedBytes: 1536 * 1024, gitBytes: 200 * 1024 * 1024 };
 const DOC_BYTES = 64 * 1024;        // PROJECT.md and each skill
 const MEMORY_BYTES = 4 * 1024;      // each memory note
 const MAX_MEMORIES = 300;
 const MAX_SKILLS = 40;
-const MAX_ACTIVITY = 600;           // per project, newest kept
+const MAX_ACTIVITY = 600;
+const GIT_CHUNK = 900 * 1024;       // raw bytes per uploaded bundle piece
+const MAX_TASKS = 400;           // per project, newest kept
 const ACTIVITY_TEXT = 4000;
 
 function sha(s) { return crypto.createHash('sha256').update(s).digest('hex').slice(0, 16); }
@@ -33,6 +35,10 @@ function sameSecret(x, y) {
   const a = Buffer.from(String(x)), b = Buffer.from(String(y));
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
+// Locks and live file copies are per git branch: people on the same branch
+// share a working copy, people on different branches only see each other.
+function fileKey(branch, fp) { return branch ? `${branch}::${fp}` : fp; }
+
 function normPath(p) {
   if (typeof p !== 'string' || !p) throw httpError(400, 'path required');
   const n = path.posix.normalize(p.replace(/\\/g, '/'));
@@ -54,6 +60,10 @@ class Project {
     // knowledge every agent in the project shares: a brief, notes and skills
     this.shared = { version: 0, doc: null, memories: [], skills: [] };
     this.activity = [];   // what each agent's Claude is doing: prompts, replies, tool calls
+    // git history people published, as bundles; refs are "<person>/<branch>"
+    this.git = { refs: {}, bundles: [], bytes: 0, uploads: {} };
+    // team prompts ("goals") and the tasks the agents split them into
+    this.board = { version: 0, goals: [], tasks: [] };
     this.waiters = new Set();
     if (saved) Object.assign(this, saved);
     this.waiters = new Set();
@@ -61,11 +71,12 @@ class Project {
     this.changedFiles = new Set();     // paths whose content changed since the last save
     this.sharedChanged = false;
     this.activityChanged = false;
+    this.boardChanged = false;
     this.isConnected = () => false;    // servers with live sockets count those agents as online
     this.limits = { ...DEFAULT_LIMITS };
   }
   toJSON() {
-    const { waiters, dirty, changedFiles, sharedChanged, activityChanged, isConnected, limits, ...rest } = this;
+    const { waiters, dirty, changedFiles, sharedChanged, activityChanged, boardChanged, isConnected, limits, ...rest } = this;
     return rest;
   }
   // events after `since`, or null if they've been dropped and the client must resync
@@ -91,11 +102,11 @@ class Project {
     return ev;
   }
   publicAgent(a) {
-    return { id: a.id, name: a.name, host: a.host, checkout: a.checkout, kind: a.kind,
+    return { id: a.id, name: a.name, host: a.host, checkout: a.checkout, kind: a.kind, branch: a.branch || null,
       status: a.status, lastSeen: a.lastSeen, online: this.online(a) };
   }
   fileMeta(f) {
-    return { path: f.path, hash: f.hash, by: f.by, byName: f.byName, at: f.at,
+    return { path: f.path, branch: f.branch || null, hash: f.hash, by: f.by, byName: f.byName, at: f.at,
       version: f.version, size: f.content == null ? 0 : f.content.length, checkout: f.checkout };
   }
   snapshot() {
@@ -118,6 +129,7 @@ class Project {
     a.host = agent.host || a.host || '';
     a.checkout = agent.checkout || a.checkout || '';
     a.kind = agent.kind || a.kind || 'agent';
+    if (agent.branch !== undefined) a.branch = agent.branch || null;
     a.lastSeen = now();
     this.lastActive = a.lastSeen;
     if (fresh) this.emit('join', { agent: this.publicAgent(a) });
@@ -178,40 +190,45 @@ const routes = {
   'POST lock': (p, b) => {
     const a = p.touch(b.agent);
     const fp = normPath(b.path);
-    const cur = p.locks[fp];
-    const f = p.files[fp];
+    const branch = b.branch || null;
+    const key = fileKey(branch, fp);
+    const cur = p.locks[key];
+    const f = p.files[key];
+    // same file held on another branch: not a block, but a merge conflict in the making
+    const elsewhere = Object.values(p.locks).filter(l => l.path === fp && (l.branch || null) !== branch && l.holder !== a.id)
+      .map(l => ({ branch: l.branch, holderName: l.holderName }));
     const latest = f ? { hash: f.hash, version: f.version, byName: f.byName, at: f.at,
       known: b.baseHash ? f.hashes.includes(b.baseHash) : false } : null;
     if (cur && cur.holder !== a.id) {
       p.dirty = true;
-      return { ok: false, lock: cur, latest };
+      return { ok: false, lock: cur, latest, elsewhere };
     }
-    const lock = p.locks[fp] = {
-      path: fp, holder: a.id, holderName: a.name, checkout: a.checkout,
+    const lock = p.locks[key] = {
+      path: fp, branch, holder: a.id, holderName: a.name, checkout: a.checkout,
       since: cur ? cur.since : now(), note: b.note || (cur && cur.note) || '',
       hold: !!(b.hold || (cur && cur.hold)),
     };
     if (!cur) p.emit('lock', { lock });
     if (b.baseHash && !f) {
       // first time anyone locks this file: remember its starting point
-      p.files[fp] = { path: fp, hash: b.baseHash, content: null, by: a.id, byName: a.name,
+      p.files[key] = { path: fp, branch, hash: b.baseHash, content: null, by: a.id, byName: a.name,
         at: now(), version: 0, hashes: [b.baseHash], checkout: a.checkout };
     }
     p.dirty = true;
     const withContent = f && f.content != null && b.baseHash !== f.hash && b.wantContent;
-    return { ok: true, lock, latest, content: withContent ? f.content : undefined };
+    return { ok: true, lock, latest, elsewhere, content: withContent ? f.content : undefined };
   },
   'POST unlock': (p, b) => {
     const a = p.touch(b.agent);
     const released = [];
-    const paths = b.all ? Object.keys(p.locks) : (b.paths || [b.path]).map(normPath);
-    for (const fp of paths) {
-      const l = p.locks[fp];
+    const keys = b.all ? Object.keys(p.locks) : (b.paths || [b.path]).map(x => fileKey(b.branch || null, normPath(x)));
+    for (const key of keys) {
+      const l = p.locks[key];
       if (!l || l.holder !== a.id) continue;
       if (b.all && b.keepHeld && l.hold) continue;
-      delete p.locks[fp];
-      released.push(fp);
-      p.emit('unlock', { path: fp, holder: a.id, holderName: a.name, reason: b.reason || 'released' });
+      delete p.locks[key];
+      released.push(l.path);
+      p.emit('unlock', { path: l.path, branch: l.branch || null, holder: a.id, holderName: a.name, reason: b.reason || 'released' });
     }
     p.dirty = true;
     return { ok: true, released };
@@ -221,22 +238,24 @@ const routes = {
     const fp = normPath(b.path);
     if (typeof b.content !== 'string') throw httpError(400, 'content must be a string');
     if (Buffer.byteLength(b.content) > p.limits.fileBytes) throw httpError(413, 'file too large to share');
-    const l = p.locks[fp];
+    const branch = b.branch || null;
+    const key = fileKey(branch, fp);
+    const l = p.locks[key];
     if (l && l.holder !== a.id) throw httpError(409, `locked by ${l.holderName}`);
     if (!l) {
-      p.locks[fp] = { path: fp, holder: a.id, holderName: a.name, checkout: a.checkout,
+      p.locks[key] = { path: fp, branch, holder: a.id, holderName: a.name, checkout: a.checkout,
         since: now(), note: '', hold: false };
-      p.emit('lock', { lock: p.locks[fp] });
+      p.emit('lock', { lock: p.locks[key] });
     }
     const hash = sha(b.content);
-    const prev = p.files[fp];
+    const prev = p.files[key];
     if (!prev && Object.keys(p.files).length >= p.limits.files) throw httpError(413, 'project has too many shared files');
     const total = Object.values(p.files).reduce((n, f) => n + (f.content ? f.content.length : 0), 0);
     if (total - (prev && prev.content ? prev.content.length : 0) + b.content.length > p.limits.projectBytes) throw httpError(413, 'project storage is full');
     if (prev && prev.hash === hash && prev.content != null) return { ok: true, version: prev.version, unchanged: true };
-    p.changedFiles.add(fp);
-    const f = p.files[fp] = {
-      path: fp, hash, content: b.content, by: a.id, byName: a.name, at: now(),
+    p.changedFiles.add(key);
+    const f = p.files[key] = {
+      path: fp, branch, hash, content: b.content, by: a.id, byName: a.name, at: now(),
       version: (prev ? prev.version : 0) + 1,
       hashes: [...(prev ? prev.hashes : []), hash].slice(-HASH_HISTORY),
       checkout: a.checkout,
@@ -247,9 +266,10 @@ const routes = {
   },
   'GET file': (p, b, q) => {
     const fp = normPath(q.get('path'));
-    const f = p.files[fp];
+    const key = fileKey(q.get('branch') || null, fp);
+    const f = p.files[key];
     if (!f || f.content == null) throw httpError(404, 'no shared content for ' + fp);
-    return { ...p.fileMeta(f), content: f.content, hashes: f.hashes, lock: p.locks[fp] || null };
+    return { ...p.fileMeta(f), content: f.content, hashes: f.hashes, lock: p.locks[key] || null };
   },
   'POST message': (p, b) => {
     const a = p.touch(b.agent);
@@ -278,9 +298,132 @@ const routes = {
       msgs = unread();
     }
     if (!b.peek && msgs.length) { a.readSeq = msgs[msgs.length - 1].seq; p.dirty = true; }
-    return { messages: msgs, sharedVersion: p.shared.version };
+    return { messages: msgs, sharedVersion: p.shared.version, boardVersion: p.board.version };
   },
   'GET shared': (p) => p.shared,
+  // ---- git: people publish branches as bundles, everyone fetches them ----
+  'GET git': (p) => ({ refs: p.git.refs, bundles: p.git.bundles, bytes: p.git.bytes, limit: p.limits.gitBytes }),
+  // a bundle arrives in pieces (requests are size-limited); the last piece registers it
+  'POST git-upload': async (p, b, q, ctx) => {
+    const a = p.touch(b.agent);
+    const id = String(b.id || '');
+    if (!/^[a-f0-9]{8,32}$/.test(id)) throw httpError(400, 'bad bundle id');
+    const n = Number(b.n), i = Number(b.i);
+    if (!(n >= 1 && n <= 64 && i >= 0 && i < n)) throw httpError(400, 'bad chunk index');
+    const data = String(b.data || '');
+    const size = Math.floor(data.length * 3 / 4);
+    if (size > GIT_CHUNK + 4) throw httpError(413, 'chunk too large');
+    if (p.git.bytes + size > p.limits.gitBytes) throw httpError(413, `the project's git storage is full (${Math.round(p.limits.gitBytes / 1048576)} MB); share history through a normal git remote instead`);
+    await ctx.blobs.put(`git:${id}:${i}`, data);
+    const up = p.git.uploads[id] = p.git.uploads[id] || { got: [], bytes: 0, at: now() };
+    if (!up.got.includes(i)) { up.got.push(i); up.bytes += size; }
+    if (up.got.length < n) { p.dirty = true; return { ok: true, pending: n - up.got.length }; }
+    delete p.git.uploads[id];
+    const branch = String(b.branch || '').slice(0, 200);
+    const sha40 = /^[0-9a-f]{40}$/;
+    if (!branch || !sha40.test(b.tip || '')) throw httpError(400, 'branch and tip required');
+    const bundle = { id, owner: a.name, branch, tip: b.tip, prereqs: (b.prereqs || []).filter(x => sha40.test(x)).slice(0, 200),
+      n, size: up.bytes, at: now(), checkout: a.checkout };
+    p.git.bundles.push(bundle);
+    p.git.bytes += up.bytes;
+    const ref = p.git.refs[`${a.name}/${branch}`] = { owner: a.name, branch, sha: b.tip, at: now(), checkout: a.checkout, subject: String(b.subject || '').slice(0, 200) };
+    p.emit('git', { action: 'publish', ref, bundle: bundle.id });
+    return { ok: true, id };
+  },
+  // a branch moved to a commit the server already has (no new objects to send)
+  'POST git-ref': (p, b) => {
+    const a = p.touch(b.agent);
+    if (!/^[0-9a-f]{40}$/.test(b.tip || '') || !b.branch) throw httpError(400, 'branch and tip required');
+    const ref = p.git.refs[`${a.name}/${b.branch}`] = { owner: a.name, branch: String(b.branch).slice(0, 200), sha: b.tip, at: now(), checkout: a.checkout, subject: String(b.subject || '').slice(0, 200) };
+    p.emit('git', { action: 'publish', ref });
+    return { ok: true };
+  },
+  'GET git-chunk': async (p, b, q, ctx) => {
+    const data = await ctx.blobs.get(`git:${q.get('id')}:${Number(q.get('i'))}`);
+    if (data == null) throw httpError(404, 'no such bundle piece');
+    return { data };
+  },
+
+  // ---- team board: a person gives the team a goal, one Claude plans it, everyone works it ----
+  'GET board': (p) => p.board,
+  'POST goal': (p, b) => {
+    const a = p.touch(b.agent);
+    const text = String(b.text || '').trim().slice(0, 8000);
+    if (!text) throw httpError(400, 'what should the team do?');
+    const goal = { id: crypto.randomBytes(4).toString('hex'), text, by: a.id, byName: a.name, at: now(), status: 'open', planner: null, to: b.to || null };
+    p.board.goals.push(goal);
+    if (p.board.goals.length > 100) p.board.goals.splice(0, p.board.goals.length - 100);
+    // aimed at one person's Claude: skip planning, it's simply their task
+    if (b.to) {
+      goal.status = 'planned';
+      goal.planner = b.to;
+      pushTask(p, { goalId: goal.id, title: text.split('\n')[0].slice(0, 200), detail: text, owner: b.to }, a);
+    }
+    boardChanged(p, 'goal', { goal }, a);
+    return { ok: true, goal };
+  },
+  // first agent to claim a goal gets to split it into tasks; everyone else waits for the plan
+  'POST claim-goal': (p, b) => {
+    const a = p.touch(b.agent);
+    const g = p.board.goals.find(x => x.id === b.id);
+    if (!g) throw httpError(404, 'no such goal');
+    if (g.planner && g.planner !== a.name) return { ok: false, planner: g.planner, goal: g };
+    g.planner = a.name;
+    g.status = g.status === 'open' ? 'planning' : g.status;
+    boardChanged(p, 'claim-goal', { goal: g }, a);
+    return { ok: true, goal: g };
+  },
+  'POST plan': (p, b) => {
+    const a = p.touch(b.agent);
+    const g = p.board.goals.find(x => x.id === b.goalId);
+    if (!g) throw httpError(404, 'no such goal');
+    if (g.planner && g.planner !== a.name) throw httpError(409, `${g.planner} is planning this goal`);
+    const tasks = (Array.isArray(b.tasks) ? b.tasks : []).slice(0, 30);
+    if (!tasks.length) throw httpError(400, 'a plan needs at least one task');
+    g.planner = a.name;
+    g.status = 'planned';
+    g.plan = String(b.summary || '').slice(0, 4000);
+    const made = tasks.map(t => pushTask(p, { goalId: g.id, title: t.title, detail: t.detail, owner: t.owner || null }, a));
+    // "after" refers to earlier tasks in this same list by index
+    tasks.forEach((t, i) => { made[i].after = (Array.isArray(t.after) ? t.after : []).map(j => made[j] && made[j].id).filter(Boolean); });
+    boardChanged(p, 'plan', { goal: g, tasks: made }, a);
+    return { ok: true, tasks: made };
+  },
+  'POST task': (p, b) => {
+    const a = p.touch(b.agent);
+    const t = pushTask(p, { goalId: b.goalId || null, title: b.title, detail: b.detail, owner: b.owner || null }, a);
+    boardChanged(p, 'task', { task: t }, a);
+    return { ok: true, task: t };
+  },
+  // take an unowned task (atomic, so two Claudes can't both grab it)
+  'POST claim-task': (p, b) => {
+    const a = p.touch(b.agent);
+    const t = p.board.tasks.find(x => x.id === b.id);
+    if (!t) throw httpError(404, 'no such task');
+    if (t.owner && t.owner !== a.name) return { ok: false, owner: t.owner, task: t };
+    t.owner = a.name;
+    if (t.status === 'todo') t.status = 'doing';
+    t.updated = now();
+    boardChanged(p, 'claim-task', { task: t }, a);
+    return { ok: true, task: t };
+  },
+  'POST task-update': (p, b) => {
+    const a = p.touch(b.agent);
+    const t = p.board.tasks.find(x => x.id === b.id);
+    if (!t) throw httpError(404, 'no such task');
+    if (b.status) {
+      if (!['todo', 'doing', 'done', 'blocked'].includes(b.status)) throw httpError(400, 'status must be todo, doing, done or blocked');
+      t.status = b.status;
+    }
+    if (b.owner !== undefined) t.owner = b.owner || null;
+    if (b.note) t.notes = [...(t.notes || []), { by: a.name, at: now(), text: String(b.note).slice(0, 2000) }].slice(-20);
+    t.updated = now();
+    const g = p.board.goals.find(x => x.id === t.goalId);
+    if (g && p.board.tasks.filter(x => x.goalId === g.id).every(x => x.status === 'done')) g.status = 'done';
+    boardChanged(p, 'task-update', { task: t }, a);
+    return { ok: true, task: t };
+  },
+
   'POST activity': (p, b) => {
     const a = p.touch(b.agent);
     const items = (Array.isArray(b.items) ? b.items : []).slice(0, 50).map(it => ({
@@ -376,9 +519,10 @@ const routes = {
   'POST wait-unlock': async (p, b, q, ctx) => {
     const a = p.touch(b.agent);
     const fp = normPath(b.path);
-    const free = () => !p.locks[fp] || p.locks[fp].holder === a.id;
-    if (!free()) await ctx.waitFor(ev => ev.type === 'unlock' && ev.path === fp, (b.timeout || 300) * 1000);
-    return { free: free(), lock: p.locks[fp] || null };
+    const key = fileKey(b.branch || null, fp);
+    const free = () => !p.locks[key] || p.locks[key].holder === a.id;
+    if (!free()) await ctx.waitFor(ev => ev.type === 'unlock' && ev.path === fp && (ev.branch || null) === (b.branch || null), (b.timeout || 300) * 1000);
+    return { free: free(), lock: p.locks[key] || null };
   },
   // long-poll; servers stream the same events over SSE / WebSocket themselves
   'GET events': async (p, b, q, ctx) => {
@@ -390,6 +534,22 @@ const routes = {
     return { events: evs || [], seq: p.seq, truncated: !evs };
   },
 };
+
+function pushTask(p, t, a) {
+  const title = String(t.title || '').trim().slice(0, 200);
+  if (!title) throw httpError(400, 'every task needs a title');
+  if (p.board.tasks.length >= MAX_TASKS) p.board.tasks.splice(0, p.board.tasks.findIndex(x => x.status === 'done') + 1 || 1);
+  const task = { id: crypto.randomBytes(4).toString('hex'), goalId: t.goalId, title, detail: String(t.detail || '').slice(0, 6000),
+    owner: t.owner || null, status: 'todo', by: a.name, at: now(), updated: now(), after: Array.isArray(t.after) ? t.after.slice(0, 10) : [] };
+  p.board.tasks.push(task);
+  return task;
+}
+
+function boardChanged(p, action, info, a) {
+  p.board.version++;
+  p.boardChanged = true;
+  p.emit('board', { action, byName: a.name, version: p.board.version, ...info });
+}
 
 function parseFrontmatter(text) {
   const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
@@ -422,5 +582,5 @@ function waitOn(p, pred, timeoutMs, onAbort) {
   });
 }
 
-module.exports = { Project, routes, waitOn, parseFrontmatter, sha, now, httpError, sameSecret, normPath,
+module.exports = { Project, routes, waitOn, parseFrontmatter, fileKey, GIT_CHUNK, sha, now, httpError, sameSecret, normPath,
   ONLINE_MS, MAX_FILE_BYTES, OPEN_IDLE_MS, OPEN_MAX_PROJECTS, OPEN_CREATES_PER_HOUR };

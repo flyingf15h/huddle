@@ -5,6 +5,8 @@ const fs = require('fs');
 const path = require('path');
 const { loadConfig, identity, Client, relPath, hashFile, sha, formatMessages, ago, CONFIG_DIR } = require('./client');
 const shared = require('./shared');
+const gitx = require('./git');
+const board = require('./board');
 
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 const INBOX_EVERY_MS = 10 * 1000;
@@ -48,7 +50,25 @@ async function inbox(client, cfg, force) {
     st.data.shared = shared.signature(sh);
     st.save();
   }
+  if (r.boardVersion !== undefined && r.boardVersion !== st.data.boardVersion) {
+    const b = await client.get('board');
+    if (st.data.boardVersion !== undefined) {
+      const note = board.describe(st.data.boardSeen || {}, b, client.agent.name);
+      if (note) out.push(note);
+    }
+    st.data.boardVersion = b.version;
+    st.data.boardSeen = board.signature(b);
+    st.save();
+  }
   return out.join('\n\n');
+}
+
+// After a turn, share the branch if it has new commits so others can merge it.
+async function autoPublish(client, cfg, st) {
+  if (cfg.shareGit === false || !gitx.isRepo(cfg.root)) return;
+  const h = gitx.head(cfg.root);
+  if (!h || st.data.publishedHead === h) return;
+  try { await gitx.publish(client, cfg.root); st.data.publishedHead = h; st.save(); } catch {}
 }
 
 // One line saying what a tool call does, e.g. "Bash: npm test" or "Edit: src/app.js".
@@ -119,6 +139,18 @@ async function shareStop(input, client, cfg) {
   await client.post('activity', { items });
 }
 
+function branchSummary(s, client, cfg) {
+  if (!gitx.isRepo(cfg.root)) return 'This folder is not a git repository, so branches and merging are off (huddle_branches explains how to turn them on).';
+  const mine = client.agent.branch;
+  const others = s.agents.filter(a => a.online && a.id !== client.agent.id && a.kind === 'agent' && a.branch);
+  const same = others.filter(a => a.branch === mine).map(a => a.name);
+  const diff = others.filter(a => a.branch !== mine).map(a => `${a.name} on ${a.branch}`);
+  return `You are on git branch ${mine || '(detached)'}.` +
+    (same.length ? ` Same branch as you (live shared edits, locks apply): ${[...new Set(same)].join(', ')}.` : '') +
+    (diff.length ? ` On other branches (no locks between you; merge later with huddle_merge): ${[...new Set(diff)].join(', ')}.` : '') +
+    ' Commits you make are shared automatically at the end of each turn.';
+}
+
 function teamSummary(s, me) {
   const others = s.agents.filter(a => a.online && a.id !== me.id && a.kind !== 'watcher');
   const lines = [];
@@ -138,7 +170,11 @@ const handlers = {
     const st = sessionState(cfg, client.agent);
     st.data.shared = shared.signature(sh);
     newActivity(input, st, cfg.shareActivity); // just positions us at the end of the transcript
+    const b = await client.get('board');
+    st.data.boardVersion = b.version;
+    st.data.boardSeen = board.signature(b);
     st.save();
+    if (gitx.isRepo(cfg.root)) gitx.fetchAll(client, cfg.root).catch(() => {});
     return ctx('SessionStart',
       `You are "${client.agent.name}" in huddle project "${client.cfg.project}", shared with other Claude agents working in the same codebase from other machines.\n` +
       'Rules: before you edit a file it is locked for you automatically; files other agents are editing are read-only and edits to them will be refused. ' +
@@ -147,7 +183,7 @@ const handlers = {
       'Messages from other agents show up in your context automatically.\n' +
       'The team shares knowledge through huddle instead of git: the PROJECT.md brief (huddle_project), memory notes (huddle_remember / huddle_recall) and skills (huddle_save_skill). ' +
       'When you learn something another agent would otherwise have to rediscover (a gotcha, a decision, how to run or test something), save it.\n\n' +
-      teamSummary(s, client.agent) + '\n\n' + shared.briefing(sh));
+      teamSummary(s, client.agent) + '\n' + branchSummary(s, client, cfg) + '\n\n' + board.briefing(b, client.agent.name) + '\n\n' + shared.briefing(sh));
   },
 
   async pre(input, client, cfg) {
@@ -156,7 +192,8 @@ const handlers = {
     if (!rel) return null;
     const abs = path.join(cfg.root, ...rel.split('/'));
     const local = hashFile(abs);
-    const r = await client.post('lock', { path: rel, baseHash: local, wantContent: true });
+    const branch = client.agent.branch;
+    const r = await client.post('lock', { path: rel, branch, baseHash: local, wantContent: true });
     if (!r.ok) {
       const l = r.lock;
       return deny(`${rel} is locked by ${l.holderName} (since ${ago(l.since)}${l.note ? ', "' + l.note + '"' : ''}). ` +
@@ -176,6 +213,11 @@ const handlers = {
       }
       return { systemMessage: `huddle: local ${rel} differs from the last shared version (by ${r.latest.byName}); this edit will replace it.` };
     }
+    if (r.elsewhere && r.elsewhere.length) {
+      return { hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext:
+        `Heads up: ${r.elsewhere.map(e => `${e.holderName} is also editing ${rel} on branch ${e.branch || '(none)'}`).join('; ')}. ` +
+        'You are not blocked because you are on a different branch, but this will conflict when the branches are merged. Consider telling them with huddle_send.' } };
+    }
     return null;
   },
 
@@ -186,7 +228,7 @@ const handlers = {
       const abs = path.join(cfg.root, ...rel.split('/'));
       try {
         const content = fs.readFileSync(abs, 'utf8');
-        await client.post('content', { path: rel, content, tool: input.tool_name });
+        await client.post('content', { path: rel, branch: client.agent.branch, content, tool: input.tool_name });
       } catch (e) {
         if (e.code !== 'ENOENT') notes.push(`huddle could not share ${rel}: ${e.message}`);
       }
@@ -209,6 +251,7 @@ const handlers = {
 
   async stop(input, client, cfg) {
     await shareStop(input, client, cfg).catch(() => {});
+    await autoPublish(client, cfg, sessionState(cfg, client.agent));
     if (cfg.releaseOnStop) await client.post('unlock', { all: true, keepHeld: true, reason: 'turn finished' });
     if (input.stop_hook_active) return null;
     const peek = await client.post('inbox', { peek: true });
@@ -219,7 +262,8 @@ const handlers = {
     return { decision: 'block', reason: `Before stopping: other agents sent you messages.\n${formatMessages(r.messages, me)}\nReply with huddle_send (or act on them), then you may stop.` };
   },
 
-  async 'session-end'(input, client) {
+  async 'session-end'(input, client, cfg) {
+    await autoPublish(client, cfg, sessionState(cfg, client.agent));
     await client.post('unlock', { all: true, reason: 'session ended' });
     await client.post('bye', {});
     return null;
@@ -236,7 +280,7 @@ async function runHook(event) {
   const h = handlers[event];
   if (!h) { process.stderr.write(`huddle: unknown hook ${event}\n`); return; }
   try {
-    const client = new Client(cfg, identity(cfg));
+    const client = new Client(cfg, { ...identity(cfg), branch: gitx.currentBranch(cfg.root) });
     out(await h(input, client, cfg));
   } catch (e) {
     if (event === 'pre' && cfg.failClosed) out(deny(`huddle server unavailable, so edits are blocked (failClosed is on): ${e.message}`));

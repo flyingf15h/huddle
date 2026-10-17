@@ -9,7 +9,7 @@ import dashboard from '../../src/dashboard.html';
 const { Project, routes, waitOn, httpError, now } = core;
 
 // tighter than the self-hosted defaults: the free plan has 5 GB for everyone
-const LIMITS = { fileBytes: 1024 * 1024, files: 500, projectBytes: 10 * 1024 * 1024 };
+const LIMITS = { fileBytes: 1024 * 1024, files: 500, projectBytes: 10 * 1024 * 1024, sharedBytes: 1536 * 1024, gitBytes: 25 * 1024 * 1024 };
 const IDLE_DELETE_MS = 30 * 24 * 60 * 60 * 1000;
 const SWEEP_MS = 60 * 1000;
 const MSGS_BYTES = 1024 * 1024;
@@ -173,7 +173,11 @@ export class HuddleProject extends DurableObject {
         if (text.length > LIMITS.fileBytes * 2) throw httpError(413, 'body too large');
         try { body = text ? JSON.parse(text) : {}; } catch { throw httpError(400, 'invalid JSON'); }
       }
-      const ctx = { waitFor: (pred, ms) => waitOn(p, pred, Math.min(ms, 60 * 1000)) };
+      const store = this.ctx.storage;
+      const ctx = {
+        waitFor: (pred, ms) => waitOn(p, pred, Math.min(ms, 60 * 1000)),
+        blobs: { put: (k, v) => store.put('blob:' + k, v), get: async (k) => (await store.get('blob:' + k)) ?? null },
+      };
       const out = await route(p, body, url.searchParams, ctx);
       await this.save();
       return json(out);

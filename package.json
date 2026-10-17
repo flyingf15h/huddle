@@ -5,7 +5,7 @@
   "bin": { "huddle": "src/cli.js" },
   "files": ["src"],
   "engines": { "node": ">=18" },
-  "scripts": { "test": "node test/e2e.js" },
+  "scripts": { "test": "node test/e2e.js && node test/git-board.js" },
   "license": "MIT",
   "repository": "github:flyingf15h/huddle"
 }

@@ -39,6 +39,16 @@ h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: v
 .lock { color: var(--lock); }
 #viewer { display: flex; flex-direction: column; background: var(--panel); }
 #vhead { padding: 10px 14px; border-bottom: 1px solid var(--line); }
+#askbar { display: flex; gap: 6px; padding: 10px; border-bottom: 1px solid var(--line); flex-wrap: wrap; background: var(--bg); }
+#askbar input { flex: 1; min-width: 180px; }
+#askmsg { font-size: 12px; color: var(--muted); width: 100%; }
+.goal { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; background: var(--bg); }
+.goal .gt { white-space: pre-wrap; overflow-wrap: anywhere; margin: 4px 0 8px; }
+.task { display: flex; gap: 8px; align-items: baseline; padding: 4px 0; border-top: 1px dashed var(--line); flex-wrap: wrap; }
+.pill { font-size: 11px; border-radius: 999px; padding: 1px 8px; border: 1px solid var(--line); color: var(--muted); }
+.pill.doing { color: var(--accent); border-color: var(--accent); }
+.pill.done { color: var(--ok); border-color: var(--ok); }
+.pill.blocked { color: var(--lock); border-color: var(--lock); }
 #tabs { display: flex; gap: 2px; padding: 8px 10px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 #tabs button { background: transparent; color: var(--muted); border-radius: 6px 6px 0 0; padding: 6px 12px; }
 #tabs button.on { color: var(--ink); background: var(--bg); font-weight: 600; }
@@ -104,8 +114,15 @@ h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: v
       <h2>Shared files</h2><div id="files"></div>
     </section>
     <section id="viewer">
+      <form id="askbar">
+        <input id="asktext" placeholder="Ask the Claudes: e.g. add a history feature with tests" autocomplete="off">
+        <select id="askto"><option value="">whole team (they split it up)</option></select>
+        <button>Send</button>
+        <div id="askmsg">Goals for the whole team get planned by one Claude and split among everyone. Picking a person sends it to just their Claude.</div>
+      </form>
       <div id="tabs">
         <button data-tab="activity" class="on">Activity</button>
+        <button data-tab="board">Board</button>
         <button data-tab="file">Live file</button>
         <button data-tab="doc">PROJECT.md</button>
         <button data-tab="memory">Memory</button>
@@ -158,6 +175,31 @@ document.addEventListener('click', (e) => {
   showTab();
 });
 async function loadShared() { S.shared = await api('shared'); if (S.tab !== 'file' && !S.editing) showTab(); }
+async function loadBoard() { S.board = await api('board'); if (S.tab === 'board') renderBoard(); }
+function renderBoard() {
+  const el = $('team'), b = S.board;
+  if (!b) { el.innerHTML = '<p class="sub">loading…</p>'; return; }
+  if (!b.goals.length && !b.tasks.length) { el.innerHTML = '<p class="sub">No goals yet. Use the bar above to ask the Claudes for something; one of them plans it and hands out tasks.</p>'; return; }
+  const task = (t) => `<div class="task"><span class="pill ${t.status}">${t.status}</span><b>${esc(t.title)}</b>
+    <span class="sub">${t.owner ? esc(t.owner) : 'unassigned'}${t.after && t.after.length ? ' · waits for ' + t.after.length + ' task(s)' : ''}${t.notes && t.notes.length ? ' · ' + esc(t.notes[t.notes.length - 1].text) : ''}</span></div>`;
+  el.innerHTML = b.goals.slice().reverse().map(g => `<div class="goal"><div class="sub">${esc(g.byName)}${g.to ? ' → ' + esc(g.to) + "'s Claude" : ' → whole team'} · ${ago(g.at)} ·
+      <span class="pill ${g.status === 'done' ? 'done' : g.status === 'open' ? '' : 'doing'}">${g.status}</span>${g.planner && !g.to ? ' · planned by ' + esc(g.planner) : ''}</div>
+      <div class="gt">${esc(g.text)}</div>${g.plan ? `<div class="sub">Plan: ${esc(g.plan)}</div>` : ''}
+      ${b.tasks.filter(t => t.goalId === g.id).map(task).join('') || (g.status === 'open' ? '<div class="sub">waiting for a Claude to plan it…</div>' : '')}</div>`).join('');
+}
+
+$('askbar').onsubmit = async (e) => {
+  e.preventDefault();
+  const text = $('asktext').value.trim();
+  if (!text) return;
+  const to = $('askto').value || null;
+  try {
+    await api('goal', { text, to });
+    $('asktext').value = '';
+    $('askmsg').textContent = to ? `Sent to ${to}'s Claude.` : 'Sent to the team. Watch the Board tab as a Claude plans it.';
+  } catch (err) { $('askmsg').textContent = 'Could not send: ' + err.message; }
+};
+
 function actItem(it) {
   const body = it.kind === 'end' ? 'finished its turn' : it.kind === 'tool' ? '→ ' + it.text : it.text;
   return `<div class="act ${it.kind}"><div class="who">${esc(it.name)}${it.kind === 'prompt' ? ' (user prompt)' : it.kind === 'text' ? ' (Claude)' : ''} · ${new Date(it.at).toLocaleTimeString()}</div><div class="body">${esc(body)}</div></div>`;
@@ -178,6 +220,7 @@ function showTab() {
   $('vhead').hidden = $('code').hidden = !file;
   $('team').hidden = file;
   if (S.tab === 'activity') return renderActivity();
+  if (S.tab === 'board') return renderBoard();
   if (file || !S.shared) return;
   const sh = S.shared, el = $('team');
   if (S.tab === 'doc') {
@@ -245,7 +288,7 @@ function render() {
   }
   const agents = Object.values(byKey);
   $('agents').innerHTML = agents.map(a => `<div class="item"><span class="dot ${a.online ? 'on' : ''}"></span>${esc(a.name)}
-    <span class="sub">${a.kind === 'agent' ? '' : esc(a.kind)}</span><div class="sub">${esc(a.status || (a.online ? 'online' : 'last seen ' + ago(a.lastSeen)))}${a.host ? ' · ' + esc(a.host) : ''}</div></div>`).join('') || '<div class="item sub">nobody yet</div>';
+    <span class="sub">${a.kind === 'agent' ? '' : esc(a.kind)}</span><div class="sub">${esc(a.status || (a.online ? 'online' : 'last seen ' + ago(a.lastSeen)))}${a.branch ? ' · ⎇ ' + esc(a.branch) : ''}${a.host ? ' · ' + esc(a.host) : ''}</div></div>`).join('') || '<div class="item sub">nobody yet</div>';
   const locks = Object.values(S.locks);
   $('locks').innerHTML = locks.map(l => `<div class="item clickable ${S.sel === l.path ? 'sel' : ''}" data-p="${esc(l.path)}"><span class="lock">🔒</span> ${esc(l.path)}
     <div class="sub">${esc(l.holderName)} · ${ago(l.since)}${l.note ? ' · ' + esc(l.note) : ''}</div></div>`).join('') || '<div class="item sub">none</div>';
@@ -253,6 +296,10 @@ function render() {
   $('files').innerHTML = files.map(f => `<div class="item clickable ${S.sel === f.path ? 'sel' : ''}" data-p="${esc(f.path)}">${esc(f.path)}
     <div class="sub">v${f.version} by ${esc(f.byName)} · ${ago(f.at)}</div></div>`).join('') || '<div class="item sub">none yet</div>';
   const opts = ['<option value="">everyone</option>'].concat([...new Set(agents.filter(a => a.kind === 'agent').map(a => a.name))].map(n => `<option>${esc(n)}</option>`));
+  const people = [...new Set(agents.filter(a => a.kind === 'agent' || a.kind === 'autopilot').map(a => a.name))];
+  const curAsk = $('askto').value;
+  $('askto').innerHTML = '<option value="">whole team (they split it up)</option>' + people.map(n => `<option value="${esc(n)}">only ${esc(n)}'s Claude</option>`).join('');
+  $('askto').value = curAsk;
   const cur = $('to').value;
   $('to').innerHTML = opts.join('');
   $('to').value = cur;
@@ -300,6 +347,17 @@ function addChat(html) {
 }
 function onEvent(ev) {
   switch (ev.type) {
+    case 'board': {
+      const what = { goal: ev.goal && (ev.goal.to ? `asked ${esc(ev.goal.to)}'s Claude: ${esc(ev.goal.text.slice(0, 120))}` : `gave the team a goal: ${esc(ev.goal.text.slice(0, 120))}`),
+        'claim-goal': 'is planning a goal', plan: `planned it: ${ev.tasks ? ev.tasks.length : 0} task(s)`,
+        'claim-task': ev.task && `took “${esc(ev.task.title)}”`, 'task-update': ev.task && `marked “${esc(ev.task.title)}” ${ev.task.status}` }[ev.action];
+      if (what) addChat(`<div class="ev">📋 ${esc(ev.byName)} ${what}</div>`);
+      loadBoard().catch(() => {});
+      break;
+    }
+    case 'git':
+      if (ev.ref) addChat(`<div class="ev">⎇ ${esc(ev.ref.owner)} shared ${esc(ev.ref.branch)}${ev.ref.subject ? ': ' + esc(ev.ref.subject) : ''}</div>`);
+      break;
     case 'activity':
       S.activity.push(...ev.items);
       if (S.activity.length > 600) S.activity.splice(0, S.activity.length - 600);
@@ -349,6 +407,7 @@ async function start() {
   $('pname').textContent = auth.project + ' · you are ' + auth.name;
   showTab();
   loadShared().catch(() => {});
+  loadBoard().catch(() => {});
   api('activity?limit=300').then(r => { S.activity = r.activity; showTab(); $('team').scrollTop = $('team').scrollHeight; }).catch(() => {});
   const hist = await api('messages?limit=100');
   for (const m of hist.messages) onEvent({ type: 'message', message: m });

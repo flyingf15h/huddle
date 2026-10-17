@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const { sha, CONFIG_DIR } = require('./client');
 const { writeShared } = require('./shared');
+const gitx = require('./git');
 
 const GUARD_MS = 2000;
 
@@ -31,6 +32,11 @@ class Sync {
   }
 
   abs(p) { return path.join(this.cfg.root, ...p.split('/')); }
+
+  // locks and live copies only matter between people on the same branch
+  branch() { return gitx.currentBranch(this.cfg.root); }
+  sameBranch(x) { return (x.branch || null) === (this.branch() || null); }
+  fileQuery(p) { const b = this.branch(); return b ? { path: p, branch: b } : { path: p }; }
 
   // Only one syncer per checkout, otherwise two sessions in the same folder fight.
   claim() {
@@ -124,25 +130,27 @@ class Sync {
 
   async catchUp() {
     const s = await this.client.get('state');
+    this.lastBranch = this.branch();
     this.locks = {};
-    for (const l of s.locks) this.locks[l.path] = l;
+    for (const l of s.locks) if (this.sameBranch(l)) this.locks[l.path] = l;
     // drop protection for locks that went away while we weren't looking
     for (const p of Object.keys(this.modes)) {
       if (!this.locks[p] || this.locks[p].checkout === this.me) this.unprotect(p);
     }
     for (const f of s.files) {
-      if (f.checkout === this.me || !f.size) continue;
+      if (f.checkout === this.me || !f.size || !this.sameBranch(f)) continue;
       const local = hashOf(this.abs(f.path));
       if (local === f.hash) continue;
       const lockedElsewhere = this.locks[f.path] && this.locks[f.path].checkout !== this.me;
       try {
-        const full = await this.client.get('file', { path: f.path });
+        const full = await this.client.get('file', this.fileQuery(f.path));
         if (local === null || full.hashes.includes(local) || lockedElsewhere) this.write(f.path, full.content, full.hashes);
         else this.log(`sync: ${f.path} has local changes that were never shared; leaving it alone`);
       } catch (e) { this.log(`sync: ${f.path}: ${e.message}`); }
     }
     for (const l of Object.values(this.locks)) if (l.checkout !== this.me) this.protect(l.path);
     await this.refreshShared();
+    this.fetchGit();
     this.seq = s.seq;
   }
 
@@ -151,17 +159,28 @@ class Sync {
     catch (e) { this.log('sync: shared knowledge: ' + e.message); }
   }
 
+  // others' published branches land in refs/remotes/huddle/* (never touches the working tree)
+  fetchGit() {
+    if (this.fetching || !gitx.isRepo(this.cfg.root)) return;
+    this.fetching = gitx.fetchAll(this.client, this.cfg.root, this.log)
+      .catch(e => this.log('sync: git: ' + e.message))
+      .finally(() => { this.fetching = null; });
+  }
+
   async handle(ev) {
     if (ev.type === 'shared') return this.refreshShared();
+    if (ev.type === 'git') return this.fetchGit();
     if (ev.type === 'lock') {
+      if (!this.sameBranch(ev.lock)) return;
       this.locks[ev.lock.path] = ev.lock;
       if (ev.lock.checkout !== this.me) this.protect(ev.lock.path);
     } else if (ev.type === 'unlock') {
+      if (!this.sameBranch(ev)) return;
       delete this.locks[ev.path];
       this.unprotect(ev.path);
-    } else if (ev.type === 'file' && ev.file.checkout !== this.me) {
+    } else if (ev.type === 'file' && ev.file.checkout !== this.me && this.sameBranch(ev.file)) {
       try {
-        const full = await this.client.get('file', { path: ev.file.path });
+        const full = await this.client.get('file', this.fileQuery(ev.file.path));
         this.write(full.path, full.content, full.hashes);
         if (this.locks[full.path] && this.locks[full.path].checkout !== this.me) this.protect(full.path);
       } catch (e) { this.log(`sync: ${ev.file.path}: ${e.message}`); }
@@ -217,13 +236,21 @@ class Sync {
   // Something on this machine (a shell command, an editor) changed a file another
   // agent holds. Put their version back and keep ours as a conflict copy.
   async guard() {
+    // switched branches: drop the old branch's protections and resync from scratch
+    if (this.lastBranch !== undefined && this.branch() !== this.lastBranch) {
+      for (const p of Object.keys(this.modes)) this.unprotect(p);
+      this.lastBranch = this.branch();
+      this.seq = 0;
+      if (this.closeWs) this.closeWs();
+      return;
+    }
     for (const p of Object.keys(this.modes)) {
       const abs = this.abs(p);
       const want = this.expected[p];
       const have = hashOf(abs);
       if (!want || have === want) continue;
       try {
-        const full = await this.client.get('file', { path: p });
+        const full = await this.client.get('file', this.fileQuery(p));
         if (have !== full.hash) {
           this.write(p, full.content, []);
           this.log(`sync: ${p} is locked by ${this.locks[p] ? this.locks[p].holderName : 'another agent'}; reverted a local change (copy kept in .huddle/conflicts)`);
