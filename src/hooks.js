@@ -84,7 +84,7 @@ async function openRequests(client) {
   const how = mode === 'off'
     ? 'Your requests runner is off, so these wait for you: do them now if your user agrees, or tell your user they are waiting.'
     : 'Your request runner works through these in the background; don\'t redo them, but mention them to your user. A blocked one needs your user.';
-  return `Requests sent to you (${me}'s Claude):\n` +
+  return `Requests sent to you (${aiNameOf(settings, me) ? aiNameOf(settings, me) + ', ' : ''}${me}'s Claude):\n` +
     open.map(t => `- [${t.id}] from ${t.by}, ${t.status}: ${t.title}${t.status === 'blocked' && t.notes && t.notes.length ? ` (${t.notes[t.notes.length - 1].text})` : ''}`).join('\n') +
     '\n' + how;
 }
@@ -236,11 +236,18 @@ function branchSummary(s, client, cfg) {
     ' Commits you make are shared automatically at the end of each turn.';
 }
 
+// what the person named their Claude, if anything; it's in the state snapshot's settings
+function aiNameOf(s, person) { return ((s.settings || {})[person] || {}).aiName || null; }
+function nameLine(s, me) {
+  const n = aiNameOf(s, me);
+  return n ? `${me} named you "${n}". Use that as your name: introduce yourself as ${n} and sign your huddle messages as ${n} (${me}'s Claude). Others can send you work with to="${n}".` : '';
+}
+
 function teamSummary(s, me) {
   const others = s.agents.filter(a => a.online && a.id !== me.id && a.kind !== 'watcher');
   const lines = [];
   lines.push(others.length
-    ? 'Other agents online: ' + others.map(a => `${a.name}${a.host ? ' on ' + a.host : ''}${a.status ? ` ("${a.status}")` : ''}`).join('; ')
+    ? 'Other agents online: ' + others.map(a => `${a.name}${a.kind === 'agent' && aiNameOf(s, a.name) ? ` (their Claude is called ${aiNameOf(s, a.name)})` : ''}${a.host ? ' on ' + a.host : ''}${a.status ? ` ("${a.status}")` : ''}`).join('; ')
     : 'No other agents are online right now.');
   const theirs = s.locks.filter(l => l.holder !== me.id);
   if (theirs.length) lines.push('Files locked by others (read-only for you): ' + theirs.map(l => `${l.path} (${l.holderName}${l.note ? ': ' + l.note : ''})`).join(', '));
@@ -262,6 +269,7 @@ const handlers = {
     const b = await client.get('board');
     st.data.boardVersion = b.version;
     st.data.boardSeen = board.signature(b);
+    st.data.aiName = aiNameOf(s, client.agent.name);
     st.save();
     if (gitx.isRepo(cfg.root)) gitx.fetchAll(client, cfg.root).catch(() => {});
     // shown to the person in their terminal, so they can see this session is in the huddle
@@ -273,6 +281,7 @@ const handlers = {
       ` · your Claude ${mode === 'full' ? 'is on full autopilot' : mode === 'off' ? 'does not take requests (/autopilot to change)' : 'takes requests (/autopilot to change)'}`;
     return withNotice(notice, ctx('SessionStart',
       `You are "${client.agent.name}" in huddle project "${client.cfg.project}", shared with other Claude agents working in the same codebase from other machines.\n` +
+      (nameLine(s, client.agent.name) ? nameLine(s, client.agent.name) + '\n' : '') +
       (linked ? `The huddle project is the folder ./${path.relative(here, cfg.root)} (work and run git there). Only files inside it are shared with the team; other folders here are yours alone.\n` : '') +
       'Rules: before you edit a file it is locked for you automatically; files other agents are editing are read-only and edits to them will be refused. ' +
       'If that happens, work on something else, message the holder with huddle_send, look at their live copy with huddle_view, or block with huddle_wait. ' +
@@ -358,6 +367,13 @@ const handlers = {
     if (!isPrivate && cfg.shareActivity === 'full' && prompt) await client.post('activity', { items: [{ kind: 'prompt', text: prompt }] }).catch(() => {});
     const mail = await inbox(client, cfg, true);
     const s = await client.get('state');
+    const ai = aiNameOf(s, client.agent.name);
+    let renamed = '';
+    if (ai !== (st.data.aiName || null)) {
+      renamed = ai ? `huddle: ${nameLine(s, client.agent.name)}` : `huddle: ${client.agent.name} took your name away; you are ${client.agent.name}'s Claude again.`;
+      st.data.aiName = ai;
+      st.save();
+    }
     const theirs = s.locks.filter(l => l.holder !== client.agent.id);
     const lockLine = theirs.length ? 'huddle: files currently locked by other agents: ' + theirs.map(l => `${l.path} (${l.holderName})`).join(', ') : '';
     const privateNote = isPrivate ? 'This turn is private: huddle is not sharing your user\'s prompt, your replies or your tool calls with the team. Do not put what is discussed here into huddle messages, team memory or PROJECT.md unless the user asks you to. File edits and commits in the project still sync as usual.' : '';
@@ -365,7 +381,7 @@ const handlers = {
     // whatever the prompt is about, the team's messages and requests come first
     const team = [mail, asks].filter(Boolean).join('\n\n');
     const first = team ? `huddle: read this first, before your user's prompt, and tell your user about anything that needs them.\n\n${team}` : '';
-    return ctx('UserPromptSubmit', [first, privateNote, lockLine].filter(Boolean).join('\n\n'));
+    return ctx('UserPromptSubmit', [first, renamed, privateNote, lockLine].filter(Boolean).join('\n\n'));
   },
 
   async stop(input, client, cfg) {

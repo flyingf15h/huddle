@@ -81,6 +81,12 @@ header .grow { flex: 1; }
 @keyframes live { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 55%, transparent); } 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
 .hsel { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
 .hsel select { font-size: 13.5px; padding: 5px 9px; }
+.hsel input { font-size: 13.5px; padding: 5px 9px; width: 9em; }
+.person .ainame { font-size: 12px; color: var(--muted); font-weight: 500; }
+#namepop { position: fixed; z-index: 50; background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-lg); padding: 10px 12px; width: 240px; }
+#namepop label { display: block; font-size: 12.5px; color: var(--muted); margin-bottom: 6px; }
+#namepop input { width: 100%; box-sizing: border-box; font-size: 14px; padding: 6px 9px; }
+#namepop .row { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; }
 .iconbtn { padding: 6px 10px; min-width: 34px; }
 
 /* ---------- team strip ---------- */
@@ -308,7 +314,7 @@ ol.steps { padding-left: 20px; } ol.steps li { margin-bottom: 10px; }
         <option value="requests">takes requests</option>
         <option value="full">full autopilot</option>
         <option value="off">off, requests wait</option>
-      </select></label>
+      </select><input id="mineName" maxlength="32" placeholder="name it" aria-label="Your Claude's name" title="Give your Claude a name the team sees, e.g. Pip. People can then send it work by that name."></label>
     <button id="btn-notify" class="ghost iconbtn" title="Notify me about messages and requests for my Claude" aria-label="Notifications">🔔</button>
     <button id="btn-theme" class="ghost iconbtn" title="Theme"></button>
     <button id="btn-invite">Invite people</button>
@@ -562,9 +568,9 @@ function noteHtml(e) {
     case 'file': return `<div class="note"><span class="ic">✎</span><span>${who} saved ${fileBtn(e.path, e.branch)} <span class="faint">v${e.version}</span></span></div>`;
     case 'git': return `<div class="note"><span class="ic">⎇</span><span>${who} shared <b>${esc(e.branch)}</b>${e.subject ? `: “${esc(e.subject)}”` : ''}</span></div>`;
     case 'knowledge': return `<div class="note"><span class="ic">📚</span><span>${who} ${e.action === 'delete' ? 'deleted' : e.action === 'add' ? 'added' : 'updated'} ${e.what === 'doc' ? 'the project brief' : e.what === 'memory' ? `the memory “${esc(e.title)}”` : `the skill “${esc(e.title)}”`}</span></div>`;
-    case 'task': return `<div class="note"><span class="ic">📋</span><span>${who}'s Claude ${esc(e.text)}</span></div>`;
-    case 'goal': return `<div class="card goalcard"><div class="kicker">${who} asked ${e.goal.to ? esc(e.goal.to) + "'s Claude" : 'the whole team'} · ${clock(e.at)}</div><div class="title">${esc(e.goal.text)}</div></div>`;
-    case 'plan': return `<div class="card"><div class="kicker">${who}'s Claude split it into ${e.tasks.length} task${e.tasks.length === 1 ? '' : 's'}</div>${e.goal && e.goal.plan ? `<div class="small" style="margin:2px 0 6px">${esc(e.goal.plan)}</div>` : ''}${e.tasks.map(t => `<div class="trow" style="padding:4px 0"><span class="dot"></span><span class="tt">${esc(t.title)}</span><span class="owner">${t.owner ? avatar(t.owner, true) + `<span>${esc(t.owner)}</span>` : '<span>anyone</span>'}</span></div>`).join('')}</div>`;
+    case 'task': return `<div class="note"><span class="ic">📋</span><span><b>${esc(claudeOf(e.who))}</b> ${esc(e.text)}</span></div>`;
+    case 'goal': return `<div class="card goalcard"><div class="kicker">${who} asked ${e.goal.to ? esc(claudeOf(e.goal.to)) : 'the whole team'} · ${clock(e.at)}</div><div class="title">${esc(e.goal.text)}</div></div>`;
+    case 'plan': return `<div class="card"><div class="kicker"><b>${esc(claudeOf(e.who))}</b> split it into ${e.tasks.length} task${e.tasks.length === 1 ? '' : 's'}</div>${e.goal && e.goal.plan ? `<div class="small" style="margin:2px 0 6px">${esc(e.goal.plan)}</div>` : ''}${e.tasks.map(t => `<div class="trow" style="padding:4px 0"><span class="dot"></span><span class="tt">${esc(t.title)}</span><span class="owner">${t.owner ? avatar(t.owner, true) + `<span>${esc(t.owner)}</span>` : '<span>anyone</span>'}</span></div>`).join('')}</div>`;
   }
   return '';
 }
@@ -690,14 +696,18 @@ function people() {
   }
   return Object.values(by).sort((x, y) => y.online - x.online || y.lastSeen - x.lastSeen);
 }
+// what to call someone's Claude: the name they gave it, or "tszfei's Claude"
+function aiName(n) { return (S.settings[n] && S.settings[n].aiName) || ''; }
+function claudeOf(n) { return aiName(n) || `${n}'s Claude`; }
 function lastOf(name) { for (let i = S.entries.length - 1; i >= 0; i--) if (S.entries[i].who === name) return S.entries[i]; return null; }
 function nowDoing(name) {
   const e = lastOf(name);
   if (!e) return '';
-  if (e.kind === 'end') return `Claude is idle, finished ${ago(e.at)}`;
-  if (e.kind === 'tool') { const w = toolWords(e.text); return `Claude ${w.verb} ${w.arg}`.trim(); }
-  if (e.kind === 'prompt') return `Asked Claude: “${e.text.slice(0, 120)}”`;
-  if (e.kind === 'reply') return `Claude: ${summarize(e.text)}`;
+  const c = aiName(name) || 'Claude';
+  if (e.kind === 'end') return `${c} is idle, finished ${ago(e.at)}`;
+  if (e.kind === 'tool') { const w = toolWords(e.text); return `${c} ${w.verb} ${w.arg}`.trim(); }
+  if (e.kind === 'prompt') return `Asked ${c}: “${e.text.slice(0, 120)}”`;
+  if (e.kind === 'reply') return `${c}: ${summarize(e.text)}`;
   if (e.kind === 'lock') return `Editing ${e.path}`;
   if (e.kind === 'msg') return `“${e.text.slice(0, 100)}”`;
   return '';
@@ -715,8 +725,8 @@ function renderTeam() {
     const last = lastOf(p.name);
     const busy = p.online && last && ['tool', 'prompt'].includes(last.kind) && Date.now() - last.at < 90 * 1000;
     const t = doingCount(p.name);
-    return `<button class="person${S.who === p.name ? ' sel' : ''}" data-person="${esc(p.name)}" title="${S.who === p.name ? 'Show everyone' : 'Show only ' + esc(p.name)}">
-      <div class="top">${avatar(p.name, false, busy)}<span class="name">${esc(p.name)}${p.name === myName() ? ' <span class="faint" style="font-weight:500">(you)</span>' : ''}</span>${stateChip(p)}</div>
+    return `<button class="person${S.who === p.name ? ' sel' : ''}" data-person="${esc(p.name)}" title="${S.who === p.name ? 'Show everyone' : 'Show only ' + esc(p.name)}${p.name === myName() && hasClaude(p.name) ? ' · right-click to name your Claude' : ''}">
+      <div class="top">${avatar(p.name, false, busy)}<span class="name">${esc(p.name)}${p.name === myName() ? ' <span class="faint" style="font-weight:500">(you)</span>' : ''}${aiName(p.name) ? ` <span class="ainame" title="${esc(p.name)}'s Claude">· ${esc(aiName(p.name))}</span>` : ''}</span>${stateChip(p)}</div>
       <div class="doing">${esc(nowDoing(p.name) || p.status || '') || '<span class="faint">No activity yet</span>'}</div>
       <div class="meta">${p.branch ? `<span>⎇ ${esc(p.branch)}</span>` : ''}${t ? `<span>${t} task${t === 1 ? '' : 's'} in progress</span>` : ''}</div>
     </button>`;
@@ -725,13 +735,14 @@ function renderTeam() {
   // composer recipients
   const names = ps.map(p => p.name).filter(n => n !== myName());
   const sel = $('to'), cur = sel.value;
-  sel.innerHTML = `<option value="">Full team</option>${names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}`;
+  sel.innerHTML = `<option value="">Full team</option>${names.map(n => `<option value="${esc(n)}">${esc(aiName(n) ? `${aiName(n)} (${n}'s Claude)` : n)}</option>`).join('')}`;
   sel.value = [...sel.options].some(o => o.value === cur) ? cur : '';
   updateHint();
   // my own setting, if my Claude is in this project
   const mine = auth.name && hasClaude(myName());
   $('mineWrap').hidden = !mine;
   if (mine && document.activeElement !== $('mine')) $('mine').value = (S.settings[myName()] && S.settings[myName()].autopilot) || 'requests';
+  if (mine && document.activeElement !== $('mineName')) $('mineName').value = aiName(myName());
 }
 document.addEventListener('click', (e) => {
   const card = e.target.closest('[data-person]');
@@ -746,6 +757,43 @@ $('mine').onchange = async (e) => {
   try { await api('setting', { autopilot: e.target.value }); }
   catch (err) { alert("Couldn't change it: " + err.message); }
 };
+$('mineName').onchange = async (e) => {
+  try { await saveAiName(e.target.value); }
+  catch (err) { alert("Couldn't name it: " + err.message); e.target.value = aiName(myName()); }
+};
+// right-click your own card to name your Claude (only your own: the server only lets you name yours)
+async function saveAiName(v) {
+  const r = await api('setting', { aiName: v });
+  S.settings[myName()] = r.settings;
+  renderTeam();
+}
+function closeNamePop() { const p = $('namepop'); if (p) p.remove(); }
+$('team').addEventListener('contextmenu', (e) => {
+  const card = e.target.closest('[data-person]');
+  if (!card || card.dataset.person !== myName() || !hasClaude(myName())) return;
+  e.preventDefault();
+  closeNamePop();
+  const pop = document.createElement('form');
+  pop.id = 'namepop';
+  pop.innerHTML = `<label for="namepopIn">Name your Claude (the team sees it and can send it work by this name)</label>
+    <input id="namepopIn" maxlength="32" placeholder="e.g. Pip" value="${esc(aiName(myName()))}">
+    <div class="row">${aiName(myName()) ? '<button type="button" class="ghost" data-clear>Remove name</button>' : ''}<button type="submit">Save</button></div>`;
+  document.body.appendChild(pop);
+  pop.style.left = Math.max(8, Math.min(e.clientX, innerWidth - pop.offsetWidth - 8)) + 'px';
+  pop.style.top = Math.max(8, Math.min(e.clientY, innerHeight - pop.offsetHeight - 8)) + 'px';
+  const input = $('namepopIn');
+  input.focus(); input.select();
+  const save = async (v) => {
+    try { await saveAiName(v); closeNamePop(); }
+    catch (err) { pop.querySelector('label').textContent = "Couldn't name it: " + err.message; input.focus(); }
+  };
+  pop.onsubmit = (ev) => { ev.preventDefault(); save(input.value); };
+  const clear = pop.querySelector('[data-clear]');
+  if (clear) clear.onclick = () => save('');
+  input.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeNamePop(); });
+});
+document.addEventListener('mousedown', (e) => { if ($('namepop') && !e.target.closest('#namepop')) closeNamePop(); });
+$('mineName').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.target.blur(); });
 
 // ---------- side panel: tasks, locks, files ----------
 S.tf = 'open'; S.openTask = null; S.goalOpen = {}; S.showDone = {};
@@ -761,7 +809,7 @@ function taskRow(t, b) {
       <span class="owner">${t.owner ? avatar(t.owner, true) + `<span>${esc(t.owner)}</span>` : '<span>anyone</span>'}</span>
     </button>
     ${open ? `<div class="tdetail">
-      <div class="small muted">${statusWord(t.status)} · ${t.owner ? esc(t.owner) + "'s Claude" : 'nobody has taken it yet'} · from ${esc(t.by)} ${ago(t.at)}</div>
+      <div class="small muted">${statusWord(t.status)} · ${t.owner ? esc(claudeOf(t.owner)) : 'nobody has taken it yet'} · from ${esc(t.by)} ${ago(t.at)}</div>
       ${t.detail ? `<p>${esc(t.detail)}</p>` : ''}
       ${waits.length ? `<p><b>Waiting for:</b> ${waits.map(x => esc(x.title)).join('; ')}</p>` : ''}
       ${note ? `<p><b>Latest note</b> <span class="faint">(${esc(note.by)}, ${ago(note.at)})</span>: ${esc(note.text)}</p>` : ''}
@@ -1047,8 +1095,8 @@ function updateHint() {
   if (!who) { $('hint').textContent = ''; return; }
   const p = people().find(x => x.name === who);
   $('hint').textContent = !p || !p.online ? `${who} isn't around, so this waits until their Claude is back.`
-    : p.runner === 'full' || p.runner === 'requests' ? `${who}'s Claude will start on this right away.`
-    : `${who}'s Claude will see this at its next step.`;
+    : p.runner === 'full' || p.runner === 'requests' ? `${claudeOf(who)} will start on this right away.`
+    : `${claudeOf(who)} will see this at its next step.`;
 }
 $('to').addEventListener('change', updateHint);
 const grow = () => { const t = $('text'); t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 240) + 'px'; };

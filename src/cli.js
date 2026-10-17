@@ -66,6 +66,8 @@ Day to day:
   huddle watch                  live feed of everything, incl. each Claude's prompts, replies
                                 and tool calls; keeps files synced while you edit by hand
   huddle sharing [full|tools|off]   how much of YOUR Claude sessions others can see
+  huddle ai-name [NAME]         name your Claude (e.g. "Pip"); the team sees it and can send it
+                                work with --to Pip. No NAME: show it. --clear removes it.
   huddle lock <file> / unlock [file]
   huddle invite                 print this project's invite code again
   huddle open                   open the live dashboard in your browser
@@ -717,12 +719,29 @@ function humanClient(kind = 'cli') {
   return new Client(cfg, identity(cfg, kind));
 }
 
+async function cmdAiName({ pos, flags }) {
+  const c = humanClient('human');
+  const me = c.cfg.name;
+  if (pos.length || flags.clear) {
+    const r = await c.post('setting', { aiName: flags.clear ? '' : pos.join(' ') });
+    return console.log(r.settings.aiName
+      ? `your Claude is now "${r.settings.aiName}". The team sees it as ${r.settings.aiName} (${me}'s Claude) and can send it work with --to ${r.settings.aiName}.`
+      : `your Claude has no name now; it shows as ${me}'s Claude.`);
+  }
+  const st = await c.get('settings');
+  const n = (st.settings[me] || {}).aiName;
+  console.log(n ? `your Claude is "${n}". Change it with huddle ai-name NAME, or --clear.` : `your Claude has no name yet. Give it one with huddle ai-name NAME.`);
+  const others = Object.entries(st.settings).filter(([who, x]) => who !== me && x && x.aiName);
+  if (others.length) console.log('\n' + others.map(([who, x]) => `${x.aiName.padEnd(16)} ${who}'s Claude`).join('\n'));
+}
+
 async function cmdStatus() {
   const c = humanClient();
-  const s = await c.get('state');
+  const [s, st] = await Promise.all([c.get('state'), c.get('settings').catch(() => ({ settings: {} }))]);
   console.log(`${c.cfg.project} @ ${c.cfg.server}\n`);
   for (const a of s.agents.filter(a => a.kind !== 'cli').sort((x, y) => y.online - x.online)) {
-    console.log(`${a.online ? '●' : '○'} ${a.name.padEnd(16)} ${a.kind.padEnd(7)} ${a.online ? '' : 'seen ' + ago(a.lastSeen)} ${a.status || ''}`);
+    const ai = a.kind === 'agent' && (st.settings[a.name] || {}).aiName;
+    console.log(`${a.online ? '●' : '○'} ${(ai ? `${a.name} (${ai})` : a.name).padEnd(24)} ${a.kind.padEnd(7)} ${a.online ? '' : 'seen ' + ago(a.lastSeen)} ${a.status || ''}`);
   }
   console.log('\nlocks:' + (s.locks.length ? '' : ' none'));
   for (const l of s.locks) console.log(`  🔒 ${l.path}  ${l.holderName}, ${ago(l.since)}${l.note ? ' — ' + l.note : ''}`);
@@ -887,7 +906,7 @@ async function main() {
   const cmds = {
     server: cmdServer, new: cmdNew, join: cmdJoin, leave: cmdLeave, status: cmdStatus, send: cmdSend, inbox: cmdInbox,
     lock: cmdLock, unlock: cmdUnlock, watch: cmdWatch, invite: cmdInvite, open: cmdOpen,
-    project: cmdProject, sharing: cmdSharing,
+    project: cmdProject, sharing: cmdSharing, 'ai-name': cmdAiName,
     sync: cmdSync, branches: cmdBranches, branch: cmdBranch, publish: cmdPublish, fetch: cmdFetch, merge: cmdMerge,
     ask: cmdAsk, board: cmdBoard, autopilot: cmdAutopilot, unpublish: cmdUnpublish, forget: cmdForget, 'same-person': cmdSamePerson, link: cmdLink, unlink: cmdUnlink, statusline: cmdStatusline, memory: cmdMemory, memories: cmdMemory, skill: cmdSkill, skills: cmdSkill,
     hook: () => require('./hooks').runHook(args.pos[0]),

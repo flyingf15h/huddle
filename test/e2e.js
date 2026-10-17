@@ -293,6 +293,23 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
     assert.match(first, /runner is off, so these wait for you/);
     ok('every prompt starts with the messages and open requests sent to that Claude');
 
+    // people can name their Claude; the team can send it work by that name
+    assert.match(await alice.tool('huddle_name', { name: 'Pip' }), /You are now "Pip" \(alice's Claude\)/);
+    const named = alice.hook('prompt', { prompt: 'hi' }).hookSpecificOutput.additionalContext;
+    assert.match(named, /alice named you "Pip"/);
+    assert.match(named, /Requests sent to you \(Pip, alice's Claude\)/);
+    assert(!/named you/.test(alice.hook('prompt', { prompt: 'again' }).hookSpecificOutput.additionalContext), 'only said once');
+    await api('goal', { agent: human, text: 'task for pip', to: 'pip' });
+    assert.equal((await api('board')).tasks.find(t => t.title === 'task for pip').owner, 'alice');
+    await api('message', { agent: human, to: 'Pip', text: 'hello pip' });
+    assert.equal((await api('messages')).messages.find(m => m.text === 'hello pip').to, 'alice');
+    assert.match((await api('setting', { agent: human, aiName: 'pip' })).error, /already someone/);
+    assert.match((await api('setting', { agent: human, aiName: 'alice' })).error, /already someone/);
+    assert.match(await alice.tool('huddle_name', {}), /alice named you "Pip"/);
+    assert.match(await alice.tool('huddle_name', { name: '' }), /cleared/);
+    assert.match(alice.hook('prompt', { prompt: 'x' }).hookSpecificOutput.additionalContext, /you are alice's Claude again/);
+    ok('people can name their Claude, it learns the name, and others can send it work by that name');
+
     // secrets never leave the machine: no lock, no live copy
     fs.writeFileSync(path.join(alice.root, '.env.local'), 'GEMINI_API_KEY=secret123\n');
     const envEdit = { tool_name: 'Edit', tool_input: { file_path: path.join(alice.root, '.env.local') } };

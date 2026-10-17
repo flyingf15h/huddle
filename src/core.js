@@ -42,6 +42,19 @@ function sameSecret(x, y) {
 // share a working copy, people on different branches only see each other.
 function fileKey(branch, fp) { return branch ? `${branch}::${fp}` : fp; }
 
+// "Pip (tszfei's Claude)", or just "tszfei's Claude" when the person hasn't named it
+function aiLabel(settings, person) {
+  const n = ((settings || {})[person] || {}).aiName;
+  return n ? `${n} (${person}'s Claude)` : `${person}'s Claude`;
+}
+// lets people address someone's Claude by the name they gave it: "Pip" -> "tszfei"
+function personFor(p, name) {
+  if (!name) return null;
+  const want = String(name).toLowerCase();
+  for (const [person, s] of Object.entries(p.settings || {})) if (s && s.aiName && s.aiName.toLowerCase() === want) return person;
+  return name;
+}
+
 function normPath(p) {
   if (typeof p !== 'string' || !p) throw httpError(400, 'path required');
   const n = path.posix.normalize(p.replace(/\\/g, '/'));
@@ -67,7 +80,7 @@ class Project {
     this.git = { refs: {}, bundles: [], bytes: 0, uploads: {}, snapshots: {} };
     // team prompts ("goals") and the tasks the agents split them into
     this.board = { version: 0, goals: [], tasks: [] };
-    this.settings = {};   // per person: { autopilot: 'off' | 'requests' | 'full' }
+    this.settings = {};   // per person: { autopilot: 'off' | 'requests' | 'full', aiName: what they call their Claude }
     this.aliases = {};    // other names a person has used ("Kelly-Wang" -> "Kelly")
     this.stats = {};      // per person: conversations, turns, time with Claude, tokens (see 'POST stats')
     this.waiters = new Set();
@@ -328,7 +341,7 @@ const routes = {
     const text = String(b.text || '').trim();
     if (!text) throw httpError(400, 'text required');
     const m = { id: crypto.randomBytes(6).toString('hex'), from: a.id, fromName: a.name,
-      to: b.to || null, text: text.slice(0, 20000), at: now() };
+      to: personFor(p, b.to) || null, text: text.slice(0, 20000), at: now() };
     p.messages.push(m);
     if (p.messages.length > MAX_MESSAGES) p.messages.splice(0, p.messages.length - MAX_MESSAGES);
     m.seq = p.emit('message', { message: m }).seq;
@@ -455,12 +468,25 @@ const routes = {
   'GET board': (p) => p.board,
   'GET settings': (p) => ({ settings: p.settings || {} }),
   // your own settings only: whether others can start your Claude on things
+  // and the name you gave your Claude ("" clears it)
   'POST setting': (p, b) => {
     const a = p.touch(b.agent);
-    const mode = String(b.autopilot || '');
-    if (!['off', 'requests', 'full'].includes(mode)) throw httpError(400, 'autopilot must be off, requests or full');
     p.settings = p.settings || {};
-    p.settings[a.name] = { ...(p.settings[a.name] || {}), autopilot: mode, at: now() };
+    const change = {};
+    if (b.autopilot !== undefined) {
+      const mode = String(b.autopilot || '');
+      if (!['off', 'requests', 'full'].includes(mode)) throw httpError(400, 'autopilot must be off, requests or full');
+      change.autopilot = mode;
+    }
+    if (b.aiName !== undefined) {
+      const n = String(b.aiName || '').replace(/[\s"'`<>]+/g, ' ').trim().slice(0, 32);
+      const taken = n && (Object.values(p.agents).some(x => x.name.toLowerCase() === n.toLowerCase() && x.name !== a.name) ||
+        Object.entries(p.settings).some(([who, s]) => who !== a.name && s && s.aiName && s.aiName.toLowerCase() === n.toLowerCase()));
+      if (taken) throw httpError(409, `"${n}" is already someone on this team; pick another name`);
+      change.aiName = n || null;
+    }
+    if (!Object.keys(change).length) throw httpError(400, 'nothing to change: give autopilot or aiName');
+    p.settings[a.name] = { ...(p.settings[a.name] || {}), ...change, at: now() };
     p.emit('setting', { name: a.name, settings: p.settings[a.name] });
     return { ok: true, settings: p.settings[a.name] };
   },
@@ -468,14 +494,15 @@ const routes = {
     const a = p.touch(b.agent);
     const text = String(b.text || '').trim().slice(0, 8000);
     if (!text) throw httpError(400, 'what should the team do?');
-    const goal = { id: crypto.randomBytes(4).toString('hex'), text, by: a.id, byName: a.name, at: now(), status: 'open', planner: null, to: b.to || null };
+    const to = personFor(p, b.to);
+    const goal = { id: crypto.randomBytes(4).toString('hex'), text, by: a.id, byName: a.name, at: now(), status: 'open', planner: null, to: to || null };
     p.board.goals.push(goal);
     if (p.board.goals.length > 100) p.board.goals.splice(0, p.board.goals.length - 100);
     // aimed at one person's Claude: skip planning, it's simply their task
-    if (b.to) {
+    if (to) {
       goal.status = 'planned';
-      goal.planner = b.to;
-      pushTask(p, { goalId: goal.id, title: text.split('\n')[0].slice(0, 200), detail: text, owner: b.to, direct: true }, a);
+      goal.planner = to;
+      pushTask(p, { goalId: goal.id, title: text.split('\n')[0].slice(0, 200), detail: text, owner: to, direct: true }, a);
     }
     boardChanged(p, 'goal', { goal }, a);
     return { ok: true, goal };
@@ -753,5 +780,5 @@ function waitOn(p, pred, timeoutMs, onAbort) {
   });
 }
 
-module.exports = { Project, routes, waitOn, parseFrontmatter, fileKey, GIT_CHUNK, sha, now, httpError, sameSecret, normPath,
+module.exports = { Project, routes, waitOn, parseFrontmatter, fileKey, GIT_CHUNK, sha, now, httpError, sameSecret, normPath, aiLabel,
   ONLINE_MS, MAX_FILE_BYTES, OPEN_IDLE_MS, OPEN_MAX_PROJECTS, OPEN_CREATES_PER_HOUR };

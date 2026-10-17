@@ -47,8 +47,11 @@ function pick(b, me, skip, mode = 'full') {
   return null;
 }
 
-function planPrompt(goal, team, me) {
-  return `You are ${me}'s Claude, coordinating a team of Claude agents through huddle (one per person, each on their own computer).
+// "Pip, tszfei's Claude" once the person has named it
+function selfName(me, aiName) { return aiName ? `${aiName}, ${me}'s Claude` : `${me}'s Claude`; }
+
+function planPrompt(goal, team, me, aiName) {
+  return `You are ${selfName(me, aiName)}, coordinating a team of Claude agents through huddle (one per person, each on their own computer).
 A person gave the team this goal [${goal.id}] (from ${goal.byName}):
 
 ${goal.text}
@@ -59,10 +62,10 @@ You won the right to plan it. Online agents: ${team.join(', ')}.
 3. Send the team a two-line summary with huddle_send.
 Do not implement anything in this run; your own tasks come next.`;
 }
-function taskPrompt(t, b, me, canRun) {
+function taskPrompt(t, b, me, canRun, aiName) {
   const goal = b.goals.find(g => g.id === t.goalId);
   const others = b.tasks.filter(x => x.goalId === t.goalId && x.id !== t.id).map(x => `- ${x.title} (${x.owner || 'unassigned'}, ${x.status})`);
-  return `You are ${me}'s Claude, working with a team of Claude agents through huddle.
+  return `You are ${selfName(me, aiName)}, working with a team of Claude agents through huddle.
 Your task [${t.id}]: ${t.title}
 ${t.detail ? '\n' + t.detail + '\n' : ''}${goal ? `\nIt is part of the team goal from ${goal.byName}: ${goal.text}\n${goal.plan ? 'Plan: ' + goal.plan + '\n' : ''}` : ''}${others.length ? '\nOther tasks in this goal:\n' + others.join('\n') + '\n' : ''}
 Do the task in this repository. Stay inside its scope; if you need a file someone else is working on, message them with huddle_send instead of waiting silently.
@@ -86,6 +89,11 @@ function claimRunner(root) {
 function releaseRunner(root) {
   const file = path.join(root, CONFIG_DIR, 'runner.pid');
   try { if (Number(fs.readFileSync(file, 'utf8')) === process.pid) fs.unlinkSync(file); } catch {}
+}
+
+async function myAiName(client) {
+  const s = await client.get('settings');
+  return ((s.settings || {})[client.agent.name] || {}).aiName || null;
 }
 
 async function getMode(client) {
@@ -150,7 +158,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
             await client.post('status', { status: `planning: ${next.goal.text.split('\n')[0].slice(0, 80)}` });
             const s = await client.get('state');
             const team = [...new Set(s.agents.filter(a => a.online && (a.kind === 'agent' || a.kind === 'autopilot')).map(a => a.name))];
-            await runClaude(planPrompt(next.goal, team.length ? team : [me], me));
+            await runClaude(planPrompt(next.goal, team.length ? team : [me], me, await myAiName(client).catch(() => null)));
             const after = (await client.get('board')).goals.find(g => g.id === next.goal.id);
             if (after && after.status !== 'planned' && after.status !== 'done') {
               log('Claude did not record a plan; taking the whole goal as one task');
@@ -167,7 +175,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
           log(`working on ${t.direct ? 'a request from ' + t.by : 'task'} ${t.id}: ${t.title}`);
           await client.post('task-update', { id: t.id, status: 'doing' });
           await client.post('status', { status: `${t.direct ? 'request' : 'task'}: ${t.title.slice(0, 80)}` });
-          const res = await runClaude(taskPrompt(t, b, me, canRun()));
+          const res = await runClaude(taskPrompt(t, b, me, canRun(), await myAiName(client).catch(() => null)));
           // finished work only reaches the others once it's committed
           if (gitx.isRepo(cfg.root) && gitx.dirty(cfg.root).length) {
             gitx.ensureExcluded(cfg.root);

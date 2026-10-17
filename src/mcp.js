@@ -18,6 +18,7 @@ const INSTRUCTIONS = `huddle connects you with other Claude agents working on th
 - If you need a locked file, ask its holder, watch it with huddle_view, or block with huddle_wait.
 - Locks are released when your turn ends. Use huddle_lock with hold=true to reserve files across turns, and huddle_unlock when done.
 - Autopilot: your person chooses whether other people can start you on things (huddle_autopilot): "requests" (default) means when someone sends a request to this person's Claude, it is run automatically in the background; "full" also plans team goals and takes open tasks; "off" means requests wait. If your user asks to turn autopilot on/off, use huddle_autopilot.
+- Your name: your person can name you (e.g. "Pip") so the team can tell the Claudes apart. If your user asks you to take a name, or what you are called, use huddle_name.
 - Branches: people on the same git branch share a live working copy and locks; people on different branches work independently and merge later (huddle_branches, huddle_merge). Your commits are shared automatically at the end of each turn.
 - Team board: people give the whole team goals (huddle_ask_team). The first free agent claims a goal (huddle_claim_goal), splits it into tasks for the online agents and records them with huddle_plan; each agent then works its own tasks and marks them with huddle_update_task. Prefer splitting so different people touch different files.
 - Team knowledge lives in huddle, not git: PROJECT.md (goals, conventions, architecture, who owns what; huddle_project), memory notes (huddle_remember / huddle_recall / huddle_forget) and skills (huddle_save_skill). Save anything another agent would otherwise rediscover the hard way: gotchas, decisions and their reasons, how to build/run/test. Keep memories short and specific; put repeatable multi-step procedures in a skill.`;
@@ -74,6 +75,8 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: { task_id: { type: 'string' }, status: { type: 'string', enum: ['todo', 'doing', 'done', 'blocked'] }, note: { type: 'string' }, owner: { type: 'string' } }, required: ['task_id'] } },
   { name: 'huddle_autopilot', description: "See or change this person's autopilot setting: 'requests' (default: things people send to this person's Claude run automatically in the background while a Claude session is open here), 'full' (also plan team goals and take unassigned tasks), or 'off' (requests wait for the person). Omit mode to see the current setting.",
     inputSchema: { type: 'object', properties: { mode: { type: 'string', enum: ['off', 'requests', 'full', 'on'] } } } },
+  { name: 'huddle_name', description: "See or change the name your person gave you (their Claude), e.g. \"Pip\". The team sees it on the dashboard and can send you work with to=<name>. Only change it when your user asks; an empty name removes it.",
+    inputSchema: { type: 'object', properties: { name: { type: 'string' } } } },
   { name: 'huddle_view', description: "See the live shared version of a file, including another agent's in-progress edits, with who changed it and when.",
     inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] } },
 ];
@@ -326,6 +329,18 @@ function runMcp() {
         }
         const mode = await autopilot.getMode(client);
         return `autopilot is ${autopilot.MODE_WORDS[mode]}. Change it with mode=off|requests|full.`;
+      }
+      case 'huddle_name': {
+        if (a.name !== undefined) {
+          const r = await client.post('setting', { aiName: a.name });
+          return r.settings.aiName
+            ? `You are now "${r.settings.aiName}" (${me.name}'s Claude). Use that name for yourself and sign your huddle messages with it. The team sees it and can send you work with to="${r.settings.aiName}".`
+            : `Your name is cleared; you are ${me.name}'s Claude again.`;
+        }
+        const st = await client.get('settings');
+        const n = (st.settings[me.name] || {}).aiName;
+        const others = Object.entries(st.settings).filter(([who, x]) => who !== me.name && x && x.aiName).map(([who, x]) => `${x.aiName} is ${who}'s Claude`);
+        return (n ? `${me.name} named you "${n}".` : `${me.name} hasn't named you yet.`) + (others.length ? ' ' + others.join('; ') + '.' : '');
       }
       case 'huddle_view': {
         const p = rel(a.path);
