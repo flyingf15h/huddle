@@ -28,6 +28,8 @@ const GIT_CHUNK = 900 * 1024;       // raw bytes per uploaded bundle piece
 const MAX_TASKS = 400;
 const SNAP_PART = 900 * 1024;       // JSON bytes per uploaded piece of a branch's file listing           // per project, newest kept
 const ACTIVITY_TEXT = 4000;
+const STATS_DAYS = 60;              // daily buckets kept per person
+const STATS_MODELS = 20;            // models tracked per person
 
 function sha(s) { return crypto.createHash('sha256').update(s).digest('hex').slice(0, 16); }
 function now() { return Date.now(); }
@@ -67,6 +69,7 @@ class Project {
     this.board = { version: 0, goals: [], tasks: [] };
     this.settings = {};   // per person: { autopilot: 'off' | 'requests' | 'full' }
     this.aliases = {};    // other names a person has used ("Kelly-Wang" -> "Kelly")
+    this.stats = {};      // per person: conversations, turns, time with Claude, tokens (see 'POST stats')
     this.waiters = new Set();
     if (saved) Object.assign(this, saved);
     this.waiters = new Set();
@@ -211,6 +214,7 @@ const routes = {
     for (const f of Object.values(p.files)) fix(f, 'byName');
     for (const m of p.shared.memories) fix(m, 'byName');
     if (p.settings && p.settings[from]) { p.settings[into] = p.settings[into] || p.settings[from]; delete p.settings[from]; }
+    if (p.stats && p.stats[from]) { p.stats[into] = addStats(p.stats[into] || newStats(), p.stats[from]); delete p.stats[from]; }
     p.activityChanged = p.sharedChanged = true;
     p.board.version++;
     p.emit('merge', { from, into });
@@ -553,6 +557,30 @@ const routes = {
     p.emit('activity', { agent: p.publicAgent(a), items });
     return { ok: true };
   },
+  // usage counts from each person's hooks at the end of a turn: numbers only, never content
+  'POST stats': (p, b) => {
+    const a = p.touch(b.agent);
+    if (a.transient) return { ok: true };
+    const n = (v, max) => Math.max(0, Math.min(Number(v) || 0, max));
+    const add = {
+      conversations: b.conversation && !b.request ? 1 : 0,
+      requests: b.conversation && b.request ? 1 : 0,
+      turns: n(b.turns, 1), activeMs: n(b.activeMs, 4 * 3600 * 1000),
+      requestMs: b.request ? n(b.activeMs, 4 * 3600 * 1000) : 0,
+      models: {},
+    };
+    for (const [model, u] of Object.entries(b.usage && typeof b.usage === 'object' ? b.usage : {}).slice(0, 5)) {
+      if (!u || typeof u !== 'object') continue;
+      add.models[String(model).slice(0, 60)] = { input: n(u.input, 5e7), output: n(u.output, 5e7), cacheRead: n(u.cacheRead, 5e8),
+        cacheWrite: n(u.cacheWrite, 5e8), messages: n(u.messages, 1e4) };
+    }
+    const day = new Date().toISOString().slice(0, 10);
+    p.stats = p.stats || {};
+    p.stats[a.name] = addStats(p.stats[a.name] || newStats(), { ...add, days: { [day]: dayOf(add) } });
+    p.emit('stats', { name: a.name });
+    return { ok: true };
+  },
+  'GET stats': (p) => ({ stats: p.stats || {}, since: Math.min(...Object.values(p.stats || {}).map(s => s.since || now()), now()) }),
   'GET activity': (p, b, q) => {
     const who = q.get('agent');
     const limit = Math.min(Number(q.get('limit') || 200), MAX_ACTIVITY);
@@ -648,6 +676,34 @@ const routes = {
     return { events: evs || [], seq: p.seq, truncated: !evs };
   },
 };
+
+// One person's usage totals, plus daily buckets for the last STATS_DAYS days.
+const TOKEN_KEYS = ['input', 'output', 'cacheRead', 'cacheWrite', 'messages'];
+function newStats() {
+  return { since: now(), last: 0, conversations: 0, requests: 0, turns: 0, activeMs: 0, requestMs: 0, models: {}, days: {} };
+}
+function dayOf(s) {
+  const tokens = Object.values(s.models || {}).reduce((t, u) => t + u.input + u.output + u.cacheRead + u.cacheWrite, 0);
+  const output = Object.values(s.models || {}).reduce((t, u) => t + u.output, 0);
+  return { conversations: s.conversations || 0, turns: s.turns || 0, activeMs: s.activeMs || 0, tokens, output };
+}
+function addStats(into, add) {
+  for (const k of ['conversations', 'requests', 'turns', 'activeMs', 'requestMs']) into[k] = (into[k] || 0) + (add[k] || 0);
+  for (const [m, u] of Object.entries(add.models || {})) {
+    if (!into.models[m] && Object.keys(into.models).length >= STATS_MODELS) continue;
+    const t = into.models[m] || (into.models[m] = Object.fromEntries(TOKEN_KEYS.map(k => [k, 0])));
+    for (const k of TOKEN_KEYS) t[k] += u[k] || 0;
+  }
+  for (const [d, v] of Object.entries(add.days || {})) {
+    const t = into.days[d] || (into.days[d] = { conversations: 0, turns: 0, activeMs: 0, tokens: 0, output: 0 });
+    for (const k of Object.keys(t)) t[k] += v[k] || 0;
+  }
+  const keep = Object.keys(into.days).sort().slice(-STATS_DAYS);
+  into.days = Object.fromEntries(keep.map(d => [d, into.days[d]]));
+  into.since = Math.min(into.since || now(), add.since || now());
+  into.last = Math.max(into.last || 0, add.last || now());
+  return into;
+}
 
 function pushTask(p, t, a) {
   const title = String(t.title || '').trim().slice(0, 200);

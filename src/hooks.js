@@ -123,6 +123,59 @@ function newActivity(input, st, level) {
   return items;
 }
 
+// Token usage since we last looked, per model, from the session transcript. Claude Code writes one
+// line per content block, all carrying the same message id and usage, so each message counts once
+// (the last line's numbers win); a message split across two reads only adds what's new.
+function newUsage(input, st) {
+  const file = input.transcript_path;
+  let size;
+  try { size = fs.statSync(file).size; } catch { return {}; }
+  if (st.data.usageFile !== file || st.data.usageOffset > size) { st.data.usageFile = file; st.data.usageOffset = size; return {}; }
+  if (size === st.data.usageOffset) return {};
+  const fd = fs.openSync(file, 'r');
+  const buf = Buffer.alloc(Math.min(size - st.data.usageOffset, 8 * 1024 * 1024));
+  fs.readSync(fd, buf, 0, buf.length, st.data.usageOffset);
+  fs.closeSync(fd);
+  const text = buf.toString('utf8');
+  const end = text.lastIndexOf('\n');
+  if (end < 0) return {};
+  st.data.usageOffset += Buffer.byteLength(text.slice(0, end + 1));
+  const byId = new Map();
+  for (const line of text.slice(0, end).split('\n')) {
+    let d;
+    try { d = JSON.parse(line); } catch { continue; }
+    const m = d.type === 'assistant' && d.message;
+    if (!m || !m.usage || !m.model || m.model === '<synthetic>') continue;
+    const u = m.usage;
+    byId.set(m.id || line, { model: m.model, input: u.input_tokens || 0, output: u.output_tokens || 0,
+      cacheRead: u.cache_read_input_tokens || 0, cacheWrite: u.cache_creation_input_tokens || 0 });
+  }
+  const totals = {};
+  for (const [id, u] of byId) {
+    const prev = st.data.lastUsage && st.data.lastUsage.id === id ? st.data.lastUsage : null;
+    const t = totals[u.model] || (totals[u.model] = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, messages: 0 });
+    for (const k of ['input', 'output', 'cacheRead', 'cacheWrite']) t[k] += Math.max(0, u[k] - (prev ? prev[k] : 0));
+    if (!prev) t.messages++;
+    st.data.lastUsage = { id, ...u };
+  }
+  return totals;
+}
+
+// Counts for the stats page: conversations, turns, time spent with Claude and tokens. Numbers only;
+// private turns count too, but nothing of what was said leaves the machine. shareStats: false stops it.
+async function shareStats(input, client, cfg, st) {
+  if (cfg.shareStats === false) return;
+  const usage = newUsage(input, st);
+  const started = st.data.turnStart;
+  delete st.data.turnStart;
+  const activeMs = started ? Math.min(Date.now() - started, 4 * 3600 * 1000) : 0;
+  const conversation = !!st.data.newConversation;
+  delete st.data.newConversation;
+  st.save();
+  if (!started && !Object.keys(usage).length) return;
+  await client.post('stats', { conversation, turns: started ? 1 : 0, activeMs, usage, request: process.env.HUDDLE_AUTOPILOT === '1' });
+}
+
 // A prompt starting with "private:" (or "#private") keeps that whole turn, its
 // prompt, replies and tool calls, out of the team's activity feed.
 const PRIVATE_PROMPT = /^\s*(private\s*:|#private\b|\(private\))/i;
@@ -187,6 +240,7 @@ const handlers = {
     const st = sessionState(cfg, client.agent);
     st.data.shared = shared.signature(sh);
     newActivity(input, st, cfg.shareActivity); // just positions us at the end of the transcript
+    newUsage(input, st); // likewise: a resumed conversation's earlier usage was counted back then
     const b = await client.get('board');
     st.data.boardVersion = b.version;
     st.data.boardSeen = board.signature(b);
@@ -271,6 +325,12 @@ const handlers = {
     await shareActivity(input, client, cfg).catch(() => {});
     const st = sessionState(cfg, client.agent);
     st.data.private = isPrivate;
+    st.data.turnStart = st.data.turnStart || Date.now();
+    if (input.transcript_path && st.data.usageFile !== input.transcript_path) newUsage(input, st); // start counting from here
+    if (input.session_id && st.data.conversation !== input.session_id) {
+      st.data.conversation = input.session_id;
+      st.data.newConversation = true;
+    }
     st.save();
     if (!isPrivate && cfg.shareActivity === 'full' && prompt) await client.post('activity', { items: [{ kind: 'prompt', text: prompt }] }).catch(() => {});
     const mail = await inbox(client, cfg, true);
@@ -283,6 +343,7 @@ const handlers = {
 
   async stop(input, client, cfg) {
     await shareStop(input, client, cfg).catch(() => {});
+    await shareStats(input, client, cfg, sessionState(cfg, client.agent)).catch(() => {});
     await autoPublish(client, cfg, sessionState(cfg, client.agent));
     if (cfg.releaseOnStop) await client.post('unlock', { all: true, keepHeld: true, reason: 'turn finished' });
     if (input.stop_hook_active) return null;

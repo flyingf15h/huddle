@@ -3,7 +3,9 @@
 //
 // Modes (a per-person setting on the server, changeable from the dashboard,
 // `huddle autopilot <mode>` or the huddle_autopilot tool):
-//   requests  (default) do what someone sends to this person's Claude directly
+//   requests  (default) do what someone sends to this person's Claude directly, without running
+//             anything outside the allowed commands; the answer (and any command that needs this
+//             person's OK) goes back to the sender as a message
 //   full      also plan team goals and take unassigned tasks
 //   off       nothing runs; requests wait for the person
 //
@@ -65,7 +67,8 @@ Your task [${t.id}]: ${t.title}
 ${t.detail ? '\n' + t.detail + '\n' : ''}${goal ? `\nIt is part of the team goal from ${goal.byName}: ${goal.text}\n${goal.plan ? 'Plan: ' + goal.plan + '\n' : ''}` : ''}${others.length ? '\nOther tasks in this goal:\n' + others.join('\n') + '\n' : ''}
 Do the task in this repository. Stay inside its scope; if you need a file someone else is working on, message them with huddle_send instead of waiting silently.
 Shell commands: ${canRun}. Don't try others; they will be refused and nobody is there to approve them. If you can't run a check, say what you couldn't verify in your note instead of blocking the task.
-When it's done, commit it with git (one short message; anything left uncommitted is committed for you). Then call huddle_update_task with task_id "${t.id}", status "done" and a one-line note of what you did. Only use status "blocked" for a real problem in the work itself.`;
+When it's done, commit it with git (one short message; anything left uncommitted is committed for you). Then call huddle_update_task with task_id "${t.id}", status "done" and a one-line note of what you did. Only use status "blocked" for a real problem in the work itself.${t.direct ? `
+${t.by} sent you this directly, and your final message goes back to ${t.by} as your reply. Always answer, even if you can't finish: read what's needed, do what you can without the refused commands, then end with a short reply saying what you did or found. If a command you weren't allowed to run is needed, list it under "Needs ${me}'s OK:" so ${me} can approve and run it; don't treat that as blocked.` : ''}`;
 }
 
 
@@ -120,6 +123,14 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     return mode;
   }
 
+  // A request's answer goes back to whoever sent it, as a message. Messages never start runs, so
+  // two Claudes can't end up answering each other forever.
+  async function reply(t, res, now) {
+    const answer = res.out.trim().slice(-1500) || (res.code === 0 ? 'Done.' : 'The run failed without saying why.');
+    await client.post('message', { to: t.by, text: `Re your request "${t.title.slice(0, 80)}" (${now ? now.status : 'gone'}):\n${answer}` })
+      .catch(e => log('could not send the reply: ' + e.message));
+  }
+
   async function work() {
     if (stopped) return;
     if (busy) { again = true; return; }
@@ -172,6 +183,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
             const last = res.out.trim().split('\n').pop() || '';
             now = (await client.post('task-update', { id: t.id, status: res.code === 0 ? 'done' : 'blocked', note: (res.code === 0 ? 'autopilot run finished: ' : 'autopilot run failed: ') + last.slice(0, 300) })).task;
           }
+          if (t.direct) await reply(t, res, now);
           if (now && now.status !== 'done') skip.add(t.id); // don't loop on a blocked task
           log(`${t.id} ${now ? now.status : 'gone'}`);
         }

@@ -15,6 +15,7 @@ fs.mkdirSync(fakeBin);
 fs.writeFileSync(path.join(fakeBin, 'claude'), `#!/usr/bin/env node
 const p = process.argv[process.argv.indexOf('-p') + 1] || '';
 require('fs').appendFileSync(require('path').join(process.cwd(), 'claude-runs.txt'), p.split('\\n').find(l => l.startsWith('Your task')) + '\\n');
+if (p.includes('goes back to')) console.log('Renamed add to plus.\\nNeeds alice\\'s OK: npm test');
 `, { mode: 0o755 });
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 async function until(fn, ms = 8000, what = 'condition') {
@@ -236,14 +237,39 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
     assert.match(after, /user asked: back to work: run the tests/);
     ok('a prompt starting with "private:" keeps that whole turn out of the feed');
 
-        // autopilot: by default, requests sent to someone's Claude run while their session is open
     const api = (ep, body) => fetch(`${url}/api/p/${project}/${ep}`, { method: body ? 'POST' : 'GET', headers: { authorization: 'Bearer ' + token }, body: body && JSON.stringify(body) }).then(r => r.json());
+
+    // stats: conversations, turns, time and tokens per person, each message's usage counted once
+    const statsOf = async (name) => (await api('stats')).stats[name] || { conversations: 0, turns: 0, activeMs: 0, models: {} };
+    const before0 = await statsOf('alice');
+    const statsLog = path.join(alice.root, 'stats-transcript.jsonl');
+    const usageLine = (id, output) => JSON.stringify({ type: 'assistant', message: { id, model: 'claude-test', usage: { input_tokens: 10, output_tokens: output, cache_read_input_tokens: 1000, cache_creation_input_tokens: 50 }, content: [{ type: 'text', text: 'x' }] } }) + '\n';
+    fs.writeFileSync(statsLog, usageLine('old', 999)); // before this conversation joined: not counted
+    alice.hook('prompt', { transcript_path: statsLog, session_id: 'conv-1', prompt: 'private: count me' });
+    fs.appendFileSync(statsLog, usageLine('m1', 5) + usageLine('m1', 40) + usageLine('m2', 7)); // m1 spans two content blocks
+    alice.hook('stop', { transcript_path: statsLog, session_id: 'conv-1', stop_hook_active: true, last_assistant_message: 'x' });
+    alice.hook('prompt', { transcript_path: statsLog, session_id: 'conv-1', prompt: 'and again' });
+    fs.appendFileSync(statsLog, usageLine('m3', 3));
+    alice.hook('stop', { transcript_path: statsLog, session_id: 'conv-1', stop_hook_active: true, last_assistant_message: 'x' });
+    const s1 = await statsOf('alice');
+    assert.equal(s1.conversations - before0.conversations, 1, 'one new conversation');
+    assert.equal(s1.turns - before0.turns, 2, 'two prompts');
+    const m = s1.models['claude-test'];
+    assert.deepEqual([m.messages, m.output, m.input, m.cacheRead], [3, 40 + 7 + 3, 30, 3000]);
+    assert(s1.activeMs >= before0.activeMs);
+    assert.match(await (await fetch(url + '/')).text(), /data-view="stats"/);
+    ok('the stats page counts conversations, prompts, time with Claude and tokens per person (numbers only)');
+
+        // autopilot: by default, requests sent to someone's Claude run while their session is open
     const runs = () => { try { return fs.readFileSync(path.join(alice.root, 'claude-runs.txt'), 'utf8'); } catch { return ''; } };
     const human = { id: 'human:carol', name: 'carol', kind: 'human' };
     await until(async () => (await api('state')).agents.some(a => a.name === 'alice' && a.runner === 'requests'), 8000, "alice's runner");
     await api('goal', { agent: human, text: 'rename add to plus', to: 'alice' });
     await until(() => /rename add to plus/.test(runs()), 10000, 'request run by alice\'s Claude');
     await until(async () => (await api('board')).tasks.some(t => t.title === 'rename add to plus' && t.status === 'done'), 8000, 'request marked done');
+    // the answer goes back to whoever asked, with any command that needs alice's OK
+    await until(async () => (await api('messages')).messages.some(m => m.to === 'carol' && m.fromName === 'alice'
+      && /Re your request "rename add to plus"/.test(m.text) && /Renamed add to plus/.test(m.text) && /Needs alice's OK: npm test/.test(m.text)), 8000, 'reply to carol');
     await api('goal', { agent: human, text: 'whole team: write docs' });
     await sleep(1500);
     assert(!/write docs/.test(runs()), 'requests mode must not take team-wide goals');
