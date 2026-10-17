@@ -338,6 +338,19 @@ const routes = {
     p.emit('git', { action: 'publish', ref });
     return { ok: true };
   },
+  // take back a branch you published (only your own); its bundles go too
+  'POST git-forget': (p, b) => {
+    const a = p.touch(b.agent);
+    const drop = Object.values(p.git.refs).filter(r => r.owner === a.name && (!b.branch || r.branch === b.branch));
+    if (!drop.length) throw httpError(404, 'you have no published branch by that name');
+    for (const r of drop) {
+      delete p.git.refs[`${r.owner}/${r.branch}`];
+      for (const x of p.git.bundles.filter(x => x.owner === r.owner && x.branch === r.branch)) p.git.bytes -= x.size;
+      p.git.bundles = p.git.bundles.filter(x => !(x.owner === r.owner && x.branch === r.branch));
+      p.emit('git', { action: 'forget', owner: r.owner, branch: r.branch });
+    }
+    return { ok: true, removed: drop.map(r => `${r.owner}/${r.branch}`) };
+  },
   'GET git-chunk': async (p, b, q, ctx) => {
     const data = await ctx.blobs.get(`git:${q.get('id')}:${Number(q.get('i'))}`);
     if (data == null) throw httpError(404, 'no such bundle piece');

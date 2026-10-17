@@ -41,6 +41,7 @@ Versions, branches and merging (git history travels through huddle, no shared re
   huddle branch join PERSON[/BRANCH]   switch to someone's branch to work on it together
   huddle merge PERSON[/BRANCH]  merge their branch into yours
   huddle publish                share your current branch now (also automatic after each turn)
+  huddle unpublish [BRANCH]     take back a branch you shared
 
 Shared team knowledge (not in git, every agent gets it):
   huddle project                print PROJECT.md, the brief every agent starts with
@@ -304,6 +305,7 @@ memory and skills. Ask it things like "what is everyone working on?" or
 
 Tip: share your CLAUDE.md with the team without committing anything:
   huddle project --set CLAUDE.md` : ''}`);
+  try { require('./shared').writeShared(root, await new Client(cfg, identity(cfg, 'join')).get('shared')); } catch {}
   if (!flags['no-sync']) {
     console.log('');
     try { await syncCopy({ ...cfg, root }, flags); }
@@ -483,6 +485,12 @@ async function cmdBranches() {
   if (!Object.keys(st.refs).length) console.log('  nothing published yet (huddle publish)');
   const on = s.agents.filter(a => a.online && a.kind === 'agent' && a.branch);
   if (on.length) console.log('\nonline: ' + [...new Set(on.map(a => `${a.name} on ${a.branch}`))].join(', '));
+}
+
+async function cmdUnpublish({ pos }) {
+  const cfg = configured();
+  const r = await gitClient(cfg).post('git-forget', { branch: pos[0] || undefined });
+  console.log('removed ' + r.removed.join(', '));
 }
 
 async function cmdPublish() {
@@ -755,7 +763,7 @@ async function main() {
     lock: cmdLock, unlock: cmdUnlock, watch: cmdWatch, invite: cmdInvite, open: cmdOpen,
     project: cmdProject, sharing: cmdSharing,
     sync: cmdSync, branches: cmdBranches, branch: cmdBranch, publish: cmdPublish, fetch: cmdFetch, merge: cmdMerge,
-    ask: cmdAsk, board: cmdBoard, autopilot: cmdAutopilot, memory: cmdMemory, memories: cmdMemory, skill: cmdSkill, skills: cmdSkill,
+    ask: cmdAsk, board: cmdBoard, autopilot: cmdAutopilot, unpublish: cmdUnpublish, memory: cmdMemory, memories: cmdMemory, skill: cmdSkill, skills: cmdSkill,
     hook: () => require('./hooks').runHook(args.pos[0]),
     mcp: () => require('./mcp').runMcp(),
   };
