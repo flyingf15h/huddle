@@ -180,6 +180,18 @@ const routes = {
     }
     return { ok: true };
   },
+  // drop someone who isn't around any more (test runs, a name typo); never someone online or holding files
+  'POST forget-agent': (p, b) => {
+    p.touch(b.agent);
+    const name = String(b.name || '');
+    const theirs = Object.values(p.agents).filter(x => x.name === name && x.id !== b.agent.id);
+    if (!theirs.length) throw httpError(404, `nobody called ${name}`);
+    if (theirs.some(x => p.online(x))) throw httpError(409, `${name} is online right now`);
+    if (Object.values(p.locks).some(l => theirs.some(x => x.id === l.holder))) throw httpError(409, `${name} still holds files`);
+    for (const x of theirs) delete p.agents[x.id];
+    p.emit('forget', { name });
+    return { ok: true, removed: theirs.length };
+  },
   'POST status': (p, b) => {
     const a = p.touch(b.agent);
     a.status = String(b.status || '').slice(0, 300);

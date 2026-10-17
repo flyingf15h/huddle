@@ -42,6 +42,7 @@ Versions, branches and merging (git history travels through huddle, no shared re
   huddle merge PERSON[/BRANCH]  merge their branch into yours
   huddle publish                share your current branch now (also automatic after each turn)
   huddle unpublish [BRANCH]     take back a branch you shared
+  huddle forget NAME            remove someone who left from the team list
 
 Shared team knowledge (not in git, every agent gets it):
   huddle project                print PROJECT.md, the brief every agent starts with
@@ -487,6 +488,12 @@ async function cmdBranches() {
   if (on.length) console.log('\nonline: ' + [...new Set(on.map(a => `${a.name} on ${a.branch}`))].join(', '));
 }
 
+async function cmdForget({ pos }) {
+  need(pos[0], 'usage: huddle forget NAME   (remove someone who left from the team list)');
+  const r = await humanClient('human').post('forget-agent', { name: pos[0] });
+  console.log(`removed ${pos[0]} (${r.removed} session${r.removed === 1 ? '' : 's'})`);
+}
+
 async function cmdUnpublish({ pos }) {
   const cfg = configured();
   const r = await gitClient(cfg).post('git-forget', { branch: pos[0] || undefined });
@@ -763,7 +770,7 @@ async function main() {
     lock: cmdLock, unlock: cmdUnlock, watch: cmdWatch, invite: cmdInvite, open: cmdOpen,
     project: cmdProject, sharing: cmdSharing,
     sync: cmdSync, branches: cmdBranches, branch: cmdBranch, publish: cmdPublish, fetch: cmdFetch, merge: cmdMerge,
-    ask: cmdAsk, board: cmdBoard, autopilot: cmdAutopilot, unpublish: cmdUnpublish, memory: cmdMemory, memories: cmdMemory, skill: cmdSkill, skills: cmdSkill,
+    ask: cmdAsk, board: cmdBoard, autopilot: cmdAutopilot, unpublish: cmdUnpublish, forget: cmdForget, memory: cmdMemory, memories: cmdMemory, skill: cmdSkill, skills: cmdSkill,
     hook: () => require('./hooks').runHook(args.pos[0]),
     mcp: () => require('./mcp').runMcp(),
   };
