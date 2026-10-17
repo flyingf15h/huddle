@@ -19,10 +19,10 @@ async function until(fn, ms = 8000, what = 'condition') {
   }
 }
 
-function checkout(name, pid, server, token) {
+function checkout(name, pid, server, token, project = 'demo') {
   const root = path.join(tmp, name);
   fs.mkdirSync(path.join(root, '.huddle'), { recursive: true });
-  fs.writeFileSync(path.join(root, '.huddle', 'config.json'), JSON.stringify({ server, token, project: 'demo', name }));
+  fs.writeFileSync(path.join(root, '.huddle', 'config.json'), JSON.stringify({ server, token, project, name }));
   fs.writeFileSync(path.join(root, 'shared.txt'), 'v0\n');
   const env = { ...process.env, HUDDLE_SESSION: String(pid), HUDDLE_ROOT: root };
   const hook = (event, input) => {
@@ -69,11 +69,16 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
     const port = await new Promise(r => proc.stdout.once('data', d => r(String(d).trim())));
     return { proc, url: `http://127.0.0.1:${port}` };
   };
-  const { proc: server, url } = await startServer('server', false);
-  const pub = await startServer('public', true);
-  const alice = checkout('alice', 1001, url, 'secret');
-  const bob = checkout('bob', 2002, url, 'secret');
-  const carol = checkout('carol', 3003, url, 'secret'); // no MCP running, so no live sync
+  // HUDDLE_TEST_URL=http://localhost:8787 runs everything against an open server
+  // (e.g. the Cloudflare worker under `wrangler dev`) instead of a local Node one
+  const external = process.env.HUDDLE_TEST_URL;
+  const { proc: server, url } = external ? { proc: { kill() {} }, url: external } : await startServer('server', false);
+  const pub = external ? { proc: { kill() {} }, url: external } : await startServer('public', true);
+  let token = 'secret', project = 'demo';
+  if (external) ({ token, project } = await (await fetch(url + '/api/new', { method: 'POST', body: '{"name":"e2e"}' })).json());
+  const alice = checkout('alice', 1001, url, token, project);
+  const bob = checkout('bob', 2002, url, token, project);
+  const carol = checkout('carol', 3003, url, token, project); // no MCP running, so no live sync
   let step = 'start';
   const ok = (s) => { step = s; console.log('✓', s); };
 
@@ -87,7 +92,7 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
     ok('MCP servers start and list tools');
 
     const start = alice.hook('session-start', {});
-    assert.match(start.hookSpecificOutput.additionalContext, /huddle project "demo"/);
+    assert(start.hookSpecificOutput.additionalContext.includes(`huddle project "${project}"`));
     ok('session-start hook briefs the agent');
 
     assert.equal(alice.hook('pre', edit(alice)), null);
@@ -160,20 +165,22 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
 
     const res = await fetch(url + '/');
     assert.match(await res.text(), /<title>huddle<\/title>/);
-    const bad = await fetch(url + '/api/p/demo/state', { headers: { authorization: 'Bearer nope' } });
+    const bad = await fetch(url + `/api/p/${project}/state`, { headers: { authorization: 'Bearer nope' } });
     assert.equal(bad.status, 401);
     ok('dashboard is served and a wrong token is rejected');
 
     // open mode: anyone can create a project, and each project's token only opens that project
     const mk = async (name) => (await fetch(pub.url + '/api/new', { method: 'POST', body: JSON.stringify({ name }) })).json();
     const p1 = await mk('My App'), p2 = await mk('other');
-    assert.match(p1.project, /^my-app-[0-9a-f]{6}$/);
+    assert.match(p1.project, /^my-app-[0-9a-f]{6,8}$/);
     const st = (proj, tok) => fetch(`${pub.url}/api/p/${proj}/state`, { headers: { authorization: 'Bearer ' + tok } }).then(r => r.status);
     assert.equal(await st(p1.project, p1.token), 200);
     assert.equal(await st(p2.project, p1.token), 401);
     assert.equal(await st('made-up', p1.token), 401);
-    assert.equal(await st(p2.project, 'secret'), 200);
-    assert.equal((await fetch(url + '/api/new', { method: 'POST', body: '{}' })).status, 401);
+    if (!external) {
+      assert.equal(await st(p2.project, 'secret'), 200);
+      assert.equal((await fetch(url + '/api/new', { method: 'POST', body: '{}' })).status, 401);
+    }
     ok("open mode hands out per-project tokens that can't open other projects");
 
     const joinOut = spawnSync(process.execPath, [CLI, 'new', 'demo', '--server', pub.url], { encoding: 'utf8' }).stdout;

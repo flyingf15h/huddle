@@ -215,6 +215,7 @@ const routes = {
     const total = Object.values(p.files).reduce((n, f) => n + (f.content ? f.content.length : 0), 0);
     if (total - (prev && prev.content ? prev.content.length : 0) + b.content.length > p.limits.projectBytes) throw httpError(413, 'project storage is full');
     if (prev && prev.hash === hash && prev.content != null) return { ok: true, version: prev.version, unchanged: true };
+    p.changedFiles.add(fp);
     const f = p.files[fp] = {
       path: fp, hash, content: b.content, by: a.id, byName: a.name, at: now(),
       version: (prev ? prev.version : 0) + 1,

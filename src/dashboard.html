@@ -16,6 +16,7 @@
   }
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, sans-serif; }
 header { display: flex; gap: 12px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
 header h1 { font-size: 16px; margin: 0; }
@@ -240,21 +241,46 @@ async function start() {
   $('pname').textContent = auth.project + ' · you are ' + auth.name;
   const hist = await api('messages?limit=100');
   for (const m of hist.messages) onEvent({ type: 'message', message: m });
-  const es = new EventSource(`/api/p/${encodeURIComponent(auth.project)}/events?token=${encodeURIComponent(auth.token)}&since=999999999`);
-  es.addEventListener('snapshot', (e) => {
-    const s = JSON.parse(e.data);
+  connect();
+  setInterval(() => api('hello', {}).catch(() => {}), 60000);
+  setInterval(render, 15000);
+}
+
+function applySnapshot(s) {
     S.agents = {}; S.locks = {}; S.files = {};
     for (const a of s.agents) S.agents[a.id] = a;
     for (const l of s.locks) S.locks[l.path] = l;
     for (const f of s.files) if (f.size) S.files[f.path] = f;
     if (!S.sel && s.files.length) { S.sel = (s.locks[0] || s.files[0]).path; loadFile(S.sel, false); }
     render();
-  });
+}
+
+// WebSocket on the hosted server, SSE on a self-hosted one
+let wsWorks = null;
+function connect() {
+  const qs = `token=${encodeURIComponent(auth.token)}&since=999999999`;
+  if (wsWorks !== false && 'WebSocket' in window) {
+    const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/p/${encodeURIComponent(auth.project)}/ws?${qs}`);
+    let opened = false, ping;
+    ws.onopen = () => { opened = wsWorks = true; $('conn').textContent = 'live'; ping = setInterval(() => ws.send('ping'), 30000); };
+    ws.onmessage = (e) => {
+      if (e.data === 'pong') return;
+      const ev = JSON.parse(e.data);
+      if (ev.type === 'snapshot') applySnapshot(ev); else if (ev.type !== 'truncated') onEvent(ev);
+    };
+    ws.onclose = () => {
+      clearInterval(ping);
+      $('conn').textContent = 'reconnecting…';
+      if (!opened && wsWorks === null) { wsWorks = false; return connect(); }
+      setTimeout(connect, 2000);
+    };
+    return;
+  }
+  const es = new EventSource(`/api/p/${encodeURIComponent(auth.project)}/events?${qs}`);
+  es.addEventListener('snapshot', (e) => applySnapshot(JSON.parse(e.data)));
   es.onmessage = (e) => onEvent(JSON.parse(e.data));
   es.onopen = () => { $('conn').textContent = 'live'; };
   es.onerror = () => { $('conn').textContent = 'reconnecting…'; };
-  setInterval(() => api('hello', {}).catch(() => {}), 60000);
-  setInterval(render, 15000);
 }
 function alertLogin(msg) { showLogin(); $('login').insertAdjacentHTML('beforeend', `<p class="lock">${esc(msg)}</p>`); }
 start();

@@ -1,0 +1,12 @@
+{
+  "name": "huddle",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "rules": [{ "type": "Text", "globs": ["**/*.html"], "fallthrough": true }],
+  "durable_objects": {
+    "bindings": [{ "name": "PROJECTS", "class_name": "HuddleProject" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["HuddleProject"] }],
+  "observability": { "enabled": true }
+}

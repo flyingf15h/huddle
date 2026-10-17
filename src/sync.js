@@ -24,6 +24,8 @@ class Sync {
     this.seq = 0;
     this.active = false;
     this.stopped = false;
+    this.wsOpen = false;
+    this.wsRetryAt = 0;   // after a failed WebSocket, long-poll for a while before trying again
     this.onEvent = null;
   }
 
@@ -48,6 +50,7 @@ class Sync {
 
   stop() {
     this.stopped = true;
+    if (this.closeWs) this.closeWs();
     clearInterval(this.guardTimer);
     if (this.active) {
       for (const p of Object.keys(this.modes)) this.unprotect(p);
@@ -65,6 +68,11 @@ class Sync {
       }
       try {
         if (this.seq === 0) await this.catchUp();
+        if (typeof WebSocket === 'function' && Date.now() > this.wsRetryAt) {
+          if (!(await this.stream())) this.wsRetryAt = Date.now() + 5 * 60 * 1000;
+          else backoff = 1000;
+          continue;
+        }
         const r = await this.client.get('events', { since: this.seq, wait: 25 }, { timeout: 35000 });
         if (r.truncated) { this.seq = 0; continue; }
         for (const ev of r.events) {
@@ -79,6 +87,38 @@ class Sync {
         backoff = Math.min(backoff * 2, 30000);
       }
     }
+  }
+
+  // Live events over a WebSocket (the hosted server). Resolves when the socket
+  // closes: true if it was ever open, false if the server doesn't speak it.
+  stream() {
+    return new Promise((resolve) => {
+      const base = this.client.base.replace(/^http/, 'ws');
+      const q = new URLSearchParams({ token: this.client.cfg.token, since: String(this.seq), agent: JSON.stringify(this.client.agent) });
+      let ws, opened = false, chain = Promise.resolve(), ping;
+      try { ws = new WebSocket(`${base}/ws?${q}`); } catch { return resolve(false); }
+      const finish = () => { clearInterval(ping); this.wsOpen = false; chain.then(() => resolve(opened)); };
+      ws.onopen = () => {
+        opened = this.wsOpen = true;
+        ping = setInterval(() => { try { ws.send('ping'); } catch {} }, 30000);
+      };
+      ws.onmessage = (m) => {
+        if (m.data === 'pong') return;
+        let ev;
+        try { ev = JSON.parse(m.data); } catch { return; }
+        if (ev.type === 'snapshot') return;
+        if (ev.type === 'truncated') { this.seq = 0; try { ws.close(); } catch {} return; }
+        chain = chain.then(async () => {
+          if (ev.seq <= this.seq) return;
+          this.seq = ev.seq;
+          await this.handle(ev);
+          if (this.onEvent) this.onEvent(ev);
+        }).catch(e => this.log('sync: ' + e.message));
+      };
+      ws.onclose = finish;
+      ws.onerror = () => {};
+      this.closeWs = () => { try { ws.close(); } catch {} };
+    });
   }
 
   async catchUp() {

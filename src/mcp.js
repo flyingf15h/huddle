@@ -43,7 +43,8 @@ function runMcp() {
   const log = (msg) => process.stderr.write(`[huddle] ${msg}\n`);
   if (client) {
     client.post('hello', {}).catch(e => log(e.message));
-    const beat = setInterval(() => client.post('hello', {}).catch(() => {}), 45000);
+    // an open sync socket already keeps us online on the hosted server
+    const beat = setInterval(() => { if (!(sync && sync.wsOpen)) client.post('hello', {}).catch(() => {}); }, 45000);
     beat.unref();
     sync = new Sync(client, cfg, log);
     sync.start();
