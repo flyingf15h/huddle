@@ -227,7 +227,8 @@ function installHooks(root, dir, projectRoot) {
   add('Stop', null, 'stop');
   add('SessionEnd', null, 'session-end');
   // a status line that shows this folder is in a huddle, unless the person already has their own
-  if (!s.statusLine && !globalStatusLine()) s.statusLine = { type: 'command', command: cliCmd(dir, 'statusline', projectRoot), padding: 0 };
+  // (refreshed every 10 s even while idle, so "📬 new message" shows up without a prompt)
+  if (!s.statusLine && !globalStatusLine()) s.statusLine = { type: 'command', command: cliCmd(dir, 'statusline', projectRoot), padding: 0, refreshInterval: 10 };
   // let the agent use huddle's own tools without a permission prompt each time
   s.permissions = s.permissions || {};
   s.permissions.allow = [...new Set([...(s.permissions.allow || []), 'mcp__huddle'])];
@@ -541,10 +542,18 @@ async function cmdStatusline() {
   if (!c || Date.now() - c.at > 15000) {
     try {
       const client = new Client(cfg, identity(cfg, 'status'));
-      const [s, st] = await Promise.all([client.get('state', null, { timeout: 1500 }), client.get('settings', null, { timeout: 1500 })]);
+      const opt = { timeout: 1500 };
+      const [s, st, m, b] = await Promise.all([client.get('state', null, opt), client.get('settings', null, opt),
+        client.get('messages', { limit: 200 }, opt), client.get('board', null, opt)]);
       const others = [...new Set(s.agents.filter(a => a.online && a.name !== cfg.name && a.kind !== 'human').map(a => a.name))];
       const mode = (st.settings[cfg.name] || {}).autopilot || 'requests';
-      c = { at: Date.now(), ok: true, others, mode };
+      // what came in for this person since they last prompted (the prompt hook writes seen.json)
+      const seenFile = path.join(cfg.root, CONFIG_DIR, 'seen.json');
+      let seen = Date.now(); // nothing recorded yet: count from now, not the whole history
+      try { seen = JSON.parse(fs.readFileSync(seenFile, 'utf8')).at; } catch { try { fs.writeFileSync(seenFile, JSON.stringify({ at: seen })); } catch {} }
+      const unread = m.messages.filter(x => x.at > seen && x.fromName !== cfg.name && (!x.to || x.to === cfg.name)).length;
+      const requests = b.tasks.filter(t => t.direct && t.owner === cfg.name && t.status !== 'done').length;
+      c = { at: Date.now(), ok: true, others, mode, unread, requests };
     } catch { c = { at: Date.now(), ok: false }; }
     try { fs.writeFileSync(cache, JSON.stringify(c)); } catch {}
   }
@@ -552,7 +561,11 @@ async function cmdStatusline() {
   if (!c.ok) return process.stdout.write(`${dim('○')} huddle · ${cfg.project} ${dim('· server unreachable')}`);
   const who = c.others.length ? `${c.others.join(', ')} online` : 'nobody else online';
   const mode = { requests: 'takes requests', full: 'autopilot', off: 'requests wait' }[c.mode];
-  process.stdout.write(`${green('●')} huddle · ${cfg.project.replace(/-[0-9a-f]{6,8}$/, '')} ${dim('·')} ${who} ${dim('·')} ${mode}`);
+  const yellow = (t) => `\x1b[1;33m${t}\x1b[0m`;
+  const mail = [c.unread ? `📬 ${c.unread} new message${c.unread === 1 ? '' : 's'}` : '',
+    c.requests ? `${c.requests} request${c.requests === 1 ? '' : 's'} for your Claude` : ''].filter(Boolean).join(' · ');
+  process.stdout.write(`${green('●')} huddle · ${cfg.project.replace(/-[0-9a-f]{6,8}$/, '')} ${dim('·')} ${who} ${dim('·')} ${mode}` +
+    (mail ? ` ${dim('·')} ${yellow(mail)}` : ''));
 }
 
 async function cmdSync({ flags }) { await syncCopy(configured(), flags); }

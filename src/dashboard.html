@@ -247,6 +247,13 @@ details.goal[open] > summary .chev { transform: rotate(90deg); }
 .kcard pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0 0; }
 textarea.big { width: 100%; min-height: 50vh; font-family: "Geist Mono", ui-monospace, monospace; font-size: 13.5px; max-width: 820px; display: block; }
 
+/* ---------- notifications ---------- */
+#toasts { position: fixed; right: 16px; bottom: 16px; z-index: 60; display: flex; flex-direction: column; gap: 8px; max-width: min(380px, calc(100vw - 32px)); }
+.toast { background: var(--raised); border: 1px solid var(--line-strong); border-left: 4px solid var(--accent); border-radius: var(--radius-sm); box-shadow: var(--shadow-lg); padding: 10px 12px; cursor: pointer; text-align: left; font: inherit; color: inherit; }
+.toast b { display: block; font-size: 13px; margin-bottom: 2px; }
+.toast span { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; font-size: 13px; color: var(--muted); }
+#btn-notify.off { opacity: .45; }
+
 /* ---------- dialogs ---------- */
 dialog { border: 1px solid var(--line); border-radius: 18px; padding: 0; width: min(880px, calc(100vw - 32px)); max-height: calc(100vh - 48px); background: var(--bg); color: var(--ink); box-shadow: var(--shadow-lg); }
 dialog::backdrop { background: rgba(25, 18, 10, .45); backdrop-filter: blur(2px); }
@@ -302,6 +309,7 @@ ol.steps { padding-left: 20px; } ol.steps li { margin-bottom: 10px; }
         <option value="full">full autopilot</option>
         <option value="off">off, requests wait</option>
       </select></label>
+    <button id="btn-notify" class="ghost iconbtn" title="Notify me about messages and requests for my Claude" aria-label="Notifications">🔔</button>
     <button id="btn-theme" class="ghost iconbtn" title="Theme"></button>
     <button id="btn-invite">Invite people</button>
     <button id="btn-help" class="ghost iconbtn" aria-label="How huddle works">?</button>
@@ -1117,7 +1125,49 @@ function applySnapshot(s) {
   S.aliases = s.aliases || {};
   showMe(); renderTeam(); renderSide();
 }
+// ---------- notifications: messages to me (or everyone) and requests for my Claude ----------
+function noteForMe(ev) {
+  const me = auth.name;
+  if (!me) return null;
+  if (ev.type === 'message' && ev.message.fromName !== me && (!ev.message.to || ev.message.to === me)) {
+    return { title: `${ev.message.fromName}${ev.message.to ? ' → you' : ' → everyone'}`, body: ev.message.text };
+  }
+  if (ev.type === 'board' && ev.action === 'goal' && ev.goal && ev.goal.to === me && ev.goal.byName !== me) {
+    return { title: `Request from ${ev.goal.byName} for your Claude`, body: ev.goal.text };
+  }
+  return null;
+}
+function notifyMe(n) {
+  let box = $('toasts');
+  if (!box) { box = document.createElement('div'); box.id = 'toasts'; box.setAttribute('role', 'status'); document.body.append(box); }
+  const t = document.createElement('button');
+  t.className = 'toast';
+  t.innerHTML = `<b>${esc(n.title)}</b><span>${esc(n.body)}</span>`;
+  t.onclick = () => { t.remove(); showView('timeline'); };
+  box.append(t);
+  while (box.children.length > 4) box.firstChild.remove();
+  setTimeout(() => t.remove(), 15000);
+  // a system notification too when the tab is in the background (needs the 🔔 permission)
+  if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+    try { new Notification('huddle: ' + n.title, { body: n.body.slice(0, 300), tag: 'huddle' }); } catch {}
+  }
+}
+function renderNotifyBtn() {
+  const b = $('btn-notify');
+  const on = 'Notification' in window && Notification.permission === 'granted';
+  b.classList.toggle('off', !on);
+  b.title = on ? 'Notifications are on for messages and requests for your Claude' : 'Turn on notifications for messages and requests for your Claude';
+}
+$('btn-notify').onclick = async () => {
+  if ('Notification' in window && Notification.permission === 'default') { try { await Notification.requestPermission(); } catch {} }
+  renderNotifyBtn();
+  if (!('Notification' in window) || Notification.permission === 'denied') notifyMe({ title: 'Browser notifications are blocked', body: 'You still get these pop-ups while the page is open. Allow notifications for this site in your browser settings to get them in the background too.' });
+};
+renderNotifyBtn();
+
 function onEvent(ev) {
+  const note = noteForMe(ev);
+  if (note) notifyMe(note);
   switch (ev.type) {
     case 'join': case 'leave': case 'status': S.agents[ev.agent.id] = ev.agent; break;
     case 'lock': S.locks[(ev.lock.branch || '') + '::' + ev.lock.path] = ev.lock; break;
