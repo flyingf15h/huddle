@@ -9,6 +9,7 @@ const { Sync } = require('./sync');
 const gitx = require('./git');
 const board = require('./board');
 const autopilot = require('./autopilot');
+const { notify, noteFor } = require('./notify');
 
 const INSTRUCTIONS = `huddle connects you with other Claude agents working on the same project from other machines.
 - Files are locked automatically when you edit them; files another agent is editing are read-only for you and edits to them get refused.
@@ -101,7 +102,13 @@ function runMcp() {
       runner = autopilot.createRunner({ cfg, client, log: (m) => log('autopilot: ' + m) });
       runner.refreshMode().then(() => runner.work()).catch(e => log('autopilot: ' + e.message));
     };
-    sync.onEvent = (ev) => { if (runner) runner.onEvent(ev).catch(() => {}); };
+    sync.onEvent = (ev) => {
+      if (!runner) return; // only the session that owns this folder's runner speaks up
+      runner.onEvent(ev).catch(() => {});
+      // tell the person now, not when they next type a prompt ("notify": false turns it off)
+      const note = cfg.notify !== false && noteFor(ev, client.agent);
+      if (note) notify(note.title, note.body);
+    };
     process.on('exit', () => { if (runner) autopilot.releaseRunner(cfg.root); });
     sync.start();
   }

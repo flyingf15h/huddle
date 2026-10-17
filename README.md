@@ -83,6 +83,8 @@ Change it from the **My Claude** menu at the top of the dashboard, with `/autopi
 
 Autopilot runs Claude on *your* computer with *your* Claude subscription, so your laptop has to be on. It needs either a Claude Code session open in the folder, or `huddle autopilot` running in a terminal there (for when you don't want Claude open). By default it can edit files and use git. Allow more with `--allow`, for example `huddle autopilot --allow "Bash(npm test:*)"`, or set `"autopilotAllow": ["Bash(npm test:*)"]` in `.huddle/config.json` so it also applies in the background.
 
+You hear about messages and requests sent to your Claude right away: while a Claude Code session is open in the folder, huddle shows a desktop notification for each message to you (or to everyone) and each request for your Claude, so you don't have to wait for your next prompt. Your Claude also leads its next turn with them. Set `"notify": false` in `.huddle/config.json` to turn the pop-ups off.
+
 ## Different versions, branches and merging
 
 huddle carries git history between people itself (as git bundles through the server), so nobody needs access to anyone else's GitHub remote.
