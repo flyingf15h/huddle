@@ -16,6 +16,7 @@ fs.writeFileSync(path.join(fakeBin, 'claude'), `#!/usr/bin/env node
 const p = process.argv[process.argv.indexOf('-p') + 1] || '';
 require('fs').appendFileSync(require('path').join(process.cwd(), 'claude-runs.txt'), p.split('\\n').find(l => l.startsWith('Your task')) + '\\n');
 if (p.includes('goes back to')) console.log('Renamed add to plus.\\nNeeds alice\\'s OK: npm test');
+if (p.includes('sent you this message')) console.log('Tests live in test/, run them with npm test.');
 `, { mode: 0o755 });
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 async function until(fn, ms = 8000, what = 'condition') {
@@ -260,10 +261,12 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
     assert.match(await (await fetch(url + '/')).text(), /data-view="stats"/);
     ok('the stats page counts conversations, prompts, time with Claude and tokens per person (numbers only)');
 
-        // autopilot: by default, requests sent to someone's Claude run while their session is open
+    // autopilot: every Claude is active for the team by default; "requests" only runs what is sent to it
     const runs = () => { try { return fs.readFileSync(path.join(alice.root, 'claude-runs.txt'), 'utf8'); } catch { return ''; } };
     const human = { id: 'human:carol', name: 'carol', kind: 'human' };
-    await until(async () => (await api('state')).agents.some(a => a.name === 'alice' && a.runner === 'requests'), 8000, "alice's runner");
+    await until(async () => (await api('state')).agents.some(a => a.name === 'alice' && a.runner === 'full'), 8000, "alice's runner, active by default");
+    assert.match(await alice.tool('huddle_autopilot', { mode: 'requests' }), /requests only/);
+    await until(async () => (await api('state')).agents.some(a => a.name === 'alice' && a.runner === 'requests'), 8000, "alice's runner on requests");
     await api('goal', { agent: human, text: 'rename add to plus', to: 'alice' });
     await until(() => /rename add to plus/.test(runs()), 10000, 'request run by alice\'s Claude');
     await until(async () => (await api('board')).tasks.some(t => t.title === 'rename add to plus' && t.status === 'done'), 8000, 'request marked done');
@@ -273,8 +276,28 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
     await api('goal', { agent: human, text: 'whole team: write docs' });
     await sleep(1500);
     assert(!/write docs/.test(runs()), 'requests mode must not take team-wide goals');
-    assert.match(await alice.tool('huddle_autopilot', { mode: 'on' }), /full autopilot/);
+    assert.match(await alice.tool('huddle_autopilot', { mode: 'on' }), /active/);
     await until(async () => (await api('board')).goals.some(g => g.text === 'whole team: write docs' && g.planner), 10000, 'full autopilot plans the team goal');
+    // a direct message while alice's session is idle gets answered in the background, once, marked auto
+    fs.writeFileSync(path.join(alice.root, '.huddle', 'turns.json'), '{}');
+    const asked = (await api('message', { agent: { id: 'bob#x', name: 'bob', kind: 'agent' }, to: 'alice', text: 'where do the tests live?' })).message.at;
+    await until(async () => (await api('messages')).messages.some(m => m.at >= asked && m.fromName === 'alice' && m.to === 'bob' && m.auto && /test\//.test(m.text)), 10000, 'background answer to bob');
+    await api('message', { agent: human, to: 'alice', text: 'thanks', auto: true });
+    await sleep(1500);
+    { const am = (await api('messages')).messages.filter(m => m.at >= asked && m.fromName === 'alice' && m.auto); assert.equal(am.length, 1, 'automatic answers never start another run: ' + JSON.stringify(am)); }
+    // big prompts: huddle_distribute gives the heaviest part to whoever has the most of their window left
+    await api('usage', { agent: { name: 'alice' }, five: 40 });
+    await api('usage', { agent: { name: 'bob' }, five: 10 });
+    assert.equal((await api('state')).usage.bob.five, 10);
+    const dist = await bob.tool('huddle_distribute', { summary: 'three things', tasks: [
+      { title: 'light part', effort: 'light' }, { title: 'heavy part', effort: 'heavy' }, { title: 'medium part', effort: 'medium' }, { title: 'anyone part' }, { title: 'my part', effort: 'light', keep_for_me: true }] });
+    assert.match(dist, /my part \(light\) → you, here/);
+    const tb = (await api('board')).tasks;
+    const owner = (t) => tb.find(x => x.title === t).owner;
+    assert.deepEqual([owner('heavy part'), owner('medium part')], ['bob', 'alice'], 'heavy work goes where there is most room');
+    assert(tb.find(x => x.title === 'my part').held, 'kept parts are held by the session');
+    assert.equal(owner('anyone part'), null, 'a part with no size stays open');
+    assert.match(alice.hook('prompt', { prompt: 'Make the task titles shorter. Also switch the colour scheme to pink and blue. And then add a project switcher to the header, plus a guided tour of the dashboard that points at each part of the page while it explains what that part does.' }).hookSpecificOutput.additionalContext, /huddle_distribute/);
     assert.match(await alice.tool('huddle_autopilot', { mode: 'off' }), /off/);
     await sleep(500);
     const before = runs();
@@ -282,7 +305,7 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
     await sleep(2000);
     assert.equal(runs(), before, 'off means requests wait');
     assert.equal((await api('board')).tasks.find(t => t.title === 'do this later').status, 'todo');
-    ok("requests to someone's Claude run while it's open; full autopilot takes team goals; off makes them wait");
+    ok("Claudes are active by default and answer each other once; big prompts are split by remaining usage; off makes requests wait");
 
     // whatever the person asks, their Claude reads the team's messages and open requests first
     await api('message', { agent: human, to: 'alice', text: 'please update huddle' });

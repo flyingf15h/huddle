@@ -41,8 +41,9 @@ Talk to the whole team of Claudes:
   huddle autopilot on|requests|off
                                 what YOUR Claude does with work from the team (uses your
                                 Claude subscription; runs claude -p in this folder):
-                                requests (default) = does what people send to your Claude,
-                                on = also plans team goals and takes open tasks, off = waits
+                                on (default, "active") = answers the other Claudes while you're
+                                away, takes its tasks, plans team goals; requests = only what
+                                people send to your Claude; off = everything waits
   huddle autopilot [--allow "Bash(npm test:*)"] [--model M] [--parallel N]
                                 run it in this terminal (when no Claude session is open here).
                                 Each request runs as its own Claude in its own git worktree,
@@ -379,7 +380,7 @@ function installHooks(root, dir, projectRoot) {
 
 // /autopilot inside Claude Code
 const AUTOPILOT_COMMAND = `---
-description: Turn huddle autopilot on, off, or back to taking requests
+description: Set huddle autopilot: on (active for the team), requests only, or off
 argument-hint: on | requests | off
 ---
 Use the huddle_autopilot tool with mode "$ARGUMENTS". If no mode was given, just show the current setting. Then say in one short line what that means: whether teammates can start this Claude on things, and what still waits for me.
@@ -474,9 +475,10 @@ Live dashboard: ${inv.server}/#invite=${pos[0]}
 Your Claude sessions here are shared with the team (your prompts, Claude's replies,
 its tool calls) so everyone can follow along. Change that with: huddle sharing tools|off
 
-While Claude is open here, things teammates send to YOUR Claude run automatically,
-using your Claude subscription. Change it any time: /autopilot off (in Claude),
-huddle autopilot off, or the dashboard. /autopilot on also takes team-wide work.
+While Claude is open here, your Claude is active for the team: it answers the other
+Claudes' messages while you're away and runs work handed to it, using your Claude
+subscription. Change it any time: /autopilot requests or /autopilot off (in Claude),
+huddle autopilot off, or the dashboard.
 
 Tip: huddle permissions --write makes a shared .claude/settings.json so nobody's Claude
 asks before routine edits, git, builds and tests (deploys still ask).
@@ -692,21 +694,29 @@ async function cmdStatusline() {
       const [s, st, m, b] = await Promise.all([client.get('state', null, opt), client.get('settings', null, opt),
         client.get('messages', { limit: 200 }, opt), client.get('board', null, opt)]);
       const others = [...new Set(s.agents.filter(a => a.online && a.name !== cfg.name && a.kind !== 'human').map(a => a.name))];
-      const mode = (st.settings[cfg.name] || {}).autopilot || 'requests';
+      const mode = (st.settings[cfg.name] || {}).autopilot || 'full';
       // what came in for this person since they last prompted (the prompt hook writes seen.json)
       const seenFile = path.join(cfg.root, CONFIG_DIR, 'seen.json');
       let seen = Date.now(); // nothing recorded yet: count from now, not the whole history
       try { seen = JSON.parse(fs.readFileSync(seenFile, 'utf8')).at; } catch { try { fs.writeFileSync(seenFile, JSON.stringify({ at: seen })); } catch {} }
       const unread = m.messages.filter(x => x.at > seen && x.fromName !== cfg.name && (!x.to || x.to === cfg.name)).length;
       const requests = b.tasks.filter(t => t.direct && t.owner === cfg.name && t.status !== 'done').length;
-      c = { at: Date.now(), ok: true, others, mode, unread, requests };
+      c = { at: Date.now(), ok: true, others, mode, unread, requests, usage: c && c.usage };
+      // how much of this person's Claude plan is used, so plans can give heavier work to whoever has more left
+      const rl = input.rate_limits || {};
+      const u = { five: rl.five_hour && rl.five_hour.used_percentage, week: rl.seven_day && rl.seven_day.used_percentage,
+        fiveResets: rl.five_hour && rl.five_hour.resets_at, weekResets: rl.seven_day && rl.seven_day.resets_at };
+      const key = `${Math.round(u.five)}:${Math.round(u.week)}`;
+      if (typeof u.five === 'number' && (!c.usage || c.usage.key !== key || Date.now() - c.usage.at > 30 * 60 * 1000)) {
+        await client.post('usage', u, opt).then(() => { c.usage = { key, at: Date.now() }; }).catch(() => {});
+      }
     } catch { c = { at: Date.now(), ok: false }; }
     try { fs.writeFileSync(cache, JSON.stringify(c)); } catch {}
   }
   const green = (t) => `\x1b[32m${t}\x1b[0m`, dim = (t) => `\x1b[2m${t}\x1b[0m`;
   if (!c.ok) return process.stdout.write(`${dim('○')} huddle · ${cfg.project} ${dim('· server unreachable')}`);
   const who = c.others.length ? `${c.others.join(', ')} online` : 'nobody else online';
-  const mode = { requests: 'takes requests', full: 'autopilot', off: 'requests wait' }[c.mode];
+  const mode = { requests: 'takes requests', full: 'active', off: 'requests wait' }[c.mode];
   const yellow = (t) => `\x1b[1;33m${t}\x1b[0m`;
   const mail = [c.unread ? `📬 ${c.unread} new message${c.unread === 1 ? '' : 's'}` : '',
     c.requests ? `${c.requests} request${c.requests === 1 ? '' : 's'} for your Claude` : ''].filter(Boolean).join(' · ');

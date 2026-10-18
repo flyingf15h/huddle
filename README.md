@@ -78,11 +78,15 @@ Each person chooses, and can change it any time:
 
 | Setting | What happens |
 |---|---|
-| **Takes requests** (default) | When someone sends something to *your* Claude, it starts on it automatically in the background, as long as you have Claude Code open in the project folder. Each request gets a Claude of its own (a new conversation in its own git worktree, up to 3 at once), so the conversation you're having isn't interrupted and separate requests don't pile into one conversation. When one finishes, its commits merge into your branch if they merge cleanly; otherwise they wait on `huddle-request-<id>` and the sender is told. Team-wide requests still wait for you. |
-| **Full autopilot** | Also plans team-wide requests and picks up unassigned tasks. |
+| **Active** (default) | Your Claude works with the others even while you're away, as long as you have Claude Code open in the project folder. When another Claude messages yours and your session is idle, a short background Claude answers it (automatic answers never start another run, so two Claudes can't keep each other going). Requests sent to your Claude, tasks assigned to it and team-wide requests all start on their own. Each one gets a Claude of its own (a new conversation in its own git worktree, up to 3 at once), so the conversation you're having isn't interrupted. When one finishes, its commits merge into your branch if they merge cleanly; otherwise they wait on `huddle-request-<id>` and the sender is told. |
+| **Requests only** | Only what someone sends straight to your Claude starts on its own. Messages, tasks and team-wide requests wait for you. |
 | **Off** | Nothing starts on its own. Requests wait until you tell your Claude to work on them. |
 
-Change it from the **My Claude** menu at the top of the dashboard, with `/autopilot on`, `/autopilot requests` or `/autopilot off` inside Claude Code (or just ask Claude), or with `huddle autopilot on|requests|off` in a terminal. The team can see each person's setting on their card: **Takes requests**, **Autopilot**, **Online** (open but not taking requests) or **Away**.
+Change it from the **My Claude** menu at the top of the dashboard, with `/autopilot on`, `/autopilot requests` or `/autopilot off` inside Claude Code (or just ask Claude), or with `huddle autopilot on|requests|off` in a terminal. The team can see each person's setting on their card: **Active**, **Requests only**, **Online** (open but not taking requests) or **Away**.
+
+### Splitting big prompts across the team
+
+When you give your Claude a prompt with several separate pieces of work, huddle suggests splitting it. Your Claude calls `huddle_distribute` with each part and how big it is (light, medium or heavy). huddle gives the heavier parts to whoever has the most of their 5-hour Claude window left, the other Claudes start on theirs right away, and your Claude does the parts it kept. Team-wide requests from the dashboard are split the same way. Each person's Claude Code status line reports how much of their window is used, and their card on the dashboard shows what's left.
 
 Autopilot runs Claude on *your* computer with *your* Claude subscription, so your laptop has to be on. It needs either a Claude Code session open in the folder, or `huddle autopilot` running in a terminal there (for when you don't want Claude open). By default it can edit files and use git. Allow more with `--allow`, for example `huddle autopilot --allow "Bash(npm test:*)"`, or set `"autopilotAllow": ["Bash(npm test:*)"]` in `.huddle/config.json` so it also applies in the background.
 

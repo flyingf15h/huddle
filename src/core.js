@@ -111,6 +111,7 @@ class Project {
     this.settings = {};   // per person: { autopilot: 'off' | 'requests' | 'full', aiName: what they call their Claude }
     this.aliases = {};    // other names a person has used ("Kelly-Wang" -> "Kelly")
     this.stats = {};      // per person: conversations, turns, time with Claude, tokens (see 'POST stats')
+    this.usage = {};      // per person: how much of their Claude plan's windows is used, from their status line
     this.teamVersion = 0; // bumped by TEAM_EVENTS
     this.worklog = [];    // [{name, status, at}]: what each Claude said it started on
     this.handoffs = [];   // [{name, ai, text, files, commits, at}]: where a session left off, for whoever comes next
@@ -169,6 +170,7 @@ class Project {
       files: Object.values(this.files).map(f => this.fileMeta(f)),
       settings: this.settings || {},
       aliases: this.aliases || {},
+      usage: this.usage || {},
       teamVersion: this.teamVersion || 0,
     };
   }
@@ -303,6 +305,10 @@ const routes = {
       a.wasOnline = false;
       a.status = '';
       p.emit('leave', { agent: p.publicAgent(a) });
+      // parts a session kept for itself and didn't finish go to its person's background Claudes
+      const left = p.board.tasks.filter(t => t.held === a.id && t.status !== 'done');
+      for (const t of left) { t.held = null; t.status = 'todo'; t.updated = now(); }
+      if (left.length) boardChanged(p, 'release', { tasks: left }, a);
       p.dirty = true;
     }
     return { ok: true };
@@ -463,6 +469,8 @@ const routes = {
     if (!text) throw httpError(400, 'text required');
     const m = { id: crypto.randomBytes(6).toString('hex'), from: a.id, fromName: a.name,
       to: personFor(p, b.to) || null, text: text.slice(0, 20000), at: now() };
+    // a Claude's automatic answer: it never starts another background run, so two Claudes can't loop
+    if (b.auto) m.auto = true;
     p.messages.push(m);
     if (p.messages.length > MAX_MESSAGES) p.messages.splice(0, p.messages.length - MAX_MESSAGES);
     m.seq = p.emit('message', { message: m }).seq;
@@ -588,6 +596,20 @@ const routes = {
   // ---- team board: a person gives the team a goal, one Claude plans it, everyone works it ----
   'GET board': (p) => p.board,
   'GET settings': (p) => ({ settings: p.settings || {} }),
+  // the status line reports how much of the person's 5-hour and weekly windows is used, so plans
+  // can hand heavier work to whoever has more left. Numbers only; it doesn't count as being online.
+  'POST usage': (p, b) => {
+    const name = canonicalName(p, b.agent && b.agent.name);
+    if (!name) throw httpError(400, 'agent.name required');
+    const pct = (v) => (typeof v === 'number' && isFinite(v) ? Math.max(0, Math.min(100, Math.round(v))) : null);
+    const u = { five: pct(b.five), week: pct(b.week), fiveResets: Number(b.fiveResets) || null, weekResets: Number(b.weekResets) || null, at: now() };
+    p.usage = p.usage || {};
+    const old = p.usage[name];
+    p.usage[name] = u;
+    p.dirty = true;
+    if (!old || old.five !== u.five || old.week !== u.week) p.emit('usage', { name, usage: u });
+    return { ok: true };
+  },
   // your own settings only: whether others can start your Claude on things
   // and the name you gave your Claude ("" clears it)
   'POST setting': (p, b) => {
@@ -620,6 +642,8 @@ const routes = {
     p.board.goals.push(goal);
     if (p.board.goals.length > 100) p.board.goals.splice(0, p.board.goals.length - 100);
     // aimed at one person's Claude: skip planning, it's simply their task
+    // huddle_distribute plans its own prompt, so nobody else may claim it in between
+    if (!to && b.claim) { goal.planner = a.name; goal.status = 'planning'; }
     if (to) {
       goal.status = 'planned';
       goal.planner = to;
@@ -649,7 +673,13 @@ const routes = {
     g.planner = a.name;
     g.status = 'planned';
     g.plan = String(b.summary || '').slice(0, 4000);
-    const made = tasks.map(t => pushTask(p, { goalId: g.id, title: t.title, detail: t.detail, owner: t.owner || null }, a));
+    // "keep": the planner's own session does it (so its background runner leaves it alone)
+    const owners = assignByUsage(p, tasks.map(t => (t.keep ? { ...t, owner: a.name } : t)), a.name);
+    const made = tasks.map((t, i) => {
+      const task = pushTask(p, { goalId: g.id, title: t.title, detail: t.detail, owner: owners[i], effort: t.effort }, a);
+      if (t.keep) { task.held = a.id; task.status = 'doing'; }
+      return task;
+    });
     // "after" refers to earlier tasks in this same list by index
     tasks.forEach((t, i) => { made[i].after = (Array.isArray(t.after) ? t.after : []).map(j => made[j] && made[j].id).filter(Boolean); });
     boardChanged(p, 'plan', { goal: g, tasks: made }, a);
@@ -881,9 +911,43 @@ function pushTask(p, t, a) {
   if (p.board.tasks.length >= MAX_TASKS) p.board.tasks.splice(0, p.board.tasks.findIndex(x => x.status === 'done') + 1 || 1);
   const task = { id: crypto.randomBytes(4).toString('hex'), goalId: t.goalId, title, detail: String(t.detail || '').slice(0, 6000),
     owner: t.owner || null, status: 'todo', by: a.name, at: now(), updated: now(), after: Array.isArray(t.after) ? t.after.slice(0, 10) : [],
-    direct: !!t.direct };
+    direct: !!t.direct, effort: EFFORT[t.effort] ? t.effort : null };
   p.board.tasks.push(task);
   return task;
+}
+
+// Who gets each task a plan sized but left unassigned. Heavier tasks go first, each to whoever has the most of
+// their Claude plan's 5-hour window left after what they've been handed already (a rough guess of
+// what each size of task uses). Only Claudes that start on their own (active) and the planner are
+// picked, unless nobody is.
+const EFFORT = { light: 5, medium: 12, heavy: 25 };
+function assignByUsage(p, tasks, planner) {
+  const runners = new Set(), online = new Set([planner]);
+  for (const a of Object.values(p.agents)) {
+    if (!p.online(a) || a.clone || !['agent', 'autopilot'].includes(a.kind)) continue;
+    online.add(a.name);
+    if (a.runner === 'full') runners.add(a.name);
+  }
+  let team = [...new Set([planner, ...runners])];
+  if (team.length < 2) team = [...online];
+  const left = (n) => {
+    const u = (p.usage || {})[n];
+    return u && now() - u.at < 6 * 3600 * 1000 && typeof u.five === 'number' ? Math.max(2, 100 - u.five) : 50;
+  };
+  const roomy = team.filter(n => left(n) > 10);
+  if (roomy.length) team = roomy;
+  const load = Object.fromEntries(team.map(n => [n, 0]));
+  const owners = tasks.map(t => (t.owner ? personFor(p, t.owner) || String(t.owner) : null));
+  // (a task with no effort and no owner stays open for whoever takes it)
+  const order = tasks.map((t, i) => i).filter(i => !owners[i] && EFFORT[tasks[i].effort]).sort((x, y) => (EFFORT[tasks[y].effort] || EFFORT.medium) - (EFFORT[tasks[x].effort] || EFFORT.medium));
+  const cost = (t) => EFFORT[t.effort] || EFFORT.medium;
+  tasks.forEach((t, i) => { if (owners[i] && load[owners[i]] !== undefined) load[owners[i]] += cost(t); });
+  for (const i of order) {
+    const best = team.slice().sort((x, y) => (left(y) - load[y]) - (left(x) - load[x]) || load[x] - load[y])[0];
+    owners[i] = best;
+    load[best] += cost(tasks[i]);
+  }
+  return owners;
 }
 
 function goalDone(p, t) {

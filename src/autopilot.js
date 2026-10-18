@@ -3,10 +3,12 @@
 //
 // Modes (a per-person setting on the server, changeable from the dashboard,
 // `huddle autopilot <mode>` or the huddle_autopilot tool):
-//   requests  (default) do what someone sends to this person's Claude directly, without running
+//   full      (default, "active") answer messages other Claudes send this one while the person's
+//             session is idle, do requests, take tasks assigned to this Claude, plan team goals and
+//             take unassigned tasks
+//   requests  only do what someone sends to this person's Claude directly, without running
 //             anything outside the allowed commands; the answer (and any command that needs this
 //             person's OK) goes back to the sender as a message
-//   full      also plan team goals and take unassigned tasks
 //   off       nothing runs; requests wait for the person
 //
 // The runner lives inside the huddle MCP server of an open Claude session (so
@@ -28,13 +30,13 @@ const board = require('./board');
 const gitx = require('./git');
 
 const MODES = ['off', 'requests', 'full'];
-const DEFAULT_MODE = 'requests';
-const MODE_WORDS = { off: 'off (requests wait for you)', requests: 'takes requests (does what people send to your Claude)', full: 'full autopilot (also plans team goals and takes open tasks)' };
+const DEFAULT_MODE = 'full';
+const MODE_WORDS = { off: 'off (requests and messages wait for you)', requests: 'requests only (does what people send to your Claude)', full: 'active (answers the other Claudes, takes its tasks and plans team goals)' };
 
 function normMode(m) {
   m = String(m || '').toLowerCase();
-  if (['on', 'full', 'auto', 'autopilot'].includes(m)) return 'full';
-  if (['requests', 'request', 'prompts', 'default'].includes(m)) return 'requests';
+  if (['on', 'full', 'auto', 'autopilot', 'active', 'default'].includes(m)) return 'full';
+  if (['requests', 'request', 'prompts'].includes(m)) return 'requests';
   if (['off', 'none', 'manual'].includes(m)) return 'off';
   return null;
 }
@@ -43,8 +45,9 @@ function depsDone(b, t) { return (t.after || []).every(id => { const d = b.tasks
 
 function pick(b, me, skip, mode = 'full') {
   if (mode === 'off') return null;
+  // (a task the person's own session kept for itself with huddle_distribute is done there, not here)
   const mine = b.tasks.filter(t => t.owner === me && ['todo', 'doing'].includes(t.status) && !skip.has(t.id) && depsDone(b, t)
-    && (mode === 'full' || t.direct));
+    && !t.held && (mode === 'full' || t.direct));
   if (mine.length) return { kind: 'task', task: mine[0] };
   if (mode !== 'full') return null;
   const goal = b.goals.find(g => g.status === 'open' && !g.planner && !g.to && !skip.has(g.id));
@@ -54,18 +57,45 @@ function pick(b, me, skip, mode = 'full') {
   return null;
 }
 
+// Whether the person's own Claude session here is in the middle of a turn (the prompt and stop hooks
+// keep .huddle/turns.json). A busy session reads its messages itself before it stops, so the runner
+// only answers for a session that's idle.
+function sessionBusy(root) {
+  try {
+    const t = JSON.parse(fs.readFileSync(path.join(root, CONFIG_DIR, 'turns.json'), 'utf8'));
+    return Object.values(t).some(x => x.busy && Date.now() - x.at < 30 * 60 * 1000);
+  } catch { return false; }
+}
+
+function replyPrompt(m, me, aiName, from) {
+  return `You are ${selfName(me, aiName)}, one of a team of Claude agents working on this project through huddle.
+${me} isn't at the keyboard right now, so you are answering in the background. ${from} sent you this message:
+
+${m.text}
+
+Answer it. Look at the code, the board (huddle_board) or what the others are doing (huddle_activity) if that helps; don't edit files in this run.
+If they are asking you to build or change something, say you're taking it and call huddle_ask_team with to="${me}" and a clear description of the work, so it runs as its own request.
+If it needs ${me} (a decision, a login, something only they can run), say so plainly.
+Your final message is sent back to ${from} as your reply, so make it short and self-contained. Don't send it yourself with huddle_send.`;
+}
+
 // "Pip, tszfei's Claude" once the person has named it
 function selfName(me, aiName) { return aiName ? `${aiName}, ${me}'s Claude` : `${me}'s Claude`; }
 
-function planPrompt(goal, team, me, aiName) {
+// "tszfei (31% of the 5-hour window used)" for the planner, so it can see who has room
+function teamLine(team, usage = {}) {
+  return team.map(n => { const u = usage[n]; return u && typeof u.five === 'number' ? `${n} (${u.five}% of their 5-hour Claude window used)` : n; }).join(', ');
+}
+
+function planPrompt(goal, team, me, aiName, usage) {
   return `You are ${selfName(me, aiName)}, coordinating a team of Claude agents through huddle (one per person, each on their own computer).
 A person gave the team this goal [${goal.id}] (from ${goal.byName}):
 
 ${goal.text}
 
-You won the right to plan it. Online agents: ${team.join(', ')}.
+You won the right to plan it. Online agents: ${teamLine(team, usage)}.
 1. Look at the code as much as you need to understand what the goal involves.
-2. Call huddle_plan with goal_id "${goal.id}": a short summary and concrete tasks (what to change, where, how to know it's done). Give each task an owner from the online agents, balance the work, include yourself, and split by files or modules so two agents don't edit the same files. Use "after" for real dependencies only.
+2. Call huddle_plan with goal_id "${goal.id}": a short summary and concrete tasks (what to change, where, how to know it's done). Split by files or modules so two agents don't edit the same files, and use "after" for real dependencies only. Give every task an effort (light, medium or heavy) and leave owner empty: huddle hands heavier tasks to the Claudes with the most usage left in their window. Only set an owner when a task has to go to one person (their branch, their hardware, something only they can run).
 3. Send the team a two-line summary with huddle_send.
 Do not implement anything in this run; your own tasks come next.`;
 }
@@ -163,6 +193,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
   const max = Math.max(1, Number(flags.parallel || cfg.requestsParallel || 3));
   const skip = new Set();
   const running = new Map(); // task or goal id -> what it's doing
+  const replied = new Set(), answeredAt = []; // message ids answered, and when (a cap per hour)
   let pumping = false, again = false, mode = DEFAULT_MODE, stopped = false;
 
   const runClaude = (prompt, { cwd = cfg.root, session, mcpRoot } = {}) => new Promise((resolve) => {
@@ -205,6 +236,27 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     return new Client(ccfg, { ...identity(ccfg, 'agent', key), branch });
   }
 
+  // A direct message from another Claude (or a person) while this person's session is idle gets an
+  // answer from a short background Claude, so the team doesn't wait on someone who stepped away.
+  // Automatic answers never start runs themselves, so two Claudes can't keep each other going.
+  async function answer(m) {
+    log(`answering a message from ${m.fromName}`);
+    const key = 'msg-' + m.id;
+    const who = cloneClient(cfg.root, key, gitx.currentBranch(cfg.root, 0));
+    await who.post('hello', { clone: `answering ${m.fromName}` }).catch(() => {});
+    await who.post('status', { status: `answering ${m.fromName}: ${m.text.split('\n')[0].slice(0, 70)}` }).catch(() => {});
+    const res = await runClaude(replyPrompt(m, me, await myAiName(client).catch(() => null), m.fromName), { session: key });
+    const text = res.out.trim().slice(-2000) || (res.code === 0 ? '' : "I couldn't answer this automatically; it'll wait for my person.");
+    if (text) await client.post('message', { to: m.fromName, text, auto: true }).catch(e => log('could not send the answer: ' + e.message));
+    await who.post('bye', {}).catch(() => {});
+  }
+  function wantsAnswer(m) {
+    if (!m || m.auto || replied.has(m.id) || mode === 'off' || !m.to || m.to !== me || m.fromName === me) return false;
+    if (Date.now() - m.at > 10 * 60 * 1000 || sessionBusy(cfg.root)) return false;
+    while (answeredAt.length && Date.now() - answeredAt[0] > 3600 * 1000) answeredAt.shift();
+    return answeredAt.length < 20;
+  }
+
   async function plan(goal) {
     log(`planning goal ${goal.id}: ${goal.text.split('\n')[0]}`);
     const key = 'plan-' + goal.id;
@@ -213,11 +265,11 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     await who.post('status', { status: `planning: ${goal.text.split('\n')[0].slice(0, 80)}` }).catch(() => {});
     const s = await client.get('state');
     const team = [...new Set(s.agents.filter(a => a.online && (a.kind === 'agent' || a.kind === 'autopilot')).map(a => a.name))];
-    await runClaude(planPrompt(goal, team.length ? team : [me], me, await myAiName(client).catch(() => null)), { session: key });
+    await runClaude(planPrompt(goal, team.length ? team : [me], me, await myAiName(client).catch(() => null), s.usage), { session: key });
     const after = (await client.get('board')).goals.find(g => g.id === goal.id);
     if (after && after.status !== 'planned' && after.status !== 'done') {
       log('Claude did not record a plan; taking the whole goal as one task');
-      await client.post('plan', { goalId: goal.id, summary: '', tasks: [{ title: goal.text.split('\n')[0].slice(0, 200), detail: goal.text, owner: me }] });
+      await client.post('plan', { goalId: goal.id, summary: '', tasks: [{ title: goal.text.split('\n')[0].slice(0, 200), detail: goal.text, effort: 'medium' }] });
     }
     await who.post('bye', {}).catch(() => {});
   }
@@ -308,6 +360,11 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     // react to live events: board changes mean new work, setting changes may switch modes
     async onEvent(ev) {
       if (ev.type === 'setting' && ev.name === me) { await refreshMode(); log(`mode: ${MODE_WORDS[mode]}`); return work(); }
+      if (ev.type === 'message' && wantsAnswer(ev.message)) {
+        replied.add(ev.message.id); answeredAt.push(Date.now());
+        // a reply is short, so it doesn't wait for a free slot
+        return start('msg-' + ev.message.id, 'answer', () => answer(ev.message));
+      }
       if (ev.type === 'board') return work();
     },
     stop() { stopped = true; },
@@ -355,7 +412,7 @@ function listenWs(client, since, onEvent) {
     let ws, opened = false, ping;
     try { ws = new WebSocket(`${client.base.replace(/^http/, 'ws')}/ws?${q}`); } catch { return resolve(false); }
     ws.onopen = () => { opened = true; ping = setInterval(() => { try { ws.send('ping'); } catch {} }, 30000); };
-    ws.onmessage = (m) => { if (m.data === 'pong') return; try { const ev = JSON.parse(m.data); if (ev.type === 'board' || ev.type === 'setting') onEvent(ev); } catch {} };
+    ws.onmessage = (m) => { if (m.data === 'pong') return; try { const ev = JSON.parse(m.data); if (['board', 'setting', 'message'].includes(ev.type)) onEvent(ev); } catch {} };
     ws.onclose = () => { clearInterval(ping); setTimeout(() => resolve(opened), opened ? 1000 : 0); };
     ws.onerror = () => {};
   });

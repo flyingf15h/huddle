@@ -119,7 +119,7 @@ function recentHandoffs(list, me) {
 function openRequests(s, tasks, me) {
   const open = tasks.filter(t => t.direct && t.owner === me && t.status !== 'done');
   if (!open.length) return { context: '', notice: '' };
-  const mode = ((s.settings || {})[me] || {}).autopilot || 'requests';
+  const mode = ((s.settings || {})[me] || {}).autopilot || 'full';
   if (mode !== 'off') {
     return { context: '', notice: `huddle: ${open.length} request${open.length > 1 ? 's' : ''} running in the background, each as its own Claude: ` +
       open.slice(0, 3).map(t => `"${t.title.slice(0, 50)}" from ${t.by} (${t.status})`).join(', ') + (open.length > 3 ? ', …' : '') };
@@ -363,6 +363,34 @@ function statusFromPrompt(prompt) {
   return `asked: “${cut}”`;
 }
 
+// Whether this person's session is mid-turn, for the request runner: it answers messages for an
+// idle session only, because a busy one reads them before it stops.
+function markTurn(cfg, agent, busy) {
+  if (process.env.HUDDLE_AUTOPILOT) return;
+  const file = path.join(cfg.root, CONFIG_DIR, 'turns.json');
+  let t = {};
+  try { t = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
+  t[agent.id] = { busy, at: Date.now() };
+  for (const [k, v] of Object.entries(t)) if (Date.now() - v.at > 86400000) delete t[k];
+  try { fs.writeFileSync(file, JSON.stringify(t)); } catch {}
+}
+
+// A prompt that's probably several jobs at once: long, or a list of asks. Claude makes the real call.
+function looksBig(prompt) {
+  if (process.env.HUDDLE_AUTOPILOT || prompt.length < 200) return false;
+  const items = prompt.split('\n').filter(l => /^\s*([-*•]|\d+[.)])\s+\S/.test(l)).length;
+  const asks = (prompt.match(/\b(also|and then|plus|as well as|additionally)\b|[.?!]\s+(?=[a-z]*\s*(add|make|fix|change|switch|have|set|allow|get rid|remove|build|update|create|move|let)\b)/gi) || []).length;
+  return prompt.length > 700 || items >= 3 || asks >= 2;
+}
+function distributeNote(s, me) {
+  const others = [...new Set(s.agents.filter(a => a.online && !a.clone && a.name !== me.name && ['agent', 'autopilot'].includes(a.kind)).map(a => a.name))];
+  const u = (n) => { const x = (s.usage || {})[n]; return x && typeof x.five === 'number' ? ` (${x.five}% of 5-hour window used)` : ''; };
+  return `huddle: this prompt looks like several pieces of work. ${others.length ? `Other Claudes online: ${others.map(n => n + u(n)).join(', ')}; you${u(me.name)}.` : 'Nobody else is online, but your own background Claudes can take parts in parallel.'} ` +
+    'If it splits into parts that can be done independently (different files or areas), call huddle_distribute first: give each part a title, a detail with what "done" means, and an effort (light, medium or heavy). ' +
+    'huddle hands the heavier parts to whoever has the most usage left, and their Claudes start right away. Keep the parts you\'re best placed to do with keep_for_me, then do those here. ' +
+    'Skip this for one tightly connected change, or when your user wants to do it themselves.';
+}
+
 function teamSummary(s, me) {
   const others = s.agents.filter(a => a.online && a.id !== me.id && a.kind !== 'watcher');
   const lines = [];
@@ -400,12 +428,12 @@ const handlers = {
     if (gitx.isRepo(cfg.root)) gitx.fetchAll(client, cfg.root).catch(() => {});
     // shown to the person in their terminal, so they can see this session is in the huddle
     const others = [...new Set(s.agents.filter(a => a.online && a.name !== client.agent.name && a.kind !== 'human').map(a => a.name))];
-    const mode = ((s.settings || {})[client.agent.name] || {}).autopilot || 'requests';
+    const mode = ((s.settings || {})[client.agent.name] || {}).autopilot || 'full';
     const mine = build();
     const newer = mine && s.agents.filter(a => a.online && a.build && a.build.at > mine.at).sort((x, y) => y.build.at - x.build.at)[0];
     const notice = `huddle: this session is in "${cfg.project.replace(/-[0-9a-f]{6,8}$/, '')}" as ${client.agent.name}` +
       ` · ${others.length ? others.join(', ') + ' online' : 'nobody else online'}` +
-      ` · your Claude ${mode === 'full' ? 'is on full autopilot' : mode === 'off' ? 'does not take requests (/autopilot to change)' : 'takes requests (/autopilot to change)'}` +
+      ` · your Claude ${mode === 'full' ? 'is active for the team (answers the other Claudes, takes its tasks)' : mode === 'off' ? 'does not take requests (/autopilot to change)' : 'takes requests only (/autopilot to change)'}` +
       (newer ? ` · ${newer.name} runs a newer huddle; run \`huddle update\` and restart Claude` : '');
     return withNotice(notice, ctx('SessionStart',
       `You are "${client.agent.name}" in huddle project "${client.cfg.project}", shared with other Claude agents working in the same codebase from other machines.\n` +
@@ -520,11 +548,13 @@ const handlers = {
     const privateNote = isPrivate ? 'This turn is private: huddle is not sharing your user\'s prompt, your replies or your tool calls with the team. Do not put what is discussed here into huddle messages, team memory or PROJECT.md unless the user asks you to. File edits and commits in the project still sync as usual.' : '';
     const asks = process.env.HUDDLE_AUTOPILOT ? { context: '', notice: '' } : openRequests(s, r.tasks || [], me);
     const stale = auto && auto !== st.data.lastAuto ? staleTasks(r.tasks || [], me) : '';
+    const big = !isPrivate && looksBig(prompt) ? distributeNote(s, client.agent) : '';
+    markTurn(cfg, client.agent, true);
     if (auto) { st.data.lastAuto = auto; st.save(); }
     // whatever the prompt is about, the team's messages and requests come first
     const team = [d.mail, asks.context].filter(Boolean).join('\n\n');
     const first = team ? `huddle: read this first, before your user's prompt, and tell your user about anything that needs them.\n\n${team}` : '';
-    const out = ctx('UserPromptSubmit', [first, renamed, privateNote, ...d.news, stale, d.team].filter(Boolean).join('\n\n'));
+    const out = ctx('UserPromptSubmit', [first, renamed, privateNote, ...d.news, stale, d.team, big].filter(Boolean).join('\n\n'));
     return asks.notice ? withNotice(asks.notice, out) : out;
   },
 
@@ -538,11 +568,13 @@ const handlers = {
     const closed = await closeFromCommits(client, cfg, sessionState(cfg, client.agent)).catch(() => null);
     if (cfg.releaseOnStop) await client.post('unlock', { all: true, keepHeld: true, reason: 'turn finished' });
     const note = closed ? { systemMessage: `huddle: your commit closed ${closed.map(t => `"${t.title}"`).join(', ')} on the board` } : null;
-    if (input.stop_hook_active) return note;
+    const done = () => { markTurn(cfg, client.agent, false); return note; };
+    // a background Claude's answer goes back by itself (the runner sends its final message)
+    if (input.stop_hook_active || process.env.HUDDLE_AUTOPILOT) return done();
     const peek = await client.post('inbox', { peek: true });
     const me = client.agent;
     const direct = peek.messages.filter(m => m.to === me.id || m.to === me.name);
-    if (!direct.length) return note;
+    if (!direct.length) return done();
     const r = await client.post('inbox', {});
     return { decision: 'block', reason: `Before stopping: other agents sent you messages.\n${formatMessages(r.messages, me)}\nReply with huddle_send (or act on them), then you may stop.` };
   },
@@ -552,6 +584,7 @@ const handlers = {
     await autoPublish(client, cfg, st);
     await closeFromCommits(client, cfg, sessionState(cfg, client.agent)).catch(() => {});
     await autoHandoff(client, cfg, sessionState(cfg, client.agent), await client.get('state').catch(() => null)).catch(() => {});
+    markTurn(cfg, client.agent, false);
     await client.post('unlock', { all: true, reason: 'session ended' });
     await client.post('bye', {});
     return null;

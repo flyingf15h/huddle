@@ -19,7 +19,8 @@ const INSTRUCTIONS = `huddle connects you with other Claude agents working on th
 - Locks are released when your turn ends. Use huddle_lock with hold=true to reserve files across turns, and huddle_unlock when done.
 - Folder locks: huddle_lock on a folder ("src/pages/") gives you everything inside it until you release it; nobody else can edit there, and nobody can lock a folder or file that overlaps it.
 - Hand-off: when your user wraps up or you pass work on, call huddle_handoff with where you left off and what comes next. The team and the next session see it.
-- Autopilot: your person chooses whether other people can start you on things (huddle_autopilot): "requests" (default) means when someone sends a request to this person's Claude, it is run automatically in the background; "full" also plans team goals and takes open tasks; "off" means requests wait. If your user asks to turn autopilot on/off, use huddle_autopilot.
+- Autopilot: your person chooses whether other people can start you on things (huddle_autopilot): "full" (default, "active") means messages other Claudes send you are answered in the background while your person is away, requests and tasks assigned to you run as background Claudes, and team goals get planned; "requests" only runs what is sent to this person's Claude directly; "off" means everything waits. If your user asks to turn autopilot on/off, use huddle_autopilot.
+- Big prompts: when your user asks for several independent pieces of work at once, split it with huddle_distribute. huddle gives heavier parts to the Claudes with the most usage left in their 5-hour window, and their Claudes start right away; you keep and do your own share.
 - Your name: your person can name you (e.g. "Pip") so the team can tell the Claudes apart. If your user asks you to take a name, or what you are called, use huddle_name.
 - Branches: people on the same git branch share a live working copy and locks; people on different branches work independently and merge later (huddle_branches, huddle_merge). Your commits are shared automatically at the end of each turn.
 - Team board: people give the whole team goals (huddle_ask_team). The first free agent claims a goal (huddle_claim_goal), splits it into tasks for the online agents and records them with huddle_plan; each agent then works its own tasks and marks them with huddle_update_task. Prefer splitting so different people touch different files.
@@ -71,13 +72,21 @@ const TOOLS = [
   { name: 'huddle_plan', description: "Record the plan for a goal you claimed: tasks with owners (agent names; balance the work, include yourself, avoid two people editing the same files) and optional dependencies (after = indexes of earlier tasks in this list).",
     inputSchema: { type: 'object', properties: {
       goal_id: { type: 'string' }, summary: { type: 'string' },
-      tasks: { type: 'array', items: { type: 'object', properties: { title: { type: 'string' }, detail: { type: 'string' }, owner: { type: 'string' }, after: { type: 'array', items: { type: 'number' } } }, required: ['title'] } },
+      tasks: { type: 'array', items: { type: 'object', properties: { title: { type: 'string' }, detail: { type: 'string' }, owner: { type: 'string', description: 'leave empty to let huddle assign by remaining usage' }, effort: { type: 'string', enum: ['light', 'medium', 'heavy'] }, after: { type: 'array', items: { type: 'number' } } }, required: ['title'] } },
     }, required: ['goal_id', 'tasks'] } },
+  { name: 'huddle_distribute', description: "Split your user's request into parts and hand them out across the team's Claudes in one step. Each part needs a title (under 10 words), a detail saying what to change and what done looks like, and an effort (light, medium, heavy). Parts without an owner are assigned by huddle: heavier ones go to whoever has the most of their 5-hour Claude window left. Set keep_for_me on the parts you will do yourself in this session. The others start on their own right away.",
+    inputSchema: { type: 'object', properties: {
+      summary: { type: 'string', description: 'one or two lines: what the whole request is' },
+      tasks: { type: 'array', items: { type: 'object', properties: {
+        title: { type: 'string' }, detail: { type: 'string' }, effort: { type: 'string', enum: ['light', 'medium', 'heavy'] },
+        owner: { type: 'string', description: 'only when it has to be one person' }, keep_for_me: { type: 'boolean' },
+        after: { type: 'array', items: { type: 'number' }, description: 'indexes of earlier parts this one needs first' } }, required: ['title', 'effort'] } },
+    }, required: ['summary', 'tasks'] } },
   { name: 'huddle_claim_task', description: 'Take an unassigned task from the board (only one agent can win it).',
     inputSchema: { type: 'object', properties: { task_id: { type: 'string' } }, required: ['task_id'] } },
   { name: 'huddle_update_task', description: 'Update a task: status todo|doing|done|blocked, an optional note (what you did, or why blocked), or reassign with owner.',
     inputSchema: { type: 'object', properties: { task_id: { type: 'string' }, status: { type: 'string', enum: ['todo', 'doing', 'done', 'blocked'] }, note: { type: 'string' }, owner: { type: 'string' } }, required: ['task_id'] } },
-  { name: 'huddle_autopilot', description: "See or change this person's autopilot setting: 'requests' (default: things people send to this person's Claude run automatically in the background while a Claude session is open here), 'full' (also plan team goals and take unassigned tasks), or 'off' (requests wait for the person). Omit mode to see the current setting.",
+  { name: 'huddle_autopilot', description: "See or change this person's autopilot setting: 'full' (default, active: answers messages from the other Claudes while the person is away, runs requests and assigned tasks as background Claudes, plans team goals), 'requests' (only what is sent to this person's Claude directly), or 'off' (everything waits for the person). Omit mode to see the current setting.",
     inputSchema: { type: 'object', properties: { mode: { type: 'string', enum: ['off', 'requests', 'full', 'on'] } } } },
   { name: 'huddle_name', description: "See or change the name your person gave you (their Claude), e.g. \"Pip\". The team sees it on the dashboard and can send you work with to=<name>. Only change it when your user asks; an empty name removes it.",
     inputSchema: { type: 'object', properties: { name: { type: 'string' } } } },
@@ -339,6 +348,18 @@ function runMcp() {
       case 'huddle_plan': {
         const r = await client.post('plan', { goalId: a.goal_id, summary: a.summary || '', tasks: a.tasks || [] });
         return `plan saved:\n${r.tasks.map(board.taskLine).join('\n')}\nEach owner sees their tasks automatically.`;
+      }
+      case 'huddle_distribute': {
+        const parts = (a.tasks || []).filter(t => t && t.title);
+        if (!parts.length) throw new Error('give at least one part');
+        const g = await client.post('goal', { text: a.summary || parts.map(t => t.title).join('; '), claim: true });
+        const r = await client.post('plan', { goalId: g.goal.id, summary: a.summary || '', tasks: parts.map(t => ({
+          title: t.title, detail: t.detail, effort: t.effort, owner: t.keep_for_me ? me.name : (t.owner || null), keep: !!t.keep_for_me, after: t.after })) });
+        const mine = r.tasks.filter(t => t.owner === me.name);
+        const others = r.tasks.filter(t => t.owner !== me.name);
+        return `Handed out as goal ${g.goal.id}:\n${r.tasks.map(t => `- [${t.id}] ${t.title} (${t.effort || 'medium'}) → ${t.owner === me.name ? (t.held ? 'you, here' : 'you, as a background Claude') : t.owner}`).join('\n')}\n` +
+          (others.length ? 'The other Claudes start on theirs right away and mark them done on the board; you are told when they finish. ' : '') +
+          (mine.some(t => t.held) ? `Now do yours here (${mine.filter(t => t.held).map(t => t.id).join(', ')}) and mark each done with huddle_update_task.` : '');
       }
       case 'huddle_claim_task': {
         const r = await client.post('claim-task', { id: a.task_id });
