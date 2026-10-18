@@ -182,6 +182,18 @@ function lanAddresses() {
 
 // ---------- join / leave ----------
 
+// A copy from `npx github:…` doesn't know which commit it is, so it could never tell it's out of date.
+// Look it up (best effort) and write build.json like `huddle update` does.
+async function recordBuild(dir) {
+  if (fs.existsSync(path.join(dir, 'build.json')) || process.env.HUDDLE_DEV) return;
+  try {
+    const res = await fetch(`https://api.github.com/repos/${REPO}/commits/main`, { headers: { accept: 'application/vnd.github+json', 'user-agent': 'huddle' }, signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return;
+    const c = await res.json();
+    fs.writeFileSync(path.join(dir, 'build.json'), JSON.stringify({ sha: c.sha, at: Date.parse(c.commit.committer.date), from: `github:${REPO}` }));
+  } catch {}
+}
+
 // Copy huddle somewhere stable so the hooks keep working after npx clears its cache.
 function selfInstall() {
   if (path.resolve(PKG_DIR) === path.resolve(INSTALL_DIR)) return INSTALL_DIR;
@@ -467,6 +479,7 @@ async function cmdJoin({ pos, flags }) {
   fs.writeFileSync(cfgFile, JSON.stringify({ ...prev, server: inv.server, token: inv.token, project: inv.project, name }, null, 2) + '\n', { mode: 0o600 });
   ignoreLocally(root);
   const dir = selfInstall();
+  await recordBuild(dir);
   rememberFolder(root);
   installHooks(root, dir);
   installCommand(root);

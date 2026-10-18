@@ -1205,6 +1205,12 @@ function people() {
     const at = a.statusAt || a.lastSeen || 0;
     if (a.status && ((a.online && !p.statusOnline) || (a.online === p.statusOnline && at > p.statusAt))) { p.status = a.status; p.statusAt = at; p.statusOnline = !!a.online; }
   }
+  // on an older huddle than the newest one on the team (or one that doesn't know its version): no background work
+  const newest = Math.max(0, ...Object.values(S.agents).filter(a => a.online && a.build && a.build.at).map(a => a.build.at));
+  for (const p of Object.values(by)) {
+    const ss = Object.values(S.agents).filter(a => a.name === p.name && a.online && !a.clone && a.kind !== 'human');
+    p.outdated = !!newest && ss.length > 0 && !p.runner && ss.every(a => !a.build || !a.build.at || a.build.at < newest - 60000);
+  }
   return Object.values(by).sort((x, y) => y.online - x.online || y.lastSeen - x.lastSeen);
 }
 // what to call someone's Claude: the name they gave it, or "tszfei's Claude"
@@ -1258,6 +1264,7 @@ function cardLine(p) {
   } else {
     bits.push(`Away${p.lastSeen ? ', last active ' + ago(p.lastSeen) : ''}`);
   }
+  if (p.outdated) bits.push('Needs a huddle update');
   if (p.clones.length) {
     const first = p.clones.map(c => cleanStatus(c.status || c.clone || '')).find(Boolean);
     bits.push(p.clones.length === 1 ? `In the background: ${first || '1 request'}` : `${p.clones.length} running in the background`);
@@ -1847,7 +1854,12 @@ function updateHint() {
     : who === myName() ? 'What should your Claude do?' : `What should ${claudeOf(who)} do? It replies to you here.`;
   if (!who) { $('hint').textContent = 'One Claude splits it into tasks for everyone.'; return; }
   const p = people().find(x => x.name === who);
-  $('hint').textContent = !p || !p.online ? `${who} is away. It waits until their Claude is back.` : p.runner === 'full' || p.runner === 'requests' ? 'Starts right away in the background.' : `${who} has background work off. It waits for them.`;
+  const mode = (S.settings[who] || {}).autopilot;
+  $('hint').textContent = !p || !p.online ? `${who} is away. It waits until their Claude is back.`
+    : mode === 'off' ? `${who} turned background work off. It waits for them.`
+    : p.runner === 'full' || p.runner === 'requests' ? 'Starts right away in the background.'
+    : p.outdated ? `${who}'s huddle needs an update before it can run background work. Until then it waits for them.`
+    : `${who}'s Claude isn't running background work right now. It waits for them.`;
 }
 $('to').addEventListener('change', updateHint);
 const grow = () => { const t = $('text'); t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 240) + 'px'; };

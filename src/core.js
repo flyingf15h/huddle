@@ -277,6 +277,14 @@ const routes = {
     if (b.status !== undefined) a.status = String(b.status).slice(0, 300);
     // the person's own huddle (not a dashboard tab) says which approve key is theirs
     if (b.keyHash && a.kind !== 'human' && !a.clone) { p.keys = p.keys || {}; p.keys[a.name] = String(b.keyHash).slice(0, 64); }
+    // background work is on (Active) for everyone unless they turned it off: older runners fall back to
+    // "requests only" when nothing is stored, so store the default the first time a runner shows up
+    if (a.runner && a.kind !== 'human' && !a.clone && !((p.settings || {})[a.name] || {}).autopilot) {
+      p.settings = p.settings || {};
+      p.settings[a.name] = { ...(p.settings[a.name] || {}), autopilot: 'full' };
+      p.emit('setting', { name: a.name, settings: p.settings[a.name] });
+    }
+    nudgeUpdate(p, a);
     p.dirty = true;
     return { ...p.snapshot(), you: p.publicAgent(a), ...(b.handoffs ? { handoffs: (p.handoffs || []).slice(-20) } : {}) };
   },
@@ -1004,6 +1012,24 @@ function addStats(into, add) {
   into.since = Math.min(into.since || now(), add.since || now());
   into.last = Math.max(into.last || 0, add.last || now());
   return into;
+}
+
+// A Claude session running an older huddle than the newest one on the team (or one that doesn't know
+// its version, from an old `npx … join`) can miss whole features, like background work. Its Claude is
+// told once per newer version, through the inbox every huddle version reads, to have its person update.
+function nudgeUpdate(p, a) {
+  if (a.kind === 'human' || a.clone) return;
+  const newest = Object.values(p.agents).filter(x => x.build && x.build.at && p.online(x)).sort((x, y) => y.build.at - x.build.at)[0];
+  if (!newest || (a.build && a.build.at && a.build.at >= newest.build.at - 60 * 1000)) return;
+  p.nudged = p.nudged || {};
+  if (p.nudged[a.name] === newest.build.sha) return;
+  p.nudged[a.name] = newest.build.sha;
+  const m = { id: crypto.randomBytes(6).toString('hex'), from: 'huddle', fromName: 'huddle', to: a.name, auto: true, at: now(),
+    text: `huddle on ${a.name}'s computer is out of date, so some team features (like background work for the team's requests) don't run there. ` +
+      `Ask ${a.name} to run \`npx -y github:flyingf15h/huddle update\` in a terminal and then restart Claude Code. Don't run it yourself unless ${a.name} says to.` };
+  p.messages.push(m);
+  if (p.messages.length > MAX_MESSAGES) p.messages.splice(0, p.messages.length - MAX_MESSAGES);
+  m.seq = p.emit('message', { message: m }).seq;
 }
 
 // two names are the same person: fold `from` into `into` everywhere, and keep it that way
