@@ -397,6 +397,8 @@ const routes = {
     const a = p.touch(b.agent);
     const status = String(b.status || '').replace(/\s+/g, ' ').trim().slice(0, 300);
     if (status === a.status) return { ok: true };
+    // only replace the status the caller saw (a late summary never overwrites a newer status)
+    if (b.ifStatus !== undefined && a.status !== b.ifStatus) return { ok: false, status: a.status };
     a.status = status;
     a.statusAt = now();
     if (status) {
@@ -762,6 +764,7 @@ const routes = {
     g.planner = a.name;
     g.status = 'planned';
     g.plan = String(b.summary || '').slice(0, 4000);
+    if (b.title) g.title = String(b.title).replace(/\s+/g, ' ').trim().slice(0, 80);
     // "keep": the planner's own session does it (so its background runner leaves it alone)
     const owners = assignByUsage(p, tasks.map(t => (t.keep ? { ...t, owner: a.name } : t)), a.name);
     const made = tasks.map((t, i) => {

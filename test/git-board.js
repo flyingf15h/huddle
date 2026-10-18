@@ -21,7 +21,7 @@ function sh(cwd, ...args) {
 function person(name, pid, url, token, project, { git = true } = {}) {
   const root = path.join(tmp, name);
   fs.mkdirSync(path.join(root, '.huddle'), { recursive: true });
-  fs.writeFileSync(path.join(root, '.huddle', 'config.json'), JSON.stringify({ server: url, token, project, name }));
+  fs.writeFileSync(path.join(root, '.huddle', 'config.json'), JSON.stringify({ server: url, token, project, name, summarize: false }));
   const env = { ...process.env, ...gitEnv, HUDDLE_SESSION: String(pid), HUDDLE_ROOT: root };
   const cli = (...args) => {
     const r = spawnSync(process.execPath, [CLI, ...args], { cwd: root, env, encoding: 'utf8' });

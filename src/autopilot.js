@@ -96,7 +96,7 @@ ${goal.text}
 
 You won the right to plan it. Online agents: ${teamLine(team, usage)}.
 1. Look at the code as much as you need to understand what the goal involves.
-2. Call huddle_plan with goal_id "${goal.id}": a short summary and concrete tasks (what to change, where, how to know it's done). Split by files or modules so two agents don't edit the same files: give each task its paths (files, or folders ending in "/"), which are locked for whoever does it from the moment it starts. Use "after" for real dependencies only. Give every task an effort (light, medium or heavy) and leave owner empty: huddle hands heavier tasks to the Claudes with the most usage left in their window. Only set an owner when a task has to go to one person (their branch, their hardware, something only they can run).
+2. Call huddle_plan with goal_id "${goal.id}": a title (2 to 5 plain words naming the whole request, like "Dashboard cleanup"), a short summary and concrete tasks. Task titles are under 7 plain words that say the outcome (like "Shorter task titles" or "Fix login redirect"); the details go in detail (what to change, where, how to know it's done). Split by files or modules so two agents don't edit the same files: give each task its paths (files, or folders ending in "/"), which are locked for whoever does it from the moment it starts. Use "after" for real dependencies only. Give every task an effort (light, medium or heavy) and leave owner empty: huddle hands heavier tasks to the Claudes with the most usage left in their window. Only set an owner when a task has to go to one person (their branch, their hardware, something only they can run).
 3. Send the team a two-line summary with huddle_send.
 Do not implement anything in this run; your own tasks come next.`;
 }

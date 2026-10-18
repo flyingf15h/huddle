@@ -71,11 +71,12 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: { goal_id: { type: 'string' } }, required: ['goal_id'] } },
   { name: 'huddle_plan', description: "Record the plan for a goal you claimed: tasks with owners (agent names; balance the work, include yourself, avoid two people editing the same files) and optional dependencies (after = indexes of earlier tasks in this list).",
     inputSchema: { type: 'object', properties: {
-      goal_id: { type: 'string' }, summary: { type: 'string' },
+      goal_id: { type: 'string' }, title: { type: 'string', description: '2 to 5 plain words naming the whole request' }, summary: { type: 'string' },
       tasks: { type: 'array', items: { type: 'object', properties: { title: { type: 'string' }, detail: { type: 'string' }, owner: { type: 'string', description: 'leave empty (with an effort) to let huddle assign by remaining usage; empty without an effort leaves it for anyone' }, paths: { type: 'array', items: { type: 'string' }, description: 'files or folders ("src/ui/") it works in; locked for whoever does it from the start' }, effort: { type: 'string', enum: ['light', 'medium', 'heavy'] }, after: { type: 'array', items: { type: 'number' } } }, required: ['title'] } },
     }, required: ['goal_id', 'tasks'] } },
-  { name: 'huddle_distribute', description: "Split your user's request into parts and hand them out across the team's Claudes in one step. Each part needs a title (under 10 words), a detail saying what to change and what done looks like, and an effort (light, medium, heavy). Parts without an owner are assigned by huddle: heavier ones go to whoever has the most of their 5-hour Claude window left. Set keep_for_me on the parts you will do yourself in this session. The others start on their own right away.",
+  { name: 'huddle_distribute', description: "Split your user's request into parts and hand them out across the team's Claudes in one step. Each part needs a title (under 7 plain words saying the outcome, like \"Fix login redirect\"), a detail saying what to change and what done looks like, and an effort (light, medium, heavy). Parts without an owner are assigned by huddle: heavier ones go to whoever has the most of their 5-hour Claude window left. Set keep_for_me on the parts you will do yourself in this session. The others start on their own right away.",
     inputSchema: { type: 'object', properties: {
+      title: { type: 'string', description: '2 to 5 plain words naming the whole request, like "Dashboard cleanup"' },
       summary: { type: 'string', description: 'one or two lines: what the whole request is' },
       tasks: { type: 'array', items: { type: 'object', properties: {
         title: { type: 'string' }, detail: { type: 'string' }, effort: { type: 'string', enum: ['light', 'medium', 'heavy'] },
@@ -348,17 +349,17 @@ function runMcp() {
         const s = await client.get('state');
         const team = [...new Map(s.agents.filter(x => x.online && x.kind === 'agent').map(x => [x.name, x])).values()];
         return `You are planning goal ${r.goal.id}: ${r.goal.text}\n\nOnline agents you can assign to: ${team.map(x => `${x.name}${x.name === me.name ? ' (you)' : ''}${x.status ? ' — ' + x.status : ''}${x.branch ? ' [branch ' + x.branch + ']' : ''}`).join('; ')}\n` +
-          'Look at the code first if you need to, then call huddle_plan with concrete tasks (what to change and where, done-criteria), each owned by one agent. Split by files/modules so people do not edit the same files. Then tell the team with huddle_send.';
+          'Look at the code first if you need to, then call huddle_plan with a 2 to 5 word title for the request and concrete tasks (titles under 7 plain words; details in detail) (what to change and where, done-criteria), each owned by one agent. Split by files/modules so people do not edit the same files. Then tell the team with huddle_send.';
       }
       case 'huddle_plan': {
-        const r = await client.post('plan', { goalId: a.goal_id, summary: a.summary || '', tasks: a.tasks || [] });
+        const r = await client.post('plan', { goalId: a.goal_id, title: a.title, summary: a.summary || '', tasks: a.tasks || [] });
         return `plan saved:\n${r.tasks.map(board.taskLine).join('\n')}\nEach owner sees their tasks automatically.`;
       }
       case 'huddle_distribute': {
         const parts = (a.tasks || []).filter(t => t && t.title);
         if (!parts.length) throw new Error('give at least one part');
         const g = await client.post('goal', { text: a.summary || parts.map(t => t.title).join('; '), claim: true });
-        const r = await client.post('plan', { goalId: g.goal.id, summary: a.summary || '', tasks: parts.map(t => ({
+        const r = await client.post('plan', { goalId: g.goal.id, title: a.title, summary: a.summary || '', tasks: parts.map(t => ({
           title: t.title, detail: t.detail, effort: t.effort, paths: t.paths, owner: t.keep_for_me ? me.name : (t.owner || null), keep: !!t.keep_for_me, after: t.after })) });
         // this session's own parts: their area is locked for it now, before anyone else starts there
         const taken = [];

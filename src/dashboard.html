@@ -133,7 +133,8 @@ header .grow { flex: 1; }
 .person .ainame { font-size: 12.5px; color: var(--pop-ink); font-weight: 600; }
 .state { margin-left: auto; flex: none; font-size: 11.5px; font-weight: 700; padding: 2px 9px; border-radius: 999px; }
 .state.on { background: var(--ok-soft); color: var(--ok); } .state.auto { background: var(--pop-soft); color: var(--pop-ink); } .state.off { background: var(--sunk); color: var(--muted); border: 1px solid var(--line); }
-.person .doing { margin-top: 8px; font-size: 13.5px; line-height: 1.45; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; min-height: 2.9em; }
+.person .doing { margin-top: 8px; font-size: 14.5px; font-weight: 600; line-height: 1.4; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; min-height: 2.8em; }
+.person .live { margin-top: 2px; font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 1.3em; }
 .person .meta { margin-top: 6px; font-size: 12.5px; color: var(--muted); display: flex; gap: 10px; min-height: 1.2em; flex-wrap: wrap; }
 .person .meta .usehigh { color: var(--bad); font-weight: 650; }
 .av { flex: none; width: 30px; height: 30px; border-radius: 50%; display: inline-grid; place-items: center; font-weight: 750; font-size: 13px; position: relative; box-shadow: inset 0 0 0 1px rgba(160, 48, 92, .14); }
@@ -235,9 +236,9 @@ details.goal > summary:hover { background: var(--sunk); }
 details.goal[open] > summary .chev { transform: rotate(90deg); }
 .tags { display: flex; gap: 5px; flex-wrap: wrap; margin: 6px 0 0 20px; }
 .tag { font-size: 11.5px; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: var(--pop-soft); color: var(--pop-ink); }
-.progress { height: 5px; background: var(--sunk); border-radius: 99px; overflow: hidden; margin: 9px 0 6px 20px; }
+.progress { flex: 1; height: 5px; background: var(--sunk); border-radius: 99px; overflow: hidden; max-width: 140px; }
 .progress span { display: block; height: 100%; background: var(--ok); border-radius: 99px; transition: width .4s; }
-.gmeta { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; color: var(--muted); margin-left: 20px; }
+.gmeta { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--muted); margin: 5px 0 0 20px; }
 .gfull { margin: 0 13px 10px 33px; font-size: 13px; color: var(--muted); }
 .gfull summary { cursor: pointer; font-weight: 600; color: var(--accent); }
 .gfull div { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 4px; max-height: 220px; overflow: auto; }
@@ -667,6 +668,10 @@ function shortTitle(text, n = 62) {
   const cut = t.match(/^.{14,}?(?=[.;!?](\s|$)|,\s+(and|then|also|but|so|plus)\b|\s+(and then|and also|as well as)\s)/i);
   if (cut) t = cut[0];
   t = t.replace(/[\s,:;-]+$/, '');
+  if (t.length > 40) {
+    const m = t.match(/^(.{16,}?)\s+(so( that| they| it)?|with|for|by|using|in order to|which|that|because|instead of)\s/i);
+    if (m) t = m[1];
+  }
   if (t.length > n) t = t.slice(0, n).replace(/\s+\S*$/, '') + '…';
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
@@ -910,6 +915,27 @@ function nowDoing(name) {
   if (e.kind === 'msg') return `“${e.text.slice(0, 100)}”`;
   return '';
 }
+// The card's two lines: what they're working on, as one short phrase (Claude's own status, or the
+// summary huddle makes of their last prompt), and a small line for what's happening right now.
+function lastPrompt(name) { for (let i = S.entries.length - 1; i >= 0; i--) if (S.entries[i].who === name && S.entries[i].kind === 'prompt') return S.entries[i]; return null; }
+function cardLine(p) {
+  const st = (p.status || '').trim();
+  const raw = /^asked: “?(.*?)”?$/.exec(st);
+  const lp = lastPrompt(p.name);
+  let main = st && !raw ? st : shortTitle(raw ? raw[1] : lp ? lp.text : '', 70);
+  main = main.replace(/\.$/, '');
+  let e = null;
+  for (let i = S.entries.length - 1; i >= 0 && !e; i--) if (S.entries[i].who === p.name && TURN_KINDS.has(S.entries[i].kind) && S.entries[i].kind !== 'msg') e = S.entries[i];
+  const c = aiName(p.name) || 'Claude';
+  let live = '';
+  if (e && p.online) {
+    const recent = Date.now() - e.at < 2 * 60 * 1000;
+    if (e.kind === 'tool' && recent) { const w = toolWords(e.text); live = `${c} ${w.verb} ${w.arg.split('/').pop()}`.trim(); }
+    else if (['prompt', 'tool', 'reply'].includes(e.kind) && recent) live = `${c} is working`;
+    else live = `Idle · ${ago(e.at)}`;
+  } else if (!p.online && e) live = `Last active ${ago(e.at)}`;
+  return { main, live };
+}
 function stateChip(p) {
   if (!p.online) return `<span class="state off">Away${p.lastSeen ? ' · ' + ago(p.lastSeen).replace(' ago', '') : ''}</span>`;
   if (p.runner === 'full') return `<span class="state auto" title="Answers the other Claudes and takes tasks on its own">Active</span>`;
@@ -935,7 +961,7 @@ function renderTeam() {
     const t = doingCount(p.name);
     return `<button class="person${S.who === p.name ? ' sel' : ''}" data-person="${esc(p.name)}" title="${S.who === p.name ? 'Show everyone' : 'Show only ' + esc(p.name)}${p.name === myName() && hasClaude(p.name) ? ' · right-click to name your Claude' : ''}">
       <div class="top">${avatar(p.name, false, busy)}<span class="name">${esc(p.name)}${p.name === myName() ? ' <span class="faint" style="font-weight:500">(you)</span>' : ''}${aiName(p.name) ? ` <span class="ainame" title="${esc(p.name)}'s Claude">· ${esc(aiName(p.name))}</span>` : ''}</span>${stateChip(p)}</div>
-      <div class="doing">${esc(nowDoing(p.name) || p.status || '') || '<span class="faint">No activity yet</span>'}</div>
+      ${(() => { const c = cardLine(p); return `<div class="doing">${c.main ? esc(c.main) : '<span class="faint">Nothing yet</span>'}</div><div class="live">${esc(c.live)}</div>`; })()}
       <div class="meta">${usageText(p.name)}${p.branch ? `<span>⎇ ${esc(p.branch)}</span>` : ''}${t ? `<span>${t} task${t === 1 ? '' : 's'} in progress</span>` : ''}${p.clones ? `<span title="each request runs as its own Claude">${p.clones} background Claude${p.clones === 1 ? '' : 's'}</span>` : ''}</div>
     </button>`;
   }).join('') || `<div class="quiet">Nobody has joined yet. <button class="link" data-invite>Invite your team</button> to get started.</div>`;
@@ -1030,11 +1056,14 @@ document.addEventListener('mousedown', (e) => { if ($('namepop') && !e.target.cl
 S.tf = 'open'; S.openTask = null; S.goalOpen = {}; S.showDone = {};
 const ORDER = { blocked: 0, doing: 1, todo: 2, done: 3 };
 // what checked the work before it merged, and anything it's waiting on someone's OK for
-function checkBits(t) {
+const TASK_STATE = { doing: 'Working on it', blocked: 'Stuck', done: 'Done' };
+// (short: only what needs someone's attention; the details panel shows the rest)
+function checkBits(t, short) {
   const c = t.checks || {}, out = [];
   if ((S.approvals || []).some(x => x.taskId === t.id)) out.push(`<span class="ck wait">Needs ${t.owner === myName() ? 'your' : esc(t.owner) + "'s"} OK</span>`);
   if (c.tests === 'passed') out.push(`<span class="ck good" title="${esc(c.testCommand || '')}">Tests pass</span>`);
   if (c.tests === 'failed') out.push(`<span class="ck bad" title="${esc(c.testOutput || '')}">Tests failed</span>`);
+  if (short) return out.filter(x => !/ck good|class="ck"/.test(x)).join('');
   if (c.review === 'fixed') out.push('<span class="ck" title="A Sonnet review found problems, and they were fixed">Review fixed</span>');
   else if (c.review === 'ok') out.push('<span class="ck good" title="Reviewed by Sonnet">Reviewed</span>');
   return out.join('');
@@ -1045,12 +1074,12 @@ function taskRow(t, b) {
   const note = t.notes && t.notes.length ? t.notes[t.notes.length - 1] : null;
   return `<button class="trow ${t.status}" data-task="${esc(t.id)}" aria-expanded="${open}">
       <span class="dot ${t.status}" aria-hidden="true"></span>
-      <span class="tmain"><span class="tt">${esc(shortTitle(t.title, 72))}</span>
-        <span class="tmeta">${t.owner ? avatar(t.owner, true) + `<span class="who">${esc(t.owner)}</span>` : '<span class="who">Anyone</span>'}<span class="st ${t.status}">${statusWord(t.status)}</span>${t.effort ? `<span>${EFFORT_WORD[t.effort]}</span>` : ''}${waits.length ? '<span>waiting</span>' : ''}${checkBits(t)}</span></span>
+      <span class="tmain"><span class="tt">${esc(shortTitle(t.title, 52))}</span>
+        <span class="tmeta">${t.owner ? avatar(t.owner, true) + `<span class="who">${esc(t.owner)}</span>` : '<span class="who">Nobody yet</span>'}${TASK_STATE[t.status] ? `<span class="st ${t.status}">${TASK_STATE[t.status]}</span>` : ''}${waits.length && t.status === 'todo' ? '<span>Waiting on another task</span>' : ''}${checkBits(t, true)}</span></span>
     </button>
     ${open ? `<div class="tdetail">
       ${shortTitle(t.title, 72) !== t.title ? `<p class="tfull">${esc(t.title)}</p>` : ''}
-      <div class="small muted">From ${esc(t.by)} ${ago(t.at)}</div>
+      <div class="small muted">${statusWord(t.status)}${t.effort ? ' · ' + EFFORT_WORD[t.effort] + ' job' : ''} · from ${esc(t.by)} ${ago(t.at)}${checkBits(t) ? ' · ' : ''}<span class="tmeta" style="display:inline-flex">${checkBits(t)}</span></div>
       ${t.detail && t.detail.trim() !== t.title.trim() ? `<p>${esc(t.detail)}</p>` : ''}
       ${waits.length ? `<p><b>Waiting for:</b> ${waits.map(x => esc(x.title)).join('; ')}</p>` : ''}
       ${note ? `<p><b>Latest note</b> <span class="faint">(${esc(note.by)}, ${ago(note.at)})</span>: ${esc(note.text)}</p>` : ''}
@@ -1098,10 +1127,8 @@ function renderSide() {
     const doneTs = ts.filter(t => t.status === 'done'), liveTs = ts.filter(t => t.status !== 'done');
     const showDone = S.showDone[g.id] || !liveTs.length;
     return `<details class="goal" data-goal="${esc(g.id)}" ${isOpen ? 'open' : ''}>
-      <summary><div class="gtitle"><svg class="chev" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 3l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="gt" title="${esc(g.text.slice(0, 600))}">${esc(shortTitle(g.text))}</span><span class="pill ${g.status === 'done' ? 'done' : g.status === 'open' ? 'open' : 'doing'}">${statusWord(g.status)}</span></div>
-        ${all.length ? `<div class="progress" title="${done} of ${all.length} done"><span style="width:${Math.round(100 * done / all.length)}%"></span></div>` : '<div style="height:6px"></div>'}
-        <div class="gmeta"><span class="num">${all.length ? `${done} of ${all.length} done` : 'waiting to be split up'}</span><span>${g.to ? 'for ' + esc(g.to) : 'whole team'} · ${esc(g.byName)}</span></div></summary>
-      ${shortTitle(g.text) !== g.text.trim() ? `<details class="gfull"><summary>Full request</summary><div>${esc(g.text)}</div></details>` : ''}
+      <summary><div class="gtitle"><svg class="chev" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 3l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="gt" title="${esc(g.text.slice(0, 600))}">${esc(g.title || shortTitle(g.text, 48))}</span></div>
+        <div class="gmeta"><span class="num">${all.length ? (done === all.length ? 'All done' : `${done} of ${all.length} done`) : g.status === 'planning' ? 'Being split up' : 'Waiting for a Claude'}</span>${all.length ? `<span class="progress" aria-hidden="true"><span style="width:${Math.round(100 * done / all.length)}%"></span></span>` : ''}</div></summary>
       <div class="tlist">${liveTs.map(t => taskRow(t, b)).join('')}
         ${doneTs.length ? (showDone ? doneTs.map(t => taskRow(t, b)).join('') : `<button class="link showdone" data-showdone="${esc(g.id)}">Show ${doneTs.length} done</button>`) : ''}
         ${!ts.length && all.length ? '<div class="quiet">None of these are yours.</div>' : ''}</div>

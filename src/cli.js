@@ -841,6 +841,21 @@ async function cmdAsk({ pos, flags }) {
   console.log('Claudes pick it up at their next step, or right away if their person runs huddle autopilot.');
 }
 
+// (internal) the prompt hook's background summary: one Haiku run, outside any huddle folder so its
+// own hooks stay quiet, then the status is swapped in if nothing newer replaced it
+async function cmdSummarize() {
+  const e = process.env;
+  const cfg = loadConfig(e.HUDDLE_SUM_ROOT);
+  if (!cfg || !e.HUDDLE_SUM_PROMPT) return;
+  const env = Object.fromEntries(Object.entries(e).filter(([k]) => !/^(HUDDLE_|CLAUDE_PROJECT_DIR|CLAUDECODE)/.test(k)));
+  const ask = `Someone just gave their AI coding assistant the request below. Say what they are working on as one short phrase of at most 8 words, starting with an -ing verb, in plain words a teammate understands at a glance (like "Fixing the login redirect" or "Making the task list easier to read"). Reply with only the phrase.\n\nRequest:\n${e.HUDDLE_SUM_PROMPT}`;
+  const r = spawnSync('claude', ['-p', ask, '--model', 'haiku'], { cwd: os.tmpdir(), env: { ...env, HUDDLE_AUTOPILOT: '1' }, encoding: 'utf8', timeout: 60000, stdio: ['ignore', 'pipe', 'pipe'] });
+  const line = String(r.stdout || '').split('\n').map(l => l.trim()).find(Boolean) || '';
+  const phrase = line.replace(/^["'“*]+|["'”*.]+$/g, '').trim();
+  if (!phrase || phrase.length > 90 || r.status !== 0) return;
+  await new Client(cfg, JSON.parse(e.HUDDLE_SUM_AGENT)).post('status', { status: phrase, ifStatus: e.HUDDLE_SUM_SEEN }).catch(() => {});
+}
+
 async function cmdApprove({ pos, flags }) {
   const client = humanClient();
   if (!pos[0]) {
@@ -1140,7 +1155,7 @@ async function main() {
   const args = parseArgs(rest);
   const cmds = {
     server: cmdServer, new: cmdNew, join: cmdJoin, leave: cmdLeave, status: cmdStatus, send: cmdSend, inbox: cmdInbox,
-    lock: cmdLock, unlock: cmdUnlock, watch: cmdWatch, invite: cmdInvite, open: cmdOpen, approve: cmdApprove, tests: cmdTests,
+    lock: cmdLock, unlock: cmdUnlock, watch: cmdWatch, invite: cmdInvite, open: cmdOpen, approve: cmdApprove, tests: cmdTests, _summarize: cmdSummarize,
     project: cmdProject, sharing: cmdSharing, 'ai-name': cmdAiName, update: cmdUpdate, permissions: cmdPermissions, tidy: cmdTidy, handoff: cmdHandoff, handoffs: cmdHandoff,
     sync: cmdSync, branches: cmdBranches, branch: cmdBranch, publish: cmdPublish, fetch: cmdFetch, merge: cmdMerge,
     ask: cmdAsk, board: cmdBoard, autopilot: cmdAutopilot, unpublish: cmdUnpublish, forget: cmdForget, 'same-person': cmdSamePerson, link: cmdLink, unlink: cmdUnlink, statusline: cmdStatusline, memory: cmdMemory, memories: cmdMemory, skill: cmdSkill, skills: cmdSkill,

@@ -3,6 +3,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const { spawn } = require('child_process');
 const { loadConfig, identity, Client, relPath, hashFile, sha, formatMessages, ago, build, CONFIG_DIR } = require('./client');
 const shared = require('./shared');
 const gitx = require('./git');
@@ -354,6 +355,18 @@ function teamDelta(s, me, st) {
   return out.length ? 'huddle: what the other Claudes are doing changed:\n' + out.join('\n') : '';
 }
 
+// The prompt as a status is long and raw, so a quick Haiku run (in the background, never holding the
+// prompt up) turns it into a short phrase like "Fixing the login redirect" and swaps it in, unless
+// Claude has set a status of its own by then. "summarize": false in .huddle/config.json turns it off.
+function summarizeLater(cfg, agent, prompt, seen) {
+  try {
+    spawn(process.execPath, [path.join(__dirname, 'cli.js'), '_summarize'], {
+      detached: true, stdio: 'ignore',
+      env: { ...process.env, HUDDLE_SUM_ROOT: cfg.root, HUDDLE_SUM_AGENT: JSON.stringify(agent), HUDDLE_SUM_PROMPT: prompt.slice(0, 3000), HUDDLE_SUM_SEEN: seen },
+    }).unref();
+  } catch {}
+}
+
 // A status straight from the person's prompt, so the team sees new work the moment it starts.
 // Short follow-ups ("yes", "go ahead", "now push it") keep the current status.
 function statusFromPrompt(prompt) {
@@ -550,6 +563,7 @@ const handlers = {
     // a background request Claude gets its status from the runner, not from its long task prompt
     const auto = !isPrivate && full && !process.env.HUDDLE_AUTOPILOT ? statusFromPrompt(prompt) : null;
     const r = await turn(client, st, { items, status: auto, auto: true, state: true });
+    if (auto && cfg.summarize !== false) summarizeLater(cfg, client.agent, prompt, auto);
     const d = digest(client, cfg, st, r);
     const s = r.state;
     const me = client.agent.name;
