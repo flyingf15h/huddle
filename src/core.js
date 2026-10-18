@@ -112,6 +112,9 @@ class Project {
     this.aliases = {};    // other names a person has used ("Kelly-Wang" -> "Kelly")
     this.stats = {};      // per person: conversations, turns, time with Claude, tokens (see 'POST stats')
     this.usage = {};      // per person: how much of their Claude plan's windows is used, from their status line
+    this.approvals = [];  // commands a background Claude wasn't allowed to run, waiting for its person's OK
+    this.keys = {};       // per person: hash of the key their own machine holds, so only they can approve from a browser
+    this.projectSettings = {}; // { testCommand, review }: how background work is checked before it merges
     this.teamVersion = 0; // bumped by TEAM_EVENTS
     this.worklog = [];    // [{name, status, at}]: what each Claude said it started on
     this.handoffs = [];   // [{name, ai, text, files, commits, at}]: where a session left off, for whoever comes next
@@ -171,6 +174,8 @@ class Project {
       settings: this.settings || {},
       aliases: this.aliases || {},
       usage: this.usage || {},
+      approvals: (this.approvals || []).filter(x => x.status === 'waiting'),
+      projectSettings: this.projectSettings || {},
       teamVersion: this.teamVersion || 0,
     };
   }
@@ -228,6 +233,33 @@ class Project {
         this.emit('leave', { agent: this.publicAgent(a) });
       } else if (on) a.wasOnline = true;
     }
+    handOn(this);
+  }
+}
+
+// Tasks stuck with someone who can't do them go back to the team: their Claude window is nearly
+// used up, or they've been offline a while (their machine runs their Claudes). Requests sent to one
+// person and parts a session kept for itself stay put. Only moved when someone else can take it.
+const AWAY_MS = 10 * 60 * 1000, AWAY_DOING_MS = 20 * 60 * 1000;
+function handOn(p) {
+  const t0 = now();
+  const seen = {};
+  for (const a of Object.values(p.agents)) if (a.kind !== 'human') seen[a.name] = Math.max(seen[a.name] || 0, p.online(a) ? t0 : a.lastSeen);
+  const low = (n) => { const u = (p.usage || {})[n]; return !!(u && t0 - u.at < 3600 * 1000 && u.five >= 90); };
+  for (const t of p.board.tasks) {
+    if (!t.owner || t.direct || t.held || t.status === 'done') continue;
+    const away = t0 - (seen[t.owner] || 0);
+    const why = t.limitHit ? `${t.owner}'s Claude hit its usage limit`
+      : t.status === 'todo' && low(t.owner) ? `${t.owner} has under 10% of their Claude window left`
+      : t.status === 'todo' && away > AWAY_MS ? `${t.owner} is offline`
+      : t.status === 'doing' && away > AWAY_DOING_MS ? `${t.owner} went offline in the middle of it` : null;
+    if (!why) continue;
+    const to = assignByUsage(p, [{ title: t.title, effort: t.effort || 'medium' }], null, t.owner)[0];
+    if (!to || to === t.owner) continue;
+    const from = t.owner;
+    t.owner = to; t.status = 'todo'; t.limitHit = false; t.updated = t0;
+    t.notes = [...(t.notes || []), { by: 'huddle', at: t0, text: `Moved from ${from} to ${to}: ${why}.` }].slice(-20);
+    boardChanged(p, 'reassign', { task: t, from, why }, { name: 'huddle' });
   }
 }
 
@@ -240,6 +272,8 @@ const routes = {
     if (b.status !== undefined && a.clone) a.statusAt = now();
     if (b.runner !== undefined) a.runner = ['off', 'requests', 'full'].includes(b.runner) ? b.runner : null;
     if (b.status !== undefined) a.status = String(b.status).slice(0, 300);
+    // the person's own huddle (not a dashboard tab) says which approve key is theirs
+    if (b.keyHash && a.kind !== 'human' && !a.clone) { p.keys = p.keys || {}; p.keys[a.name] = String(b.keyHash).slice(0, 64); }
     p.dirty = true;
     return { ...p.snapshot(), you: p.publicAgent(a), ...(b.handoffs ? { handoffs: (p.handoffs || []).slice(-20) } : {}) };
   },
@@ -596,6 +630,61 @@ const routes = {
   // ---- team board: a person gives the team a goal, one Claude plans it, everyone works it ----
   'GET board': (p) => p.board,
   'GET settings': (p) => ({ settings: p.settings || {} }),
+  // project-wide: the command that tests the project, and whether a second Claude reviews work first
+  'POST project-setting': (p, b) => {
+    const a = p.touch(b.agent);
+    p.projectSettings = p.projectSettings || {};
+    if (b.testCommand !== undefined) p.projectSettings.testCommand = String(b.testCommand || '').trim().slice(0, 300) || null;
+    if (b.review !== undefined) p.projectSettings.review = b.review !== false;
+    p.emit('project-setting', { settings: p.projectSettings, byName: a.name });
+    return { ok: true, settings: p.projectSettings };
+  },
+  // a background Claude needed commands it isn't allowed to run; they wait for its person's OK
+  'POST approval-request': (p, b) => {
+    const a = p.touch(b.agent);
+    const t = p.board.tasks.find(x => x.id === b.taskId);
+    p.approvals = p.approvals || [];
+    const made = [];
+    for (const c of (Array.isArray(b.commands) ? b.commands : []).slice(0, 5)) {
+      const command = String(c.command || '').trim().slice(0, 500);
+      if (!command || p.approvals.some(x => x.status === 'waiting' && x.owner === a.name && x.command === command && x.taskId === b.taskId)) continue;
+      const x = { id: crypto.randomBytes(4).toString('hex'), taskId: t ? t.id : null, title: t ? t.title : '', owner: a.name,
+        command, why: String(c.why || '').slice(0, 300), status: 'waiting', at: now() };
+      p.approvals.push(x);
+      made.push(x);
+      p.emit('approval', { approval: x });
+    }
+    if (p.approvals.length > 100) p.approvals.splice(0, p.approvals.length - 100);
+    p.dirty = true;
+    return { ok: true, approvals: made };
+  },
+  'GET approvals': (p) => ({ approvals: (p.approvals || []).slice(-50) }),
+  // Only the person whose Claude asked can say yes: from their own huddle (CLI or Claude), or from a
+  // browser holding the key their machine gave it (huddle open). Saying yes lets the task run again
+  // with that exact command allowed.
+  'POST approve': (p, b) => {
+    const a = p.touch(b.agent);
+    const x = (p.approvals || []).find(y => y.id === b.id);
+    if (!x) throw httpError(404, 'no such approval');
+    const fromBrowser = a.kind === 'human';
+    const keyOk = b.key && p.keys && p.keys[x.owner] && sha(String(b.key)) === p.keys[x.owner];
+    if (a.name !== x.owner || (fromBrowser && !keyOk)) {
+      throw httpError(403, fromBrowser && a.name === x.owner ? 'open the dashboard with `huddle open` on your computer to approve from here' : `only ${x.owner} can approve commands for their Claude`);
+    }
+    if (x.status !== 'waiting') return { ok: true, approval: x };
+    x.status = b.allow === false ? 'denied' : 'approved';
+    x.by = a.name; x.decidedAt = now();
+    const t = p.board.tasks.find(y => y.id === x.taskId);
+    if (t) {
+      if (x.status === 'approved') { t.allow = [...new Set([...(t.allow || []), x.command])].slice(-10); t.status = 'todo'; t.held = null; }
+      t.notes = [...(t.notes || []), { by: a.name, at: now(), text: `${x.status === 'approved' ? 'Allowed' : 'Said no to'}: ${x.command}` }].slice(-20);
+      t.updated = now();
+      boardChanged(p, 'approve', { task: t, approval: x }, a);
+    }
+    p.emit('approval', { approval: x });
+    p.dirty = true;
+    return { ok: true, approval: x };
+  },
   // the status line reports how much of the person's 5-hour and weekly windows is used, so plans
   // can hand heavier work to whoever has more left. Numbers only; it doesn't count as being online.
   'POST usage': (p, b) => {
@@ -676,7 +765,7 @@ const routes = {
     // "keep": the planner's own session does it (so its background runner leaves it alone)
     const owners = assignByUsage(p, tasks.map(t => (t.keep ? { ...t, owner: a.name } : t)), a.name);
     const made = tasks.map((t, i) => {
-      const task = pushTask(p, { goalId: g.id, title: t.title, detail: t.detail, owner: owners[i], effort: t.effort }, a);
+      const task = pushTask(p, { goalId: g.id, title: t.title, detail: t.detail, owner: owners[i], effort: t.effort, paths: t.paths }, a);
       if (t.keep) { task.held = a.id; task.status = 'doing'; }
       return task;
     });
@@ -712,6 +801,9 @@ const routes = {
       t.status = b.status;
     }
     if (b.owner !== undefined) t.owner = b.owner || null;
+    if (b.limitHit !== undefined) t.limitHit = !!b.limitHit;
+    // what checked the work before it merged: { review: 'ok'|'fixed'|'issues', tests: 'passed'|'failed'|'none', merged }
+    if (b.checks && typeof b.checks === 'object') t.checks = { ...(t.checks || {}), ...b.checks };
     if (b.note) t.notes = [...(t.notes || []), { by: a.name, at: now(), text: String(b.note).slice(0, 2000) }].slice(-20);
     t.updated = now();
     goalDone(p, t);
@@ -911,7 +1003,9 @@ function pushTask(p, t, a) {
   if (p.board.tasks.length >= MAX_TASKS) p.board.tasks.splice(0, p.board.tasks.findIndex(x => x.status === 'done') + 1 || 1);
   const task = { id: crypto.randomBytes(4).toString('hex'), goalId: t.goalId, title, detail: String(t.detail || '').slice(0, 6000),
     owner: t.owner || null, status: 'todo', by: a.name, at: now(), updated: now(), after: Array.isArray(t.after) ? t.after.slice(0, 10) : [],
-    direct: !!t.direct, effort: EFFORT[t.effort] ? t.effort : null };
+    direct: !!t.direct, effort: EFFORT[t.effort] ? t.effort : null,
+    // the files or folders ("src/ui/") it works in: locked for whoever runs it, from the start
+    paths: (Array.isArray(t.paths) ? t.paths : []).map(x => String(x).trim()).filter(Boolean).slice(0, 10) };
   p.board.tasks.push(task);
   return task;
 }
@@ -921,15 +1015,16 @@ function pushTask(p, t, a) {
 // what each size of task uses). Only Claudes that start on their own (active) and the planner are
 // picked, unless nobody is.
 const EFFORT = { light: 5, medium: 12, heavy: 25 };
-function assignByUsage(p, tasks, planner) {
-  const runners = new Set(), online = new Set([planner]);
+function assignByUsage(p, tasks, planner, exclude) {
+  const runners = new Set(), online = new Set(planner ? [planner] : []);
   for (const a of Object.values(p.agents)) {
     if (!p.online(a) || a.clone || !['agent', 'autopilot'].includes(a.kind)) continue;
     online.add(a.name);
     if (a.runner === 'full') runners.add(a.name);
   }
-  let team = [...new Set([planner, ...runners])];
-  if (team.length < 2) team = [...online];
+  let team = [...new Set([planner, ...runners])].filter(n => n && n !== exclude);
+  if (team.length < 2) team = [...online].filter(n => n !== exclude);
+  if (!team.length) return tasks.map(t => t.owner || null);
   const left = (n) => {
     const u = (p.usage || {})[n];
     return u && now() - u.at < 6 * 3600 * 1000 && typeof u.five === 'number' ? Math.max(2, 100 - u.five) : 50;
@@ -992,5 +1087,5 @@ function waitOn(p, pred, timeoutMs, onAbort) {
   });
 }
 
-module.exports = { Project, routes, waitOn, parseFrontmatter, fileKey, GIT_CHUNK, sha, now, httpError, sameSecret, normPath, aiLabel, taskIdsIn, blockingLock,
+module.exports = { handOn, assignByUsage, Project, routes, waitOn, parseFrontmatter, fileKey, GIT_CHUNK, sha, now, httpError, sameSecret, normPath, aiLabel, taskIdsIn, blockingLock,
   ONLINE_MS, MAX_FILE_BYTES, OPEN_IDLE_MS, OPEN_MAX_PROJECTS, OPEN_CREATES_PER_HOUR };

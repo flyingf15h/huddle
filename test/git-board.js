@@ -198,6 +198,7 @@ const fs = require('fs'), path = require('path');
 const p = process.argv[process.argv.indexOf('-p') + 1] || '';
 const id = (p.match(/Your task \\[(\\w+)\\]/) || [])[1];
 const clone = JSON.parse(fs.readFileSync('.huddle/config.json', 'utf8')).clone || {};
+if (p.includes('You are reviewing work')) { fs.appendFileSync(${JSON.stringify(runLog)}, ['review', process.argv.includes('sonnet'), process.cwd(), process.env.HUDDLE_ROOT].join(' ') + '\\n'); console.log('VERDICT: OK'); process.exit(0); }
 fs.appendFileSync(${JSON.stringify(runLog)}, ['start', id, Date.now(), process.cwd(), process.env.HUDDLE_SESSION, process.env.HUDDLE_ROOT, clone.branch].join(' ') + '\\n');
 setTimeout(() => {
   if (p.includes('touch calc')) fs.appendFileSync('calc.py', '# from the request\\n');
@@ -231,6 +232,9 @@ setTimeout(() => {
       assert.equal(r[4], 'clone-' + r[1]);
       assert.equal(r[6], 'main');
     }
+    const reviews = runs.filter(r => r[0] === 'review');
+    assert(reviews.length >= 2 && reviews.every(r => r[1] === 'true' && r[2] === r[3] && r[2].startsWith(path.join(tmp, 'clones'))), 'each change is reviewed by Sonnet in its own worktree');
+    assert.equal((await reqs()).find(t => t.title === 'write notes A').checks.review, 'ok');
     assert(fs.existsSync(path.join(dave.root, `notes-${ra}.txt`)) && fs.existsSync(path.join(dave.root, `notes-${rb}.txt`)), 'clean results merged into dave\'s branch');
     assert(dave.read('calc.py').includes('# wip') && !dave.read('calc.py').includes('# from the request'), "dave's own work is untouched");
     const calcId = (await reqs()).find(t => t.title === 'touch calc please').id;
@@ -240,6 +244,61 @@ setTimeout(() => {
     assert.equal(replies.filter(m => /merged into dave's main/.test(m.text)).length, 2);
     assert.match(replies.find(m => /touch calc/.test(m.text)).text, new RegExp(`on branch huddle-request-${calcId}`));
     ok('requests run as their own Claudes in parallel worktrees; clean results merge in, the rest wait on a branch');
+
+    // checks before merging: failing tests keep the work on its branch; commands it couldn't run wait for dave's OK
+    fs.writeFileSync(path.join(fakeBin, 'claude'), `#!/usr/bin/env node
+const fs = require('fs');
+const p = process.argv[process.argv.indexOf('-p') + 1] || '';
+if (p.includes('You are reviewing work')) { console.log('VERDICT: OK'); process.exit(0); }
+if (p.includes('break the tests')) fs.writeFileSync('bad.txt', 'oops\\n');
+if (p.includes('ship it')) { fs.writeFileSync('ship.txt', 'ready\\n'); console.log('Built it.\\nNeeds dave\\'s OK:\\n- npm run deploy — puts it live'); }
+`, { mode: 0o755 });
+    dave.git('checkout', '--', 'calc.py');
+    fs.writeFileSync(path.join(dave.root, 'check.js'), "process.exit(require('fs').existsSync('bad.txt') ? 1 : 0)\n");
+    dave.git('add', 'check.js'); dave.git('commit', '-q', '-m', 'a test');
+    await api('project-setting', { agent: davey, testCommand: 'node check.js' });
+    await api('goal', { agent: asker, text: 'break the tests', to: 'dave' });
+    await api('goal', { agent: asker, text: 'ship it', to: 'dave' });
+    const runner2 = ap.createRunner({ cfg: dcfg, client: new Client(dcfg, identity(dcfg, 'autopilot')), log: () => {} });
+    await runner2.refreshMode();
+    runner2.work();
+    const task2 = (title) => api('board').then(bd => bd.tasks.find(t => t.title === title));
+    const end2 = Date.now() + 30000;
+    while (!((await task2('break the tests')).checks && (await task2('ship it')).status === 'done')) { assert(Date.now() < end2, 'checked requests never finished'); await new Promise(r => setTimeout(r, 200)); }
+    const broke = await task2('break the tests');
+    assert.equal(broke.checks.tests, 'failed');
+    assert.equal(broke.status, 'blocked');
+    assert(!fs.existsSync(path.join(dave.root, 'bad.txt')), 'work that fails the tests is not merged');
+    assert(dave.git('branch').includes(`huddle-request-${broke.id}`), 'it waits on its branch');
+    const ship = await task2('ship it');
+    assert.equal(ship.checks.tests, 'passed');
+    assert(fs.existsSync(path.join(dave.root, 'ship.txt')), 'passing work merges');
+    const appr = (await api('approvals')).approvals.find(x => x.taskId === ship.id);
+    assert.equal(appr.command, 'npm run deploy');
+    // only dave can say yes: not someone else, and not a browser without dave's key
+    const no1 = await fetch(`${url}/api/p/${project}/approve`, { method: 'POST', headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json' }, body: JSON.stringify({ agent: asker, id: appr.id }) });
+    assert.equal(no1.status, 403);
+    const no2 = await fetch(`${url}/api/p/${project}/approve`, { method: 'POST', headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json' }, body: JSON.stringify({ agent: { id: 'h#dave', name: 'dave', kind: 'human' }, id: appr.id, key: 'guess' }) });
+    assert.equal(no2.status, 403);
+    await api('hello', { agent: { ...davey, kind: 'agent' }, keyHash: require('../src/client').sha('dave-key') });
+    const yes = await api('approve', { agent: { id: 'h#dave', name: 'dave', kind: 'human' }, id: appr.id, key: 'dave-key' });
+    assert.equal(yes.approval.status, 'approved');
+    const again = await task2('ship it');
+    assert.deepEqual([again.status, again.allow], ['todo', ['npm run deploy']], 'approved: it runs again with the command allowed');
+    runner2.stop();
+    ok('work is reviewed and tested before it merges; commands it needs wait for its person\'s OK');
+
+    // someone nearly out of Claude usage (or away) has their waiting tasks handed to someone with room
+    const core = require('../src/core');
+    const P = new core.Project('unit');
+    const t0 = Date.now();
+    P.agents = { 'a#1': { id: 'a#1', name: 'amy', kind: 'agent', lastSeen: t0, runner: 'full' }, 'b#1': { id: 'b#1', name: 'ben', kind: 'agent', lastSeen: t0, runner: 'full' } };
+    P.usage = { amy: { five: 95, at: t0 }, ben: { five: 20, at: t0 } };
+    P.board.tasks = [{ id: 't1', title: 'big job', owner: 'amy', status: 'todo', effort: 'heavy' }, { id: 't2', title: 'started', owner: 'amy', status: 'doing' }, { id: 't3', title: 'for amy', owner: 'amy', status: 'todo', direct: true }];
+    core.handOn(P);
+    assert.deepEqual(P.board.tasks.map(t => t.owner), ['ben', 'amy', 'amy'], 'only waiting team tasks move');
+    assert.match(P.board.tasks[0].notes[0].text, /Moved from amy to ben: amy has under 10%/);
+    ok('tasks move off someone who is out of usage or away');
 
     console.log('\nall good');
   } catch (e) {

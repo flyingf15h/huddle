@@ -28,28 +28,28 @@
 /* ---------- dark: gray, dark blue, indigo and dark green ---------- */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #14181f; --surface: #191e29; --raised: #20273a; --sunk: #181c26;
-    --ink: #e7eaf3; --muted: #a8afc2; --faint: #8b92a7; --line: #2c3346; --line-strong: #3b4359;
+    --bg: #22283a; --surface: #272e42; --raised: #2f374d; --sunk: #232a3c;
+    --ink: #eceff7; --muted: #b6bdd0; --faint: #959db3; --line: #3a4259; --line-strong: #4a5370;
     --accent: #8f97ff; --accent-ink: #11132e; --accent-soft: #272b58; --accent-soft-ink: #c6caff;
     --pop: #5cc398; --pop-soft: #17352a; --pop-ink: #9fe3c4;
     --ok: #6fd39f; --ok-soft: #173326; --warn: #e6bb66; --warn-soft: #2f2716; --bad: #ff8fa0; --bad-soft: #3a1d25;
-    --code: #181d29; --hl: #3d3a1c;
+    --code: #252c3f; --hl: #4a4626;
     --wash: var(--surface); --mark: var(--accent-soft); --mark-ink: var(--accent-soft-ink); --mark-line: var(--accent);
-    --shade: rgba(5, 7, 14, .66);
-    --shadow-sm: none; --shadow: 0 1px 0 rgba(255, 255, 255, .03), 0 8px 24px rgba(0, 0, 0, .35); --shadow-lg: 0 20px 60px rgba(0, 0, 0, .6);
+    --shade: rgba(10, 12, 22, .6);
+    --shadow-sm: none; --shadow: 0 1px 0 rgba(255, 255, 255, .03), 0 8px 24px rgba(0, 0, 0, .35); --shadow-lg: 0 20px 60px rgba(0, 0, 0, .45);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #14181f; --surface: #191e29; --raised: #20273a; --sunk: #181c26;
-  --ink: #e7eaf3; --muted: #a8afc2; --faint: #8b92a7; --line: #2c3346; --line-strong: #3b4359;
+  --bg: #22283a; --surface: #272e42; --raised: #2f374d; --sunk: #232a3c;
+  --ink: #eceff7; --muted: #b6bdd0; --faint: #959db3; --line: #3a4259; --line-strong: #4a5370;
   --accent: #8f97ff; --accent-ink: #11132e; --accent-soft: #272b58; --accent-soft-ink: #c6caff;
   --pop: #5cc398; --pop-soft: #17352a; --pop-ink: #9fe3c4;
   --ok: #6fd39f; --ok-soft: #173326; --warn: #e6bb66; --warn-soft: #2f2716; --bad: #ff8fa0; --bad-soft: #3a1d25;
-  --code: #181d29; --hl: #3d3a1c;
+  --code: #252c3f; --hl: #4a4626;
   --wash: var(--surface); --mark: var(--accent-soft); --mark-ink: var(--accent-soft-ink); --mark-line: var(--accent);
-  --shade: rgba(5, 7, 14, .66);
-  --shadow-sm: none; --shadow: 0 1px 0 rgba(255, 255, 255, .03), 0 8px 24px rgba(0, 0, 0, .35); --shadow-lg: 0 20px 60px rgba(0, 0, 0, .6);
+  --shade: rgba(10, 12, 22, .6);
+  --shadow-sm: none; --shadow: 0 1px 0 rgba(255, 255, 255, .03), 0 8px 24px rgba(0, 0, 0, .35); --shadow-lg: 0 20px 60px rgba(0, 0, 0, .45);
   color-scheme: dark;
 }
 
@@ -142,7 +142,7 @@ header .grow { flex: 1; }
 @keyframes busy { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
 
 /* ---------- main layout ---------- */
-main { display: grid; grid-template-columns: minmax(0, 1fr) 380px; height: calc(100vh - 55px - var(--teamh, 120px)); }
+main { display: grid; grid-template-columns: minmax(0, 1fr) 380px; height: calc(100vh - var(--maintop, 175px)); }
 #left { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); }
 .bar-top { display: flex; align-items: center; gap: 14px; padding: 10px 20px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .seg { display: inline-flex; gap: 2px; background: var(--surface); border: 1px solid var(--line); padding: 3px; border-radius: 12px; }
@@ -347,6 +347,23 @@ textarea.big { width: 100%; min-height: 55vh; font-family: "Geist Mono", ui-mono
 .spark { display: flex; align-items: flex-end; gap: 2px; height: 26px; justify-content: flex-end; }
 .spark i { width: 6px; background: var(--accent); border-radius: 2px 2px 0 0; min-height: 1px; opacity: .85; }
 
+/* ---------- needs your OK, and the catch-up line ---------- */
+#asks { margin: 0 0 14px; border: 1px solid var(--mark-line); background: var(--raised); border-radius: var(--radius); padding: 10px 12px; box-shadow: 0 0 0 3px var(--mark); }
+#asks h3 { margin: 0 0 6px; font-size: 14px; }
+.ask { padding: 7px 0; border-top: 1px solid var(--line); }
+.ask:first-of-type { border-top: 0; }
+.ask code { display: block; padding: 5px 8px; margin: 2px 0 4px; overflow-x: auto; white-space: nowrap; }
+.ask .why { font-size: 12.5px; color: var(--muted); }
+.ask .row { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+.ask .row button { padding: 4px 12px; font-size: 13px; }
+.ask .row .err { font-size: 12.5px; }
+.tmeta .ck { font-weight: 600; } .tmeta .ck.good { color: var(--ok); } .tmeta .ck.bad { color: var(--bad); } .tmeta .ck.wait { color: var(--mark-ink); }
+#catchup { display: flex; align-items: center; gap: 10px; padding: 6px 12px 6px 20px; font-size: 13px; color: var(--muted); background: var(--wash); border-bottom: 1px solid var(--line); }
+#catchup b { color: var(--ink); font-weight: 650; }
+#catchup .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#catchup button { border: 0; background: none; padding: 2px 6px; color: var(--faint); font-size: 16px; line-height: 1; }
+#catchup button:hover { color: var(--ink); }
+
 /* ---------- notifications ---------- */
 #toasts { position: fixed; right: 16px; bottom: 16px; z-index: 60; display: flex; flex-direction: column; gap: 8px; max-width: min(380px, calc(100vw - 32px)); }
 .toast { background: var(--raised); border: 1px solid var(--line-strong); border-left: 4px solid var(--pop); border-radius: var(--radius-sm); box-shadow: var(--shadow-lg); padding: 10px 12px; cursor: pointer; text-align: left; font: inherit; color: inherit; }
@@ -436,6 +453,7 @@ ol.steps { padding-left: 20px; } ol.steps li { margin-bottom: 10px; }
     <button id="btn-invite">Invite people</button>
     <button id="btn-help" class="ghost iconbtn" aria-label="How huddle works" title="How huddle works"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.7 9.4a2.4 2.4 0 0 1 4.6.9c0 1.7-2.3 2.1-2.3 3.6"/><circle cx="12" cy="17.2" r=".7" fill="currentColor" stroke="none"/></svg></button>
   </header>
+  <div id="catchup" role="status" hidden><span class="grow" id="catchupText"></span><button id="catchupX" aria-label="Dismiss">×</button></div>
   <div id="team"></div>
   <main>
     <section id="left">
@@ -478,6 +496,7 @@ ol.steps { padding-left: 20px; } ol.steps li { margin-bottom: 10px; }
       </form>
     </section>
     <aside id="side">
+      <div id="asks" hidden></div>
       <h2>Tasks</h2>
       <div id="tasks"></div>
       <h2>Being edited now <span class="count" id="lockcount"></span></h2>
@@ -606,6 +625,10 @@ if (store.get('huddle.token') && store.get('huddle.project')) known[store.get('h
 // "human" was the old dashboard's placeholder name; ask for a real one instead
 let auth = { token: null, project: null, name: store.get('huddle.name') === 'human' ? '' : (store.get('huddle.name') || '') };
 const fromInvite = params.get('invite') && decodeInvite(params.get('invite'));
+// `huddle open` adds this person's approve key (and name); kept per project, never put back in the address bar
+const keys = (() => { try { return JSON.parse(store.get('huddle.keys') || '{}'); } catch { return {}; } })();
+if (fromInvite && params.get('k')) { keys[fromInvite.project] = params.get('k'); store.set('huddle.keys', JSON.stringify(keys)); }
+if (params.get('name')) auth.name = params.get('name');
 if (fromInvite) auth = { ...auth, ...fromInvite };
 else if (params.get('token')) { auth.token = params.get('token'); auth.project = params.get('project'); }
 else {
@@ -717,6 +740,8 @@ function fromEvent(ev) {
       if (ev.action === 'goal') return [{ kind: 'goal', who: ev.byName, at: ev.at, goal: ev.goal }];
       if (ev.action === 'plan') return [{ kind: 'plan', who: ev.byName, at: ev.at, goal: ev.goal, tasks: ev.tasks || [] }];
       if (ev.action === 'claim-goal') return [{ kind: 'task', who: ev.byName, at: ev.at, text: `is splitting up “${shortTitle(ev.goal.text, 90)}”` }];
+      if (ev.action === 'reassign' && ev.task) return [{ kind: 'task', who: ev.task.owner, at: ev.at, text: `took over “${shortTitle(ev.task.title, 90)}” from ${ev.from} (${ev.why})` }];
+      if (ev.action === 'approve' && ev.approval) return [{ kind: 'approve', who: ev.byName, at: ev.at, approval: ev.approval }];
       if (ev.task) return [{ kind: 'task', who: ev.byName, at: ev.at, text: ev.action === 'claim-task' ? `took “${shortTitle(ev.task.title, 90)}”` : `marked “${shortTitle(ev.task.title, 90)}” ${statusWord(ev.task.status).toLowerCase()}` }];
       return [];
     }
@@ -724,7 +749,7 @@ function fromEvent(ev) {
   return [];
 }
 const TURN_KINDS = new Set(['msg', 'prompt', 'reply', 'tool', 'end']);
-const group = { handoff: 'claude', msg: 'talk', prompt: 'claude', reply: 'claude', tool: 'claude', end: 'claude', goal: 'tasks', plan: 'tasks', task: 'tasks', lock: 'files', unlock: 'files', file: 'files', git: 'files', knowledge: 'talk', join: 'talk' };
+const group = { approve: 'tasks', handoff: 'claude', msg: 'talk', prompt: 'claude', reply: 'claude', tool: 'claude', end: 'claude', goal: 'tasks', plan: 'tasks', task: 'tasks', lock: 'files', unlock: 'files', file: 'files', git: 'files', knowledge: 'talk', join: 'talk' };
 const visible = (e) => (S.filter === 'all' || group[e.kind] === S.filter) && (!S.who || e.who === S.who);
 
 let turn = null, lastDay = '';
@@ -739,6 +764,7 @@ function noteHtml(e) {
     case 'file': return `<div class="note"><span class="ic">✎</span><span>${who} saved ${fileBtn(e.path, e.branch)} <span class="faint">v${e.version}</span></span></div>`;
     case 'git': return `<div class="note"><span class="ic">⎇</span><span>${who} shared <b>${esc(e.branch)}</b>${e.subject ? `: “${esc(e.subject)}”` : ''}</span></div>`;
     case 'knowledge': return `<div class="note"><span class="ic">📚</span><span>${who} ${e.action === 'delete' ? 'deleted' : e.action === 'add' ? 'added' : 'updated'} ${e.what === 'doc' ? 'the project brief' : e.what === 'memory' ? `the memory “${esc(e.title)}”` : `the skill “${esc(e.title)}”`}</span></div>`;
+    case 'approve': return `<div class="note"><span class="ic">${e.approval.status === 'approved' ? '✓' : '✕'}</span><span>${who} ${e.approval.status === 'approved' ? 'allowed' : 'said no to'} <code>${esc(e.approval.command)}</code> for “${esc(shortTitle(e.approval.title, 70))}”</span></div>`;
     case 'task': return `<div class="note"><span class="ic">📋</span><span><b>${esc(claudeOf(e.who))}</b> ${esc(e.text)}</span></div>`;
     case 'goal': return `<div class="card goalcard"><div class="kicker">${who} asked ${e.goal.to ? esc(claudeOf(e.goal.to)) : 'the whole team'} · ${clock(e.at)}</div><div class="title">${esc(e.goal.text)}</div></div>`;
     case 'plan': return `<div class="card"><div class="kicker"><b>${esc(claudeOf(e.who))}</b> split it into ${e.tasks.length} task${e.tasks.length === 1 ? '' : 's'}</div>${e.goal && e.goal.plan ? `<div class="small" style="margin:2px 0 6px">${esc(e.goal.plan)}</div>` : ''}${e.tasks.map(t => `<div class="trow" style="padding:4px 0"><span class="dot"></span><span class="tt" title="${esc(t.title)}">${esc(shortTitle(t.title, 80))}</span><span class="owner">${t.owner ? avatar(t.owner, true) + `<span>${esc(t.owner)}</span>` : '<span>anyone</span>'}</span></div>`).join('')}</div>`;
@@ -897,6 +923,9 @@ function usageText(n) {
   const reset = u.fiveResets ? ` · resets ${clock(u.fiveResets * 1000)}` : '';
   return `<span class="${u.five >= 85 ? 'usehigh' : ''}" title="${u.five}% of ${esc(n)}'s 5-hour Claude window used${typeof u.week === 'number' ? `, ${u.week}% of the week` : ''}${reset}">${100 - u.five}% left</span>`;
 }
+// main fills the window below whatever sits above it (header, catch-up line, team strip)
+function fitMain() { document.documentElement.style.setProperty('--maintop', Math.round(document.querySelector('main').getBoundingClientRect().top + scrollY) + 'px'); }
+addEventListener('resize', fitMain);
 function renderTeam() {
   const ps = people();
   const doingCount = (n) => S.board ? S.board.tasks.filter(t => t.owner === n && t.status === 'doing').length : 0;
@@ -910,7 +939,7 @@ function renderTeam() {
       <div class="meta">${usageText(p.name)}${p.branch ? `<span>⎇ ${esc(p.branch)}</span>` : ''}${t ? `<span>${t} task${t === 1 ? '' : 's'} in progress</span>` : ''}${p.clones ? `<span title="each request runs as its own Claude">${p.clones} background Claude${p.clones === 1 ? '' : 's'}</span>` : ''}</div>
     </button>`;
   }).join('') || `<div class="quiet">Nobody has joined yet. <button class="link" data-invite>Invite your team</button> to get started.</div>`;
-  document.documentElement.style.setProperty('--teamh', $('team').offsetHeight + 'px');
+  fitMain();
   // composer recipients
   const names = ps.map(p => p.name).filter(n => n !== myName());
   const sel = $('to'), cur = sel.value;
@@ -1000,6 +1029,16 @@ document.addEventListener('mousedown', (e) => { if ($('namepop') && !e.target.cl
 // ---------- side panel: tasks, locks, files ----------
 S.tf = 'open'; S.openTask = null; S.goalOpen = {}; S.showDone = {};
 const ORDER = { blocked: 0, doing: 1, todo: 2, done: 3 };
+// what checked the work before it merged, and anything it's waiting on someone's OK for
+function checkBits(t) {
+  const c = t.checks || {}, out = [];
+  if ((S.approvals || []).some(x => x.taskId === t.id)) out.push(`<span class="ck wait">Needs ${t.owner === myName() ? 'your' : esc(t.owner) + "'s"} OK</span>`);
+  if (c.tests === 'passed') out.push(`<span class="ck good" title="${esc(c.testCommand || '')}">Tests pass</span>`);
+  if (c.tests === 'failed') out.push(`<span class="ck bad" title="${esc(c.testOutput || '')}">Tests failed</span>`);
+  if (c.review === 'fixed') out.push('<span class="ck" title="A Sonnet review found problems, and they were fixed">Review fixed</span>');
+  else if (c.review === 'ok') out.push('<span class="ck good" title="Reviewed by Sonnet">Reviewed</span>');
+  return out.join('');
+}
 function taskRow(t, b) {
   const open = S.openTask === t.id;
   const waits = (t.after || []).map(id => b.tasks.find(x => x.id === id)).filter(x => x && x.status !== 'done');
@@ -1007,7 +1046,7 @@ function taskRow(t, b) {
   return `<button class="trow ${t.status}" data-task="${esc(t.id)}" aria-expanded="${open}">
       <span class="dot ${t.status}" aria-hidden="true"></span>
       <span class="tmain"><span class="tt">${esc(shortTitle(t.title, 72))}</span>
-        <span class="tmeta">${t.owner ? avatar(t.owner, true) + `<span class="who">${esc(t.owner)}</span>` : '<span class="who">Anyone</span>'}<span class="st ${t.status}">${statusWord(t.status)}</span>${t.effort ? `<span>${EFFORT_WORD[t.effort]}</span>` : ''}${waits.length ? '<span>waiting</span>' : ''}</span></span>
+        <span class="tmeta">${t.owner ? avatar(t.owner, true) + `<span class="who">${esc(t.owner)}</span>` : '<span class="who">Anyone</span>'}<span class="st ${t.status}">${statusWord(t.status)}</span>${t.effort ? `<span>${EFFORT_WORD[t.effort]}</span>` : ''}${waits.length ? '<span>waiting</span>' : ''}${checkBits(t)}</span></span>
     </button>
     ${open ? `<div class="tdetail">
       ${shortTitle(t.title, 72) !== t.title ? `<p class="tfull">${esc(t.title)}</p>` : ''}
@@ -1018,7 +1057,30 @@ function taskRow(t, b) {
       ${t.owner ? `<button class="link small" data-person-filter="${esc(t.owner)}">See ${esc(t.owner)}'s work</button>` : ''}
     </div>` : ''}`;
 }
+function renderAsks() {
+  const mine = (S.approvals || []).filter(x => x.owner === myName());
+  $('asks').hidden = !mine.length;
+  if (!mine.length) return;
+  $('asks').innerHTML = `<h3>Needs your OK</h3>` + mine.map(x => `<div class="ask" data-ask="${esc(x.id)}">
+    <div class="small">For “${esc(shortTitle(x.title, 60))}”</div><code>${esc(x.command)}</code>${x.why ? `<div class="why">${esc(x.why)}</div>` : ''}
+    <div class="row"><button class="primary" data-allow="1">Allow</button><button data-allow="0">No</button><span class="err"></span></div></div>`).join('');
+}
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-allow]');
+  if (!b) return;
+  const box = b.closest('[data-ask]');
+  for (const x of box.querySelectorAll('button')) x.disabled = true;
+  try {
+    await api('approve', { id: box.dataset.ask, allow: b.dataset.allow === '1', key: keys[auth.project] });
+    S.approvals = S.approvals.filter(x => x.id !== box.dataset.ask);
+    renderAsks();
+  } catch (err) {
+    box.querySelector('.err').textContent = /huddle open/.test(err.message) ? 'Open this page with huddle open on your computer to approve here, or run huddle approve.' : err.message;
+    for (const x of box.querySelectorAll('button')) x.disabled = false;
+  }
+});
 function renderSide() {
+  renderAsks();
   const b = S.board;
   const mine = myName();
   let goals = b ? b.goals.slice().reverse() : [];
@@ -1528,6 +1590,10 @@ function applySnapshot(s) {
   S.settings = s.settings || {};
   S.aliases = s.aliases || {};
   S.usage = s.usage || {};
+  S.approvals = s.approvals || [];
+  S.projectSettings = s.projectSettings || {};
+  // (after the first snapshot, so waiting approvals count)
+  if (!S.caughtUp) { S.caughtUp = true; catchUp(); }
   showMe(); renderTeam(); renderSide();
 }
 // ---------- notifications: messages to me (or everyone) and requests for my Claude ----------
@@ -1536,6 +1602,9 @@ function noteForMe(ev) {
   if (!me) return null;
   if (ev.type === 'message' && ev.message.fromName !== me && (!ev.message.to || ev.message.to === me)) {
     return { title: `${ev.message.fromName}${ev.message.to ? ' → you' : ' → everyone'}`, body: ev.message.text };
+  }
+  if (ev.type === 'approval' && ev.approval.status === 'waiting' && ev.approval.owner === myName()) {
+    return { title: 'Your Claude needs your OK', body: ev.approval.command };
   }
   if (ev.type === 'board' && ev.action === 'goal' && ev.goal && ev.goal.to === me && ev.goal.byName !== me) {
     return { title: `Request from ${ev.goal.byName} for your Claude`, body: ev.goal.text };
@@ -1589,11 +1658,13 @@ function onEvent(ev) {
     case 'activity': S.agents[ev.agent.id] = ev.agent; break;
     case 'setting': S.settings[ev.name] = ev.settings; break;
     case 'usage': S.usage = { ...(S.usage || {}), [ev.name]: ev.usage }; break;
+    case 'approval': S.approvals = [...(S.approvals || []).filter(x => x.id !== ev.approval.id), ev.approval].filter(x => x.status === 'waiting'); break;
+    case 'project-setting': S.projectSettings = ev.settings || {}; break;
     case 'stats': statsChanged(); break;
     case 'merge': location.reload(); return;
     case 'forget': if (!ev.name) { location.reload(); return; } for (const [id, x] of Object.entries(S.agents)) if (x.name === ev.name) delete S.agents[id]; break;
   }
-  if (!['leave', 'status', 'usage'].includes(ev.type)) addEntries(fromEvent(ev));
+  if (!['leave', 'status', 'usage', 'approval', 'project-setting'].includes(ev.type)) addEntries(fromEvent(ev));
   renderTeam(); renderSide();
 }
 let wsWorks = null;
@@ -1622,6 +1693,33 @@ function connect() {
   es.onopen = () => live(true);
   es.onerror = () => live(false);
 }
+
+// ---------- a one-line catch-up when someone comes back ----------
+const seenKey = () => 'huddle.seen.' + auth.project;
+function catchUp() {
+  const since = Number(store.get(seenKey())) || 0;
+  const me = myName();
+  if (since && Date.now() - since > 30 * 60 * 1000 && me) {
+    const tasks = S.board ? S.board.tasks : [];
+    const done = tasks.filter(t => t.status === 'done' && t.updated > since).length;
+    const msgs = S.entries.filter(e => e.kind === 'msg' && e.at > since && e.who !== me && (!e.to || e.to === me)).length;
+    const asks = S.board ? S.board.goals.filter(g => g.at > since && g.byName !== me).length : 0;
+    const oks = (S.approvals || []).filter(x => x.owner === me).length;
+    const failed = tasks.filter(t => t.updated > since && t.checks && t.checks.tests === 'failed').length;
+    const bits = [done && `<b>${done}</b> task${done > 1 ? 's' : ''} done`, asks && `<b>${asks}</b> new request${asks > 1 ? 's' : ''}`,
+      msgs && `<b>${msgs}</b> message${msgs > 1 ? 's' : ''}`, failed && `<b>${failed}</b> failed tests`, oks && `<b>${oks}</b> waiting for your OK`].filter(Boolean);
+    if (bits.length) {
+      $('catchupText').innerHTML = `Since ${ago(since).replace(' ago', '')} ago: ${bits.join(' · ')}`;
+      $('catchup').hidden = false;
+      fitMain();
+    }
+  }
+  const mark = () => { if (!document.hidden) store.set(seenKey(), String(Date.now())); };
+  mark();
+  setInterval(mark, 60000);
+  document.addEventListener('visibilitychange', mark);
+}
+$('catchupX').onclick = () => { $('catchup').hidden = true; fitMain(); };
 
 async function start() {
   if (!auth.token || !auth.project) return showLogin();

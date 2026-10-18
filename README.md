@@ -84,6 +84,26 @@ Each person chooses, and can change it any time:
 
 Change it from the **My Claude** menu at the top of the dashboard, with `/autopilot on`, `/autopilot requests` or `/autopilot off` inside Claude Code (or just ask Claude), or with `huddle autopilot on|requests|off` in a terminal. The team can see each person's setting on their card: **Active**, **Requests only**, **Online** (open but not taking requests) or **Away**.
 
+### Checks before background work lands
+
+Before work from a background Claude merges into your branch, two things check it, both on Sonnet to save usage. First, a Sonnet Claude reviews the diff for real bugs (not style), and gets one pass to fix what it finds. Then the project's tests run in that work's own worktree, and Sonnet gets one try to fix a failure. Work that still fails the tests stays on its `huddle-request-<id>` branch and the task is marked blocked. Tests that were already failing before the change don't hold it back. huddle guesses the test command (`npm test`, `pytest`, `cargo test`, `go test`, `make test`), or set it with `huddle tests "npm run check"`. `huddle tests --review off` turns the review off. The dashboard shows "Tests pass", "Tests failed" and "Reviewed" on each task.
+
+### Commands that need your OK
+
+A background Claude can only run git and the commands you've allowed. When it needs another one, like a build or a deploy, it does what it can and asks. The command shows under **Needs your OK** in the dashboard, and you get a notification. Allow it there, or with `huddle approve ID` in a terminal, or just tell your Claude. The task then runs again with that exact command allowed. Only you can approve commands for your Claude. Approving from a browser needs the page to be opened with `huddle open` on your computer, which hands it a key nobody else has, so don't share that link.
+
+### When someone runs out of usage or leaves
+
+Tasks waiting for someone whose 5-hour window is over 90% used, or who has been offline for 10 minutes, move to an active teammate with room. So do tasks whose Claude hit its usage limit partway through, and tasks still in progress after their owner has been gone 20 minutes. A note on the task says why. Requests sent to one specific person stay with them.
+
+### Locks for a whole task
+
+A file is locked the moment a Claude edits it. Plans also give each task the files or folders it works in, and those are locked from the moment the task starts, so another Claude can't begin in the same place. A task whose area is taken waits and tries again a few minutes later.
+
+### Catching up
+
+Coming back after half an hour or more, the dashboard shows one dismissible line, like "Since 3 h ago: 4 tasks done · 2 messages · 1 waiting for your OK". The first Claude session you start gets the same summary in your terminal.
+
 ### Splitting big prompts across the team
 
 When you give your Claude a prompt with several separate pieces of work, huddle suggests splitting it. Your Claude calls `huddle_distribute` with each part and how big it is (light, medium or heavy). huddle gives the heavier parts to whoever has the most of their 5-hour Claude window left, the other Claudes start on theirs right away, and your Claude does the parts it kept. Team-wide requests from the dashboard are split the same way. Each person's Claude Code status line reports how much of their window is used, and their card on the dashboard shows what's left.

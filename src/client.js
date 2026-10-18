@@ -153,4 +153,16 @@ function formatMessages(msgs, me) {
   }).join('\n');
 }
 
-module.exports = { loadConfig, identity, Client, relPath, hashFile, sha, ago, formatMessages, findRoot, build, CONFIG_DIR };
+// This person's approve key: it never leaves their machine except in the dashboard link `huddle open`
+// makes, so only their own browser can approve commands for their Claude. The server keeps a hash.
+function ownerKey(cfg) {
+  if (cfg.ownerKey) return cfg.ownerKey;
+  const file = path.join(cfg.root, CONFIG_DIR, 'config.json');
+  try {
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (!raw.ownerKey) { raw.ownerKey = crypto.randomBytes(18).toString('base64url'); fs.writeFileSync(file, JSON.stringify(raw, null, 2), { mode: 0o600 }); }
+    return (cfg.ownerKey = raw.ownerKey);
+  } catch { return null; }
+}
+
+module.exports = { loadConfig, identity, Client, relPath, hashFile, sha, ownerKey, ago, formatMessages, findRoot, build, CONFIG_DIR };

@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { spawn, spawnSync } = require('child_process');
-const { loadConfig, identity, Client, relPath, hashFile, formatMessages, ago, build, CONFIG_DIR } = require('./client');
+const { loadConfig, identity, Client, relPath, hashFile, formatMessages, ago, build, ownerKey, sha, CONFIG_DIR } = require('./client');
 const gitx = require('./git');
 
 const PKG_DIR = path.resolve(__dirname, '..');
@@ -84,7 +84,12 @@ Day to day:
                                 a locked folder is only editable by whoever locked it
   huddle handoff ["note"]       leave a note on where you left off; no note: show everyone's
   huddle invite                 print this project's invite code again
-  huddle open                   open the live dashboard in your browser
+  huddle open                   open the live dashboard in your browser (it can approve
+                                commands for your Claude, so don't share that link)
+  huddle approve [ID] [--deny]  commands your background Claudes need your OK for
+  huddle tests ["CMD"] [--review on|off]
+                                what checks background work before it merges: the test
+                                command (default: guessed) and a Sonnet review
 `;
 
 function parseArgs(argv) {
@@ -836,6 +841,29 @@ async function cmdAsk({ pos, flags }) {
   console.log('Claudes pick it up at their next step, or right away if their person runs huddle autopilot.');
 }
 
+async function cmdApprove({ pos, flags }) {
+  const client = humanClient();
+  if (!pos[0]) {
+    const w = (await client.get('approvals')).approvals.filter(x => x.status === 'waiting' && x.owner === client.cfg.name);
+    if (!w.length) return console.log('Nothing is waiting for your OK.');
+    for (const x of w) console.log(`${x.id}  ${x.command}${x.why ? `  (${x.why})` : ''}\n          for "${x.title}"`);
+    return console.log('\nhuddle approve ID  lets that task run again with the command allowed; --deny says no.');
+  }
+  const r = await client.post('approve', { id: pos[0], allow: !flags.deny });
+  console.log(r.approval.status === 'approved' ? `approved: ${r.approval.command}` : `said no to: ${r.approval.command}`);
+}
+
+async function cmdTests({ pos, flags }) {
+  const client = humanClient();
+  const body = {};
+  if (pos.length) body.testCommand = pos.join(' ');
+  if (flags.review !== undefined) body.review = !['off', 'false', 'no'].includes(String(flags.review));
+  const ps = Object.keys(body).length ? (await client.post('project-setting', body)).settings : ((await client.get('state')).projectSettings || {});
+  const ap = require('./autopilot');
+  console.log(`tests before merging: ${ps.testCommand || `guessed (${ap.detectTests(client.cfg.root) || 'nothing found, so no tests run'})`}`);
+  console.log(`Sonnet review: ${ps.review === false ? 'off' : 'on'}`);
+}
+
 async function cmdBoard() {
   console.log(require('./board').format(await humanClient('human').get('board')));
 }
@@ -1098,7 +1126,11 @@ function cmdInvite() {
 
 function cmdOpen() {
   const cfg = configured();
-  const url = `${cfg.server}/#invite=${encodeInvite(cfg.server, cfg.token, cfg.project)}`;
+  // your approve key rides along (the page keeps it and drops it from the address bar), so this
+  // browser can approve commands your Claude asks for
+  const key = ownerKey(cfg);
+  const url = `${cfg.server}/#invite=${encodeInvite(cfg.server, cfg.token, cfg.project)}${key ? '&name=' + encodeURIComponent(cfg.name) + '&k=' + key : ''}`;
+  if (key) humanClient().post('hello', { keyHash: sha(key) }).catch(() => {});
   const opener = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer' : 'xdg-open';
   spawn(opener, [url], { detached: true, stdio: 'ignore' }).on('error', () => console.log(url)).unref();
 }
@@ -1108,7 +1140,7 @@ async function main() {
   const args = parseArgs(rest);
   const cmds = {
     server: cmdServer, new: cmdNew, join: cmdJoin, leave: cmdLeave, status: cmdStatus, send: cmdSend, inbox: cmdInbox,
-    lock: cmdLock, unlock: cmdUnlock, watch: cmdWatch, invite: cmdInvite, open: cmdOpen,
+    lock: cmdLock, unlock: cmdUnlock, watch: cmdWatch, invite: cmdInvite, open: cmdOpen, approve: cmdApprove, tests: cmdTests,
     project: cmdProject, sharing: cmdSharing, 'ai-name': cmdAiName, update: cmdUpdate, permissions: cmdPermissions, tidy: cmdTidy, handoff: cmdHandoff, handoffs: cmdHandoff,
     sync: cmdSync, branches: cmdBranches, branch: cmdBranch, publish: cmdPublish, fetch: cmdFetch, merge: cmdMerge,
     ask: cmdAsk, board: cmdBoard, autopilot: cmdAutopilot, unpublish: cmdUnpublish, forget: cmdForget, 'same-person': cmdSamePerson, link: cmdLink, unlink: cmdUnlink, statusline: cmdStatusline, memory: cmdMemory, memories: cmdMemory, skill: cmdSkill, skills: cmdSkill,

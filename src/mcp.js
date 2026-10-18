@@ -4,7 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
-const { loadConfig, identity, Client, relPath, hashFile, formatMessages, ago, build } = require('./client');
+const { loadConfig, identity, Client, relPath, hashFile, formatMessages, ago, build, ownerKey, sha } = require('./client');
 const { Sync } = require('./sync');
 const gitx = require('./git');
 const board = require('./board');
@@ -72,16 +72,20 @@ const TOOLS = [
   { name: 'huddle_plan', description: "Record the plan for a goal you claimed: tasks with owners (agent names; balance the work, include yourself, avoid two people editing the same files) and optional dependencies (after = indexes of earlier tasks in this list).",
     inputSchema: { type: 'object', properties: {
       goal_id: { type: 'string' }, summary: { type: 'string' },
-      tasks: { type: 'array', items: { type: 'object', properties: { title: { type: 'string' }, detail: { type: 'string' }, owner: { type: 'string', description: 'leave empty to let huddle assign by remaining usage' }, effort: { type: 'string', enum: ['light', 'medium', 'heavy'] }, after: { type: 'array', items: { type: 'number' } } }, required: ['title'] } },
+      tasks: { type: 'array', items: { type: 'object', properties: { title: { type: 'string' }, detail: { type: 'string' }, owner: { type: 'string', description: 'leave empty (with an effort) to let huddle assign by remaining usage; empty without an effort leaves it for anyone' }, paths: { type: 'array', items: { type: 'string' }, description: 'files or folders ("src/ui/") it works in; locked for whoever does it from the start' }, effort: { type: 'string', enum: ['light', 'medium', 'heavy'] }, after: { type: 'array', items: { type: 'number' } } }, required: ['title'] } },
     }, required: ['goal_id', 'tasks'] } },
   { name: 'huddle_distribute', description: "Split your user's request into parts and hand them out across the team's Claudes in one step. Each part needs a title (under 10 words), a detail saying what to change and what done looks like, and an effort (light, medium, heavy). Parts without an owner are assigned by huddle: heavier ones go to whoever has the most of their 5-hour Claude window left. Set keep_for_me on the parts you will do yourself in this session. The others start on their own right away.",
     inputSchema: { type: 'object', properties: {
       summary: { type: 'string', description: 'one or two lines: what the whole request is' },
       tasks: { type: 'array', items: { type: 'object', properties: {
         title: { type: 'string' }, detail: { type: 'string' }, effort: { type: 'string', enum: ['light', 'medium', 'heavy'] },
-        owner: { type: 'string', description: 'only when it has to be one person' }, keep_for_me: { type: 'boolean' },
+        owner: { type: 'string', description: 'only when it has to be one person' }, keep_for_me: { type: 'boolean' }, paths: { type: 'array', items: { type: 'string' }, description: 'files or folders ("src/ui/") it works in; locked for whoever does it from the start' }, 
         after: { type: 'array', items: { type: 'number' }, description: 'indexes of earlier parts this one needs first' } }, required: ['title', 'effort'] } },
     }, required: ['summary', 'tasks'] } },
+  { name: 'huddle_approve', description: "Commands your person's background Claudes needed but weren't allowed to run. Omit id to list the waiting ones. Approve one (by id) only when your user says so; the task then runs again with that exact command allowed. deny=true says no.",
+    inputSchema: { type: 'object', properties: { id: { type: 'string' }, deny: { type: 'boolean' } } } },
+  { name: 'huddle_checks', description: "How finished background work is checked before it merges: the project's test command (run in the work's own worktree; Sonnet gets one try to fix failures, and failing work stays on its branch) and whether a Sonnet Claude reviews each change first. Omit both to see the current settings.",
+    inputSchema: { type: 'object', properties: { test_command: { type: 'string', description: 'e.g. "npm test"; empty string to go back to guessing' }, review: { type: 'boolean' } } } },
   { name: 'huddle_claim_task', description: 'Take an unassigned task from the board (only one agent can win it).',
     inputSchema: { type: 'object', properties: { task_id: { type: 'string' } }, required: ['task_id'] } },
   { name: 'huddle_update_task', description: 'Update a task: status todo|doing|done|blocked, an optional note (what you did, or why blocked), or reassign with owner.',
@@ -105,7 +109,8 @@ function runMcp() {
 
   const log = (msg) => process.stderr.write(`[huddle] ${msg}\n`);
   if (client) {
-    client.post('hello', { build: build() }).catch(e => log(e.message));
+    const key = cfg.clone ? null : ownerKey(cfg);
+    client.post('hello', { build: build(), ...(key ? { keyHash: sha(key) } : {}) }).catch(e => log(e.message));
     // an open sync socket already keeps us online on the hosted server
     const beat = setInterval(() => { if (!(sync && sync.wsOpen)) client.post('hello', {}).catch(() => {}); }, 45000);
     beat.unref();
@@ -354,12 +359,34 @@ function runMcp() {
         if (!parts.length) throw new Error('give at least one part');
         const g = await client.post('goal', { text: a.summary || parts.map(t => t.title).join('; '), claim: true });
         const r = await client.post('plan', { goalId: g.goal.id, summary: a.summary || '', tasks: parts.map(t => ({
-          title: t.title, detail: t.detail, effort: t.effort, owner: t.keep_for_me ? me.name : (t.owner || null), keep: !!t.keep_for_me, after: t.after })) });
+          title: t.title, detail: t.detail, effort: t.effort, paths: t.paths, owner: t.keep_for_me ? me.name : (t.owner || null), keep: !!t.keep_for_me, after: t.after })) });
+        // this session's own parts: their area is locked for it now, before anyone else starts there
+        const taken = [];
+        for (const t of r.tasks.filter(x => x.held)) for (const p of t.paths || []) {
+          const l = await client.post('lock', { path: p, branch: me.branch, hold: true, note: t.title.slice(0, 80) }).catch(() => ({ ok: false }));
+          if (l.ok) taken.push(p);
+        }
         const mine = r.tasks.filter(t => t.owner === me.name);
         const others = r.tasks.filter(t => t.owner !== me.name);
         return `Handed out as goal ${g.goal.id}:\n${r.tasks.map(t => `- [${t.id}] ${t.title} (${t.effort || 'medium'}) → ${t.owner === me.name ? (t.held ? 'you, here' : 'you, as a background Claude') : t.owner}`).join('\n')}\n` +
           (others.length ? 'The other Claudes start on theirs right away and mark them done on the board; you are told when they finish. ' : '') +
+          (taken.length ? `Locked for you: ${taken.join(', ')} (release with huddle_unlock when done). ` : '') +
           (mine.some(t => t.held) ? `Now do yours here (${mine.filter(t => t.held).map(t => t.id).join(', ')}) and mark each done with huddle_update_task.` : '');
+      }
+      case 'huddle_approve': {
+        if (!a.id) {
+          const w = (await client.get('approvals')).approvals.filter(x => x.status === 'waiting' && x.owner === me.name);
+          return w.length ? w.map(x => `[${x.id}] ${x.command}${x.why ? ` (${x.why})` : ''} for "${x.title}"`).join('\n') : 'Nothing is waiting for your OK.';
+        }
+        const r = await client.post('approve', { id: a.id, allow: !a.deny });
+        return r.approval.status === 'approved' ? `Approved: ${r.approval.command}. The task runs again with it allowed.` : `Said no to: ${r.approval.command}.`;
+      }
+      case 'huddle_checks': {
+        const body = {};
+        if (a.test_command !== undefined) body.testCommand = a.test_command;
+        if (a.review !== undefined) body.review = a.review;
+        const ps = Object.keys(body).length ? (await client.post('project-setting', body)).settings : ((await client.get('state')).projectSettings || {});
+        return `Tests before merging: ${ps.testCommand || `guessed from the project (${autopilot.detectTests(cfg.root) || 'none found'})`}. Sonnet review: ${ps.review === false ? 'off' : 'on'}.`;
       }
       case 'huddle_claim_task': {
         const r = await client.post('claim-task', { id: a.task_id });

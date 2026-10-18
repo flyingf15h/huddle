@@ -363,6 +363,20 @@ function statusFromPrompt(prompt) {
   return `asked: “${cut}”`;
 }
 
+// One line for someone coming back: what happened since their last session here ended.
+function catchUp(cfg, s, b, me) {
+  let since = 0;
+  try { since = JSON.parse(fs.readFileSync(path.join(cfg.root, CONFIG_DIR, 'last-seen.json'), 'utf8')).at; } catch {}
+  const waiting = (s.approvals || []).filter(x => x.owner === me).length;
+  if (!since || Date.now() - since < 30 * 60 * 1000) return waiting ? `huddle: ${waiting} command${waiting > 1 ? 's' : ''} waiting for your OK (huddle approve)` : '';
+  const done = b.tasks.filter(t => t.status === 'done' && t.updated > since).length;
+  const mine = b.tasks.filter(t => t.owner === me && t.status !== 'done' && t.updated > since).length;
+  const asks = b.goals.filter(g => g.at > since && g.byName !== me).length;
+  const bits = [done && `${done} task${done > 1 ? 's' : ''} done`, mine && `${mine} of yours changed`, asks && `${asks} new request${asks > 1 ? 's' : ''}`,
+    waiting && `${waiting} command${waiting > 1 ? 's' : ''} waiting for your OK (huddle approve)`].filter(Boolean);
+  return bits.length ? `huddle: since you were last here, ${bits.join(', ')}.` : '';
+}
+
 // Whether this person's session is mid-turn, for the request runner: it answers messages for an
 // idle session only, because a busy one reads them before it stops.
 function markTurn(cfg, agent, busy) {
@@ -431,10 +445,12 @@ const handlers = {
     const mode = ((s.settings || {})[client.agent.name] || {}).autopilot || 'full';
     const mine = build();
     const newer = mine && s.agents.filter(a => a.online && a.build && a.build.at > mine.at).sort((x, y) => y.build.at - x.build.at)[0];
+    const back = catchUp(cfg, s, b, client.agent.name);
     const notice = `huddle: this session is in "${cfg.project.replace(/-[0-9a-f]{6,8}$/, '')}" as ${client.agent.name}` +
       ` · ${others.length ? others.join(', ') + ' online' : 'nobody else online'}` +
       ` · your Claude ${mode === 'full' ? 'is active for the team (answers the other Claudes, takes its tasks)' : mode === 'off' ? 'does not take requests (/autopilot to change)' : 'takes requests only (/autopilot to change)'}` +
-      (newer ? ` · ${newer.name} runs a newer huddle; run \`huddle update\` and restart Claude` : '');
+      (newer ? ` · ${newer.name} runs a newer huddle; run \`huddle update\` and restart Claude` : '') +
+      (back ? `\n${back}` : '');
     return withNotice(notice, ctx('SessionStart',
       `You are "${client.agent.name}" in huddle project "${client.cfg.project}", shared with other Claude agents working in the same codebase from other machines.\n` +
       (nameLine(s, client.agent.name) ? nameLine(s, client.agent.name) + '\n' : '') +
@@ -585,6 +601,7 @@ const handlers = {
     await closeFromCommits(client, cfg, sessionState(cfg, client.agent)).catch(() => {});
     await autoHandoff(client, cfg, sessionState(cfg, client.agent), await client.get('state').catch(() => null)).catch(() => {});
     markTurn(cfg, client.agent, false);
+    try { fs.writeFileSync(path.join(cfg.root, CONFIG_DIR, 'last-seen.json'), JSON.stringify({ at: Date.now() })); } catch {}
     await client.post('unlock', { all: true, reason: 'session ended' });
     await client.post('bye', {});
     return null;
