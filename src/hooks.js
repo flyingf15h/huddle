@@ -404,19 +404,26 @@ function markTurn(cfg, agent, busy) {
 }
 
 // A prompt that's probably several jobs at once: long, or a list of asks. Claude makes the real call.
+// Worth splitting across the team: several separate asks, or one ask that's big on its own (large-scale
+// work, several areas of the code, many files). Plain text heuristics, so it costs nothing to check.
 function looksBig(prompt) {
-  if (process.env.HUDDLE_AUTOPILOT || prompt.length < 200) return false;
+  if (process.env.HUDDLE_AUTOPILOT || prompt.length < 30) return false;
   const items = prompt.split('\n').filter(l => /^\s*([-*•]|\d+[.)])\s+\S/.test(l)).length;
   const asks = (prompt.match(/\b(also|and then|plus|as well as|additionally)\b|[.?!]\s+(?=[a-z]*\s*(add|make|fix|change|switch|have|set|allow|get rid|remove|build|update|create|move|let)\b)/gi) || []).length;
-  return prompt.length > 2000 || items >= 5 || asks >= 4;
+  if (prompt.length > 2000 || items >= 5 || asks >= 4) return true;
+  const scale = (prompt.match(/\b(implement|redesign|rewrite|refactor|overhaul|migrate|port (it|this|the)|integrate|from scratch|end[- ]to[- ]end|full[- ]stack|(whole|entire) (app|site|system|codebase|project|ui|backend|frontend)|across (the|all|every)|every (page|screen|file|endpoint|component)|new (feature|system|service|module|page|app)|add support for|build (out|a|an|the))\b/gi) || []).length;
+  const areas = new Set((prompt.toLowerCase().match(/\b(frontend|front-end|backend|back-end|server|client|api|endpoints?|database|db|schema|migrations?|ui|dashboard|auth|login|tests?|docs|ci|deploy(ment)?|cli|mobile|worker|cache|queue|payments?|search|settings|notifications?|emails?)\b/g) || []).map(w => w.replace(/s$/, ''))).size;
+  const files = new Set(prompt.match(/[\w.-]+\.(js|mjs|ts|tsx|jsx|py|go|rs|java|kt|rb|php|css|scss|html|vue|svelte|sql)\b|\b[\w-]+\/[\w./-]+/g) || []).size;
+  const score = scale * 2 + Math.max(0, areas - 1) + Math.min(files, 4) + (asks >= 2 ? 1 : 0) + (prompt.length > 600 ? 1 : 0);
+  return score >= 4;
 }
 function distributeNote(s, me) {
   const others = [...new Set(s.agents.filter(a => a.online && !a.clone && a.name !== me.name && ['agent', 'autopilot'].includes(a.kind)).map(a => a.name))];
   const u = (n) => { const x = (s.usage || {})[n]; return x && typeof x.five === 'number' ? ` (${x.five}% of 5-hour window used)` : ''; };
-  return `huddle: this prompt looks like several pieces of work. ${others.length ? `Other Claudes online: ${others.map(n => n + u(n)).join(', ')}; you${u(me.name)}.` : 'Nobody else is online, but your own background Claudes can take parts in parallel.'} ` +
+  return `huddle: this prompt looks like several pieces of work, or one big one. ${others.length ? `Other Claudes online: ${others.map(n => n + u(n)).join(', ')}; you${u(me.name)}.` : 'Nobody else is online, but your own background Claudes can take parts in parallel.'} ` +
     'If it splits into parts that can be done independently (different files or areas), call huddle_distribute first: give each part a title, a detail with what "done" means, and an effort (light, medium or heavy). ' +
     'huddle hands the heavier parts to whoever has the most usage left, and their Claudes start right away. Keep the parts you\'re best placed to do with keep_for_me, then do those here. ' +
-    'Skip this for one tightly connected change, or when your user wants to do it themselves.';
+    'Skip this for one tightly connected change that can\'t be split cleanly, or when your user wants to do it themselves.';
 }
 
 function teamSummary(s, me) {

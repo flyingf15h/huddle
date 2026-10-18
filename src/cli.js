@@ -108,8 +108,13 @@ function parseArgs(argv) {
 
 const encodeInvite = (server, token, project) =>
   Buffer.from(JSON.stringify({ s: server, t: token, p: project })).toString('base64url');
+// the invite however it was pasted: the code, the dashboard link (…/#invite=CODE) or the whole command
 function decodeInvite(code) {
-  const j = JSON.parse(Buffer.from(code.trim().replace(/^huddle:/, ''), 'base64url').toString('utf8'));
+  code = String(code || '').trim();
+  const m = /[#&?]invite=([\w-]+)/.exec(code);
+  if (m) code = m[1];
+  else code = code.split(/\s+/).filter(w => /^(huddle:)?[\w-]{40,}$/.test(w)).pop() || code;
+  const j = JSON.parse(Buffer.from(code.replace(/^huddle:/, ''), 'base64url').toString('utf8'));
   if (!j.s || !j.t || !j.p) throw new Error('incomplete invite');
   return { server: j.s, token: j.t, project: j.p };
 }
@@ -334,10 +339,22 @@ function cmdPermissions({ flags }) {
   console.log(`${flags.write ? 'Adding' : 'Would add'} to .claude/settings.json:\n${mode ? '' : '  defaultMode: acceptEdits (file edits without asking)\n'}${adding.map(a => '  ' + a).join('\n')}${asking.length ? `\nand always asks before: ${asking.map(a => a.slice(5, -3)).join(', ')}` : ''}
 Anything else (deploys, ssh, installing new packages, rm) still asks too.`);
   if (!flags.write) return console.log('\nRun huddle permissions --write to save it.');
-  cur.permissions = { ...(cur.permissions || {}), defaultMode: mode || want.defaultMode, allow: [...have, ...adding], ask: [...haveAsk, ...asking] };
+  addPermissions(file, want);
+  console.log(`\nSaved. Commit .claude/settings.json so every teammate's Claude gets it:\n  git add .claude/settings.json && git commit -m "let Claude do routine work without asking"`);
+}
+
+// merge the routine-work preset into a Claude settings file; how many rules were new
+function addPermissions(file, want) {
+  let cur = {};
+  try { cur = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
+  const p = cur.permissions || {};
+  const have = p.allow || [], haveAsk = p.ask || [];
+  const adding = want.allow.filter(a => !have.includes(a)), asking = want.ask.filter(a => !haveAsk.includes(a));
+  if (!adding.length && !asking.length && p.defaultMode) return 0;
+  cur.permissions = { ...p, defaultMode: p.defaultMode || want.defaultMode, allow: [...have, ...adding], ask: [...haveAsk, ...asking] };
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify(cur, null, 2) + '\n');
-  console.log(`\nSaved. Commit .claude/settings.json so every teammate's Claude gets it:\n  git add .claude/settings.json && git commit -m "let Claude do routine work without asking"`);
+  return adding.length + asking.length + 1;
 }
 
 function q(s) { return process.platform === 'win32' ? `"${s}"` : `'${s.replace(/'/g, `'\\''`)}'`; }
@@ -442,24 +459,43 @@ async function cmdNew({ pos, flags }) {
     need(false, `couldn't create a project on ${server}: ${e.cause ? e.cause.code || e.message : e.message}`);
   }
   const code = encodeInvite(server, r.token, r.project);
-  console.log(`created project ${r.project} on ${server}
+  console.log(`created project ${r.project.replace(/-[0-9a-f]{6,8}$/, '')}
 
-Send this to your collaborators (and run it yourself in your copy of the project):
+Teammates run this in their copy of the project (it asks for their name):
   ${joinCommand(code)}
-
-Live dashboard: ${server}/#invite=${code}
-Anyone with the invite can join and see the project's shared files, so keep it to people you trust.`);
+Anyone with the invite can join and see the project, so only send it to your team.`);
   if (flags['no-join']) return;
   console.log('');
   await cmdJoin({ pos: [code], flags });
 }
 
+// what to call this person: --name, the name they joined this folder with before, or asked for
+// (suggesting their git name, then their login name)
+async function pickName(flags, root) {
+  const clean = (n) => String(n || '').trim().replace(/[#\s]+/g, '-');
+  if (flags.name) return clean(flags.name);
+  try { const prev = JSON.parse(fs.readFileSync(path.join(root, CONFIG_DIR, 'config.json'), 'utf8')).name; if (prev) return clean(prev); } catch {}
+  const git = spawnSync('git', ['config', 'user.name'], { cwd: root, encoding: 'utf8' });
+  const suggest = clean((git.stdout || '').trim().split(/\s+/)[0] || os.userInfo().username);
+  if (!process.stdin.isTTY) return suggest;
+  if (!rl) rl = require('readline/promises').createInterface({ input: process.stdin, output: process.stdout });
+  return clean(await rl.question(`Your name for the team [${suggest}]: `)) || suggest;
+}
+
+// what huddle needs on this computer, said up front instead of failing halfway
+function checkTools() {
+  const has = (cmd) => spawnSync(cmd, ['--version'], { encoding: 'utf8', shell: process.platform === 'win32' }).status === 0;
+  if (!has('claude')) console.log('! Claude Code isn\'t installed here yet. Install it with: npm install -g @anthropic-ai/claude-code');
+  if (!has('git')) console.log('! git isn\'t installed, so code won\'t be shared through huddle (live edits still are).');
+}
+
 async function cmdJoin({ pos, flags }) {
-  need(pos[0], 'usage: huddle join <invite> [--name NAME]');
+  need(pos[0], 'usage: huddle join <invite> [--name NAME]   (the invite can be the code, the dashboard link or the whole command)');
   let inv;
-  try { inv = decodeInvite(pos[0]); } catch { need(false, 'That invite code looks broken. Ask for a fresh one (`huddle invite`).'); }
+  try { inv = decodeInvite(pos.join(' ')); } catch { need(false, 'That invite looks broken. Ask for a fresh one (Invite people on the dashboard, or `huddle invite`).'); }
   const root = path.resolve(flags.dir || process.cwd());
-  const name = (flags.name || os.userInfo().username).replace(/[#\s]+/g, '-');
+  checkTools();
+  const name = await pickName(flags, root);
   const cfg = { server: inv.server, token: inv.token, project: inv.project, name, root };
 
   process.stdout.write(`checking ${inv.server} … `);
@@ -484,36 +520,25 @@ async function cmdJoin({ pos, flags }) {
   installHooks(root, dir);
   installCommand(root);
   const mcp = installMcp(root, dir);
+  const code = encodeInvite(inv.server, inv.token, inv.project);
   console.log(`
-joined "${inv.project}" as ${name} in ${root}
-  hooks   → .claude/settings.local.json
-  tools   → ${mcp ? 'huddle MCP server registered for this folder' : 'see above'}
-Live dashboard: ${inv.server}/#invite=${pos[0]}
-
-Your Claude sessions here are shared with the team (your prompts, Claude's replies,
-its tool calls) so everyone can follow along. Change that with: huddle sharing tools|off
-
-While Claude is open here, your Claude is active for the team: it answers the other
-Claudes' messages while you're away and runs work handed to it, using your Claude
-subscription. Change it any time: /autopilot requests or /autopilot off (in Claude),
-huddle autopilot off, or the dashboard.
-
-Tip: huddle permissions --write makes a shared .claude/settings.json so nobody's Claude
-asks before routine edits, git, builds and tests (deploys still ask).
-
-Next: start (or restart) Claude Code in this folder, then just prompt it as usual.
-It already knows who else is working, what's locked, and the team's PROJECT.md,
-memory and skills. Ask it things like "what is everyone working on?" or
-"remember that the tests need Docker running".${fs.existsSync(path.join(root, 'CLAUDE.md')) ? `
-
-Tip: share your CLAUDE.md with the team without committing anything:
-  huddle project --set CLAUDE.md` : ''}`);
+✓ joined "${inv.project.replace(/-[0-9a-f]{6,8}$/, '')}" as ${name}${mcp ? '' : ' (the huddle tools need registering by hand, see above)'}
+  Dashboard: ${inv.server}/#invite=${code}`);
+  if (process.stdin.isTTY && !flags.yes && await yes('Let Claude make routine edits, use git and run builds and tests here without asking each time?')) {
+    const n = addPermissions(path.join(root, '.claude', 'settings.local.json'), permissionPreset(root));
+    console.log(n ? '  done (in your own .claude/settings.local.json; deploys and anything risky still ask)' : '  already set');
+  }
+  console.log(`
+Next: run \`claude\` in this folder. It's in the huddle and already knows who's working on what.
+Your Claude helps the team while you're away and your session is visible to them;
+change that with /autopilot and huddle sharing.${fs.existsSync(path.join(root, 'CLAUDE.md')) ? '\nTo share your CLAUDE.md with the team without committing it: huddle project --set CLAUDE.md' : ''}`);
   try { require('./shared').writeShared(root, await new Client(cfg, identity(cfg, 'join')).get('shared')); } catch {}
   if (!flags['no-sync']) {
     console.log('');
     try { await syncCopy({ ...cfg, root }, flags); }
     catch (e) { console.log(`couldn't compare with the team's version: ${e.message}\nTry again later with: huddle sync`); }
   }
+  closeAsk();
 }
 
 // ---------- versions and branches ----------
