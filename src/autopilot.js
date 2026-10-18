@@ -283,7 +283,8 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
   let pumping = false, again = false, mode = DEFAULT_MODE, stopped = false;
 
   // model: e.g. 'sonnet' for reviews and test fixes; allow: extra tools for this run; readOnly: no edits
-  const runOnce = (prompt, { cwd = cfg.root, session, mcpRoot, model, allow = [], readOnly = false } = {}) => new Promise((resolve) => {
+  // shown: what the team sees as this run's prompt (the request itself), instead of the long instructions
+  const runOnce = (prompt, { cwd = cfg.root, session, mcpRoot, model, allow = [], readOnly = false, shown = '' } = {}) => new Promise((resolve) => {
     // in its own worktree (on its own branch) a Claude can also bring in and rearrange history freely:
     // nothing reaches the person's branch until it has been reviewed, tested and merged by huddle
     const own = cwd !== cfg.root ? ['fetch', 'merge', 'cherry-pick', 'rebase', 'pull', 'restore', 'checkout', 'switch', 'stash', 'reset', 'branch'].map(g => `Bash(git ${g}:*)`) : [];
@@ -296,7 +297,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     if (readOnly) args.push('--disallowedTools', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit');
     args.push('--allowedTools', ...allowed);
     // (the session's MCP server runs with HUDDLE_ROOT set to the person's folder; a clone has its own)
-    const env = { ...process.env, HUDDLE_AUTOPILOT: '1', ...(session ? { HUDDLE_SESSION: session } : {}), ...(mcpRoot ? { HUDDLE_ROOT: mcpRoot } : {}) };
+    const env = { ...process.env, HUDDLE_AUTOPILOT: '1', HUDDLE_SHOWN: String(shown).slice(0, 4000), ...(session ? { HUDDLE_SESSION: session } : {}), ...(mcpRoot ? { HUDDLE_ROOT: mcpRoot } : {}) };
     const child = spawn('claude', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env });
     let text = '', err = '';
     child.stdout.on('data', d => { text += d; if (out) out(String(d)); });
@@ -351,7 +352,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     const who = cloneClient(cfg.root, key, gitx.currentBranch(cfg.root, 0));
     await who.post('hello', { clone: `answering ${m.fromName}` }).catch(() => {});
     await who.post('status', { status: `answering ${m.fromName}: ${m.text.split('\n')[0].slice(0, 70)}` }).catch(() => {});
-    const res = await runClaude(replyPrompt(m, me, await myAiName(client).catch(() => null), m.fromName), { session: key });
+    const res = await runClaude(replyPrompt(m, me, await myAiName(client).catch(() => null), m.fromName), { session: key, shown: `Reply to ${m.fromName}: ${m.text}` });
     const text = res.out.trim().slice(-2000) || (res.code === 0 ? '' : "I couldn't answer this automatically; it'll wait for my person.");
     if (text) await client.post('message', { to: m.fromName, text, auto: true }).catch(e => log('could not send the answer: ' + e.message));
     await who.post('bye', {}).catch(() => {});
@@ -371,7 +372,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     await who.post('status', { status: `planning: ${goal.text.split('\n')[0].slice(0, 80)}` }).catch(() => {});
     const s = await client.get('state');
     const team = [...new Set(s.agents.filter(a => a.online && (a.kind === 'agent' || a.kind === 'autopilot')).map(a => a.name))];
-    await runClaude(planPrompt(goal, team.length ? team : [me], me, await myAiName(client).catch(() => null), s.usage), { session: key });
+    await runClaude(planPrompt(goal, team.length ? team : [me], me, await myAiName(client).catch(() => null), s.usage), { session: key, shown: `Plan: ${goal.text}` });
     const after = (await client.get('board')).goals.find(g => g.id === goal.id);
     if (after && after.status !== 'planned' && after.status !== 'done') {
       log('Claude did not record a plan; taking the whole goal as one task');
@@ -389,10 +390,10 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     const testAllow = cmd ? [`Bash(${cmd})`, `Bash(${cmd}:*)`] : [];
     if (projectSettings.review !== false) {
       log(`reviewing ${t.id} with Sonnet`);
-      const r = await runClaude(reviewPrompt(t, c.base), { cwd: c.dir, session: 'review-' + t.id, mcpRoot: c.dir, model: 'sonnet', readOnly: true });
+      const r = await runClaude(reviewPrompt(t, c.base), { cwd: c.dir, session: 'review-' + t.id, mcpRoot: c.dir, model: 'sonnet', readOnly: true, shown: `Review the work on: ${t.title}` });
       const at = r.out.search(/VERDICT:\s*CHANGES/i);
       if (at >= 0) {
-        await runClaude(fixPrompt(t, 'A reviewer found these problems', r.out.slice(at)), { cwd: c.dir, session: 'fix-' + t.id, mcpRoot: c.dir, model: 'sonnet', allow: testAllow });
+        await runClaude(fixPrompt(t, 'A reviewer found these problems', r.out.slice(at)), { cwd: c.dir, session: 'fix-' + t.id, mcpRoot: c.dir, model: 'sonnet', allow: testAllow, shown: `Fix what the review found in: ${t.title}` });
         commitClone(c, `fix review notes: ${t.title}`);
         out.review = 'fixed';
       } else out.review = /VERDICT:\s*OK/i.test(r.out) ? 'ok' : 'unclear';
@@ -401,7 +402,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     log(`testing ${t.id}: ${cmd}`);
     let r = await runShell(cmd, c.dir);
     if (r.code !== 0) {
-      await runClaude(fixPrompt(t, `The tests (\`${cmd}\`) fail after this work`, r.out, cmd), { cwd: c.dir, session: 'tests-' + t.id, mcpRoot: c.dir, model: 'sonnet', allow: testAllow });
+      await runClaude(fixPrompt(t, `The tests (\`${cmd}\`) fail after this work`, r.out, cmd), { cwd: c.dir, session: 'tests-' + t.id, mcpRoot: c.dir, model: 'sonnet', allow: testAllow, shown: `Fix the failing tests (${cmd}) in: ${t.title}` });
       commitClone(c, `fix tests: ${t.title}`);
       r = await runShell(cmd, c.dir);
     }
@@ -445,7 +446,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     }
     await who.post('status', { status: `${t.direct ? `request from ${t.by}` : 'task'}: ${t.title.slice(0, 80)}` }).catch(() => {});
     const res = await runClaude(taskPrompt(t, b, me, canRun(), await myAiName(client).catch(() => null)),
-      { cwd: c ? c.dir : cfg.root, session: key, mcpRoot: c ? c.dir : null, allow: (t.allow || []).map(x => `Bash(${x})`) });
+      { cwd: c ? c.dir : cfg.root, session: key, mcpRoot: c ? c.dir : null, allow: (t.allow || []).map(x => `Bash(${x})`), shown: t.detail && t.detail.trim() ? t.detail : t.title });
     // out of usage: give it back so someone with room takes it
     if (res.code !== 0 && LIMIT.test(res.out)) {
       log(`${t.id}: hit the Claude usage limit, handing it on`);

@@ -559,7 +559,9 @@ const handlers = {
       fs.rmSync(path.join(cfg.root, CONFIG_DIR, 'statusline.json'), { force: true });
     } catch {}
     const full = (cfg.shareActivity || 'full') === 'full';
-    if (!isPrivate && full && prompt) items.push({ kind: 'prompt', text: prompt });
+    // a background Claude's prompt is long generated instructions: the team sees the request it's doing instead
+    const shownPrompt = process.env.HUDDLE_AUTOPILOT ? String(process.env.HUDDLE_SHOWN || '').trim() : prompt;
+    if (!isPrivate && full && shownPrompt) items.push({ kind: 'prompt', text: shownPrompt });
     // a background request Claude gets its status from the runner, not from its long task prompt
     const auto = !isPrivate && full && !process.env.HUDDLE_AUTOPILOT ? statusFromPrompt(prompt) : null;
     const r = await turn(client, st, { items, status: auto, auto: true, state: true });

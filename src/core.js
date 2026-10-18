@@ -845,6 +845,7 @@ const routes = {
       kind: ['prompt', 'text', 'tool', 'end'].includes(it.kind) ? it.kind : 'text',
       text: String(it.text || '').slice(0, ACTIVITY_TEXT),
       tool: it.tool ? String(it.tool).slice(0, 80) : undefined,
+      bg: a.clone ? true : undefined,   // from a background Claude doing a request, not the person's own session
       at: now(), agent: a.id, name: a.name,
     })).filter(it => it.text || it.kind === 'end');
     if (!items.length) return { ok: true };

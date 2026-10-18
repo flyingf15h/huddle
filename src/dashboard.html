@@ -954,8 +954,22 @@ function md(text) {
 
 // ---------- timeline entries ----------
 // a person's turn: msg, prompt, reply, tool, end. Everything else is a note or card.
+// A background Claude's prompt used to be posted whole: huddle's long generated instructions. Keep only
+// the request they were about ("Reply to kelly: …", the task itself, "Review the work on: …").
+function backgroundAsk(text) {
+  let m = /^You are .{1,80}?, working with a team of Claude agents through huddle\.\nYour task \[\w+\]: (.*)\n([\s\S]*?)(?:\nIt is part of the team goal|\nOther tasks in this goal|\nDo the task in this repository)/.exec(text);
+  if (m) return (m[2].trim() || m[1]).trim();
+  if ((m = /^You are .{1,80}?, one of a team of Claude agents[\s\S]*? (\S+) sent you this message:\n\n([\s\S]*?)\n\nAnswer it\./.exec(text))) return `Reply to ${m[1]}: ${m[2].trim()}`;
+  if ((m = /^You are .{1,80}?, coordinating a team of Claude agents[\s\S]*?this goal \[\w+\] \(from [^)]*\):\n\n([\s\S]*?)\nYou won the right/.exec(text))) return `Plan: ${m[1].trim()}`;
+  if ((m = /^You are reviewing work another Claude just finished for the task "(.*?)"/.exec(text))) return `Review the work on: ${m[1]}`;
+  if ((m = /^You are finishing the task "(.*?)" in this repository\. (.*?):/.exec(text))) return `${m[2]}: fix it in ${m[1]}`;
+  return null;
+}
 function fromActivity(it) {
-  if (it.kind === 'prompt') return { kind: 'prompt', who: it.name, at: it.at, text: it.text };
+  if (it.kind === 'prompt') {
+    const ask = backgroundAsk(it.text);
+    return { kind: 'prompt', who: it.name, at: it.at, text: ask || it.text, bg: !!(it.bg || ask) };
+  }
   if (it.kind === 'text') return { kind: 'reply', who: it.name, at: it.at, text: it.text };
   if (it.kind === 'tool') return { kind: 'tool', who: it.name, at: it.at, text: it.text };
   return { kind: 'end', who: it.name, at: it.at };
@@ -1045,7 +1059,7 @@ const BOT_KINDS = new Set(['reply', 'tool', 'end', 'plan']);
 // what the header line says the author did, e.g. "tszfei  requested from the team  8:01 AM"
 function rowContext(e) {
   if (e.kind === 'goal') return 'requested from ' + (e.goal.to ? claudeOf(e.goal.to) : 'the team');
-  if (e.kind === 'prompt') return 'prompted ' + (aiName(e.who) || 'their Claude');
+  if (e.kind === 'prompt') return e.bg ? 'started on a request in the background' : 'prompted ' + (aiName(e.who) || 'their Claude');
   if (e.kind === 'msg') return e.to ? 'messaged ' + (auth.name && e.to.toLowerCase() === myName().toLowerCase() ? 'you' : e.to) : 'messaged everyone';
   if (e.kind === 'plan') return 'posted a plan';
   return '';
@@ -1064,8 +1078,10 @@ function appendEntry(e, feed) {
     if (n && n.classList.contains('note')) n.insertAdjacentHTML('beforeend', `<time class="nt" title="${esc(fullDate(e.at))}">${clock(e.at)}</time>`);
     return;
   }
-  const bot = BOT_KINDS.has(e.kind), ctx = rowContext(e), key = (bot ? 'c:' : 'h:') + e.who + '|' + ctx;
-  if (!turn || turn.key !== key || e.at - turn.at > 10 * 60 * 1000) {
+  const bot = BOT_KINDS.has(e.kind) || !!e.bg, ctx = rowContext(e), key = (bot ? 'c:' : 'h:') + e.who + '|' + ctx;
+  // Claude's steps and reply stay under the request it started on in the background
+  const sameRun = bot && !ctx && turn && turn.key.startsWith('c:' + e.who + '|') && e.at - turn.at <= 10 * 60 * 1000;
+  if (!sameRun && (!turn || turn.key !== key || e.at - turn.at > 10 * 60 * 1000)) {
     const name = bot ? claudeOf(e.who) : e.who;
     feed.insertAdjacentHTML('beforeend', `<div class="turn${bot ? ' isbot' : ''}${e.kind === 'msg' && ctx === 'messaged you' ? ' toyou' : ''}">${bot ? claudeAv() : avatar(e.who)}<div class="tbody"><div class="thead"><b>${esc(name)}</b>${bot ? '<span class="bottag">Claude</span>' : ''}${ctx ? `<span class="ctx">${esc(ctx)}</span>` : ''}<time title="${esc(fullDate(e.at))}">${clock(e.at)}</time></div><div class="items"></div></div></div>`);
     turn = { el: feed.lastElementChild, key, at: e.at, last: null, ul: null };
