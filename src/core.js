@@ -70,6 +70,12 @@ function blockingLock(p, who, branch, fp, dir) {
   }
   return null;
 }
+// Commands that really need a person to say yes: anything that reaches outside the project or this
+// computer, can't be undone, or acts on the person's own checkout. Everything else (tests, local git,
+// project scripts) a background Claude may just run, in its own worktree.
+const NEEDS_A_PERSON = /\b(push|deploy|publish|release|wrangler|vercel|netlify|heroku|gh\s+(pr|release|repo|api)|npm\s+(publish|login)|sudo|pkexec|su\s|ssh|scp|rsync|curl|wget|docker\s+(push|login)|kubectl|terraform|rm\s+-[a-z]*r|reset\s+--hard|clean\s+-[a-z]*f|kill(all)?\b|systemctl|shutdown|reboot|chmod\s+-R|chown|mkfs|dd\s+if=)|main checkout|your checkout|outside (the|this) (project|folder|repo)|(^|\s)~\/|\/etc\/|\/usr\//i;
+function needsAPerson(command) { return NEEDS_A_PERSON.test(command); }
+
 // a person's canonical name: aliases first, then a name that only differs in capitals ("kelly" -> "Kelly")
 function canonicalName(p, name) {
   name = (p.aliases || {})[name] || name;
@@ -156,6 +162,18 @@ class Project {
     for (const w of [...this.waiters]) w(ev);
     return ev;
   }
+  // commands still waiting for someone's OK
+  liveApprovals() {
+    const out = [];
+    for (const x of this.approvals || []) {
+      if (x.status !== 'waiting') continue;
+      const t = x.taskId && this.board.tasks.find(y => y.id === x.taskId);
+      // (a finished task can still need a person for something like a deploy; anything else has expired)
+      if (x.taskId && (!t || (t.status === 'done' && !needsAPerson(x.command)))) { x.status = 'expired'; this.dirty = true; continue; }
+      out.push(x);
+    }
+    return out;
+  }
   publicAgent(a) {
     return { id: a.id, name: a.name, host: a.host, checkout: a.checkout, kind: a.kind, branch: a.branch || null, runner: a.runner || null,
       status: a.status, statusAt: a.statusAt || null, lastSeen: a.lastSeen, joined: a.joined || null, online: this.online(a), build: a.build || null, clone: a.clone || null };
@@ -174,7 +192,7 @@ class Project {
       settings: this.settings || {},
       aliases: this.aliases || {},
       usage: this.usage || {},
-      approvals: (this.approvals || []).filter(x => x.status === 'waiting'),
+      approvals: this.liveApprovals(),
       projectSettings: this.projectSettings || {},
       teamVersion: this.teamVersion || 0,
     };
@@ -685,7 +703,7 @@ const routes = {
     p.dirty = true;
     return { ok: true, approvals: made };
   },
-  'GET approvals': (p) => ({ approvals: (p.approvals || []).slice(-50) }),
+  'GET approvals': (p) => { p.liveApprovals(); return { approvals: (p.approvals || []).slice(-50) }; },
   // Only the person whose Claude asked can say yes: from their own huddle (CLI or Claude), or from a
   // browser holding the key their machine gave it (huddle open). Saying yes lets the task run again
   // with that exact command allowed. Several can be decided at once (ids), so a task that needs a few
@@ -1146,5 +1164,5 @@ function waitOn(p, pred, timeoutMs, onAbort) {
   });
 }
 
-module.exports = { handOn, assignByUsage, Project, routes, waitOn, parseFrontmatter, fileKey, GIT_CHUNK, sha, now, httpError, sameSecret, normPath, aiLabel, taskIdsIn, blockingLock,
+module.exports = { needsAPerson, handOn, assignByUsage, Project, routes, waitOn, parseFrontmatter, fileKey, GIT_CHUNK, sha, now, httpError, sameSecret, normPath, aiLabel, taskIdsIn, blockingLock,
   ONLINE_MS, MAX_FILE_BYTES, OPEN_IDLE_MS, OPEN_MAX_PROJECTS, OPEN_CREATES_PER_HOUR };

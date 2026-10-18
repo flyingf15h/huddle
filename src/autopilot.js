@@ -27,6 +27,7 @@ const os = require('os');
 const { identity, Client, sha, adoptName, CONFIG_DIR } = require('./client');
 const CLI = path.join(__dirname, 'cli.js');
 const board = require('./board');
+const { needsAPerson } = require('./core');
 const gitx = require('./git');
 
 const MODES = ['off', 'requests', 'full'];
@@ -480,16 +481,29 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     }
     if (checks) await client.post('task-update', { id: t.id, checks }).catch(() => {});
     const needs = neededCommands(res.out);
-    if (needs.length) await client.post('approval-request', { taskId: t.id, commands: needs }).catch(e => log('approval: ' + e.message));
+    let rerun = false;
+    if (needs.length) {
+      const made = ((await client.post('approval-request', { taskId: t.id, commands: needs }).catch(e => { log('approval: ' + e.message); return null; })) || {}).approvals || [];
+      // the safe ones are approved here and the task runs again with them; only risky ones wait for the
+      // person (and so does a safe one that was already allowed and is asked for again, so nothing loops).
+      // A task its Claude already marked done isn't reopened: those approvals just expire.
+      const state = ((await client.get('board').catch(() => ({ tasks: [] }))).tasks.find(x => x.id === t.id) || {}).status;
+      const safe = state === 'done' ? [] : made.filter(x => !needsAPerson(x.command) && !(t.allow || []).includes(x.command));
+      if (safe.length) {
+        await client.post('approve', { ids: safe.map(x => x.id), allow: true }).then(() => { rerun = true; }).catch(e => log('auto-approve: ' + e.message));
+        if (rerun) log(`allowed ${safe.length} safe command${safe.length === 1 ? '' : 's'}; running "${t.title.slice(0, 50)}" again`);
+      }
+    }
     let now = (await client.get('board')).tasks.find(x => x.id === t.id);
-    if (now && now.status === 'doing') {
+    if (!rerun && now && now.status === 'doing') {
       const last = res.out.trim().split('\n').pop() || '';
       const failed = res.code !== 0 || (checks && checks.tests === 'failed');
       now = (await client.post('task-update', { id: t.id, status: failed ? 'blocked' : 'done',
         note: (failed ? (checks && checks.tests === 'failed' ? `tests failed (${checks.testCommand}): ` : 'autopilot run failed: ') : 'autopilot run finished: ') + last.slice(0, 300) + (where ? ` (${where})` : '') })).task;
     }
-    if (t.direct) await reply(t, res, now, where);
-    if (now && now.status !== 'done') skip.add(t.id); // don't loop on a blocked task
+    // (the run that goes again with the approved commands sends the reply)
+    if (t.direct && !rerun) await reply(t, res, now, where);
+    if (!rerun && now && now.status !== 'done') skip.add(t.id); // don't loop on a blocked task
     await who.post('unlock', { all: true }).catch(() => {});
     await who.post('bye', {}).catch(() => {});
     log(`${t.id} ${now ? now.status : 'gone'}`);
@@ -605,4 +619,4 @@ function listenWs(client, since, onEvent) {
   });
 }
 
-module.exports = { detectTests, neededCommands, runAutopilot, createRunner, claimRunner, releaseRunner, pick, makeClone, landClone, normMode, getMode, MODES, MODE_WORDS, DEFAULT_MODE, planPrompt, taskPrompt, board };
+module.exports = { detectTests, neededCommands, needsAPerson, runAutopilot, createRunner, claimRunner, releaseRunner, pick, makeClone, landClone, normMode, getMode, MODES, MODE_WORDS, DEFAULT_MODE, planPrompt, taskPrompt, board };
