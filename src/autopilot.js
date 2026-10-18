@@ -107,6 +107,7 @@ function taskPrompt(t, b, me, canRun, aiName) {
   return `You are ${selfName(me, aiName)}, working with a team of Claude agents through huddle.
 Your task [${t.id}]: ${t.title}
 ${t.detail ? '\n' + t.detail + '\n' : ''}${goal ? `\nIt is part of the team goal from ${goal.byName}: ${goal.text}\n${goal.plan ? 'Plan: ' + goal.plan + '\n' : ''}` : ''}${others.length ? '\nOther tasks in this goal:\n' + others.join('\n') + '\n' : ''}
+First, if the task's title doesn't already say plainly what it's for, call huddle_update_task with task_id "${t.id}" and a title of 2 to 6 plain words naming the outcome (like "Fix pin-to-pin guide labels").
 Do the task in this repository. Stay inside its scope; if you need a file someone else is working on, message them with huddle_send instead of waiting silently.${t.paths && t.paths.length ? `\nYou hold the lock on ${t.paths.join(', ')} for this task; keep your changes there unless the task really needs more.` : ''}
 Shell commands: ${canRun}${t.allow && t.allow.length ? `, and ${me} approved: ${t.allow.join('; ')}` : ''}. Nobody is watching this session to approve anything, so a refused command stays refused; don't retry it. If you can't run a check, say what you couldn't verify in your note instead of blocking the task.
 If the task needs a command you weren't allowed to run, finish what you can, then end your final message with "Needs ${me}'s OK:" and one line per command, as "- <command> — why". ${me} can approve them from the dashboard, and you'll be run again with them allowed. Don't mark the task blocked for this.${t.notes && t.notes.length ? `\nNotes on this task so far:\n${t.notes.slice(-4).map(n => `- ${n.by}: ${n.text}`).join('\n')}` : ''}
@@ -353,7 +354,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     const who = cloneClient(cfg.root, key, gitx.currentBranch(cfg.root, 0));
     await who.post('hello', { clone: `answering ${m.fromName}` }).catch(() => {});
     await who.post('status', { status: `answering ${m.fromName}: ${m.text.split('\n')[0].slice(0, 70)}` }).catch(() => {});
-    const res = await runClaude(replyPrompt(m, me, await myAiName(client).catch(() => null), m.fromName), { session: key, shown: `Reply to ${m.fromName}: ${m.text}` });
+    const res = await runClaude(replyPrompt(m, me, await myAiName(client).catch(() => null), m.fromName), { session: key, shown: `Reply to ${m.fromName}: ${m.text}`, model: cfg.answerModel || 'sonnet' });
     const text = res.out.trim().slice(-2000) || (res.code === 0 ? '' : "I couldn't answer this automatically; it'll wait for my person.");
     if (text) await client.post('message', { to: m.fromName, text, auto: true }).catch(e => log('could not send the answer: ' + e.message));
     await who.post('bye', {}).catch(() => {});
@@ -362,7 +363,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     if (!m || m.auto || replied.has(m.id) || mode === 'off' || !m.to || m.to !== me || m.fromName === me) return false;
     if (Date.now() - m.at > 10 * 60 * 1000 || sessionBusy(cfg.root)) return false;
     while (answeredAt.length && Date.now() - answeredAt[0] > 3600 * 1000) answeredAt.shift();
-    return answeredAt.length < 20;
+    return answeredAt.length < 8;
   }
 
   async function plan(goal) {
@@ -373,7 +374,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     await who.post('status', { status: `planning: ${goal.text.split('\n')[0].slice(0, 80)}` }).catch(() => {});
     const s = await client.get('state');
     const team = [...new Set(s.agents.filter(a => a.online && (a.kind === 'agent' || a.kind === 'autopilot')).map(a => a.name))];
-    await runClaude(planPrompt(goal, team.length ? team : [me], me, await myAiName(client).catch(() => null), s.usage), { session: key, shown: `Plan: ${goal.text}` });
+    await runClaude(planPrompt(goal, team.length ? team : [me], me, await myAiName(client).catch(() => null), s.usage), { session: key, shown: `Plan: ${goal.text}`, model: cfg.planModel || 'sonnet' });
     const after = (await client.get('board')).goals.find(g => g.id === goal.id);
     if (after && after.status !== 'planned' && after.status !== 'done') {
       log('Claude did not record a plan; taking the whole goal as one task');

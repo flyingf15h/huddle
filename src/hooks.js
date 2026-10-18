@@ -8,6 +8,7 @@ const { loadConfig, identity, Client, relPath, hashFile, sha, formatMessages, ag
 const shared = require('./shared');
 const gitx = require('./git');
 const board = require('./board');
+const { requestTitle } = require('./core');
 
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 const INBOX_EVERY_MS = 10 * 1000;
@@ -369,11 +370,11 @@ function summarizeLater(cfg, agent, prompt, seen) {
 
 // A status straight from the person's prompt, so the team sees new work the moment it starts.
 // Short follow-ups ("yes", "go ahead", "now push it") keep the current status.
+// a stand-in status from a new prompt (the Claude replaces it with its own one-sentence summary)
 function statusFromPrompt(prompt) {
   const line = prompt.split('\n').map(l => l.trim()).find(Boolean) || '';
   if (line.length < 25 || line.startsWith('/')) return null;
-  const cut = line.length > 120 ? line.slice(0, 120).replace(/\s+\S*$/, '') + '…' : line;
-  return `asked: “${cut}”`;
+  return requestTitle(line);
 }
 
 // One line for someone coming back: what happened since their last session here ended.
@@ -407,7 +408,7 @@ function looksBig(prompt) {
   if (process.env.HUDDLE_AUTOPILOT || prompt.length < 200) return false;
   const items = prompt.split('\n').filter(l => /^\s*([-*•]|\d+[.)])\s+\S/.test(l)).length;
   const asks = (prompt.match(/\b(also|and then|plus|as well as|additionally)\b|[.?!]\s+(?=[a-z]*\s*(add|make|fix|change|switch|have|set|allow|get rid|remove|build|update|create|move|let)\b)/gi) || []).length;
-  return prompt.length > 700 || items >= 3 || asks >= 2;
+  return prompt.length > 2000 || items >= 5 || asks >= 4;
 }
 function distributeNote(s, me) {
   const others = [...new Set(s.agents.filter(a => a.online && !a.clone && a.name !== me.name && ['agent', 'autopilot'].includes(a.kind)).map(a => a.name))];
@@ -471,7 +472,7 @@ const handlers = {
       'Rules: before you edit a file it is locked for you automatically; files other agents are editing are read-only and edits to them will be refused. ' +
       'For work that spans a whole folder, lock the folder with huddle_lock (e.g. "viewer/src/pages/"): nobody else can edit inside it until you release it, and nobody can lock a folder that overlaps one someone else holds. ' +
       'If an edit is refused, work on something else, message the holder with huddle_send, look at their live copy with huddle_view, or block with huddle_wait. ' +
-      'When you start a new piece of work, call huddle_set_status once with a short summary of it (under 12 words, e.g. "adding search to the parts library"); huddle pre-fills it from your user\'s prompt, and other Claudes are told whenever it changes. Skip it for follow-ups on the same work. ' +
+      'When you start a new piece of work, call huddle_set_status once with a one-sentence summary of it for your teammates (under 12 words, e.g. "Adding search to the parts library"); it is what the team and the dashboard show for you, and other Claudes are told whenever it changes. Skip it for follow-ups on the same work. ' +
       'You are told when another Claude\'s work changes; check huddle_status before larger changes so you do not overlap. ' +
       'When you finish a board task, mark it done with huddle_update_task, or write "closes <task id>" in the commit that finishes it. ' +
       'When your user wraps up or you hand work over, leave a two-line note with huddle_handoff: where you left off and what comes next (huddle writes one from your status and commits if you don\'t). ' +
@@ -565,7 +566,8 @@ const handlers = {
     // a background request Claude gets its status from the runner, not from its long task prompt
     const auto = !isPrivate && full && !process.env.HUDDLE_AUTOPILOT ? statusFromPrompt(prompt) : null;
     const r = await turn(client, st, { items, status: auto, auto: true, state: true });
-    if (auto && cfg.summarize !== false) summarizeLater(cfg, client.agent, prompt, auto);
+    // (a separate Claude run per prompt just for a summary costs real usage; only when asked for)
+    if (auto && cfg.summarize === true) summarizeLater(cfg, client.agent, prompt, auto);
     const d = digest(client, cfg, st, r);
     const s = r.state;
     const me = client.agent.name;
@@ -581,12 +583,13 @@ const handlers = {
     const asks = process.env.HUDDLE_AUTOPILOT ? { context: '', notice: '' } : openRequests(s, r.tasks || [], me);
     const stale = auto && auto !== st.data.lastAuto ? staleTasks(r.tasks || [], me) : '';
     const big = !isPrivate && looksBig(prompt) ? distributeNote(s, client.agent) : '';
+    const sayIt = auto && auto !== st.data.lastAuto ? 'huddle: if this is new work, call huddle_set_status with a one-sentence summary of it for the team.' : '';
     markTurn(cfg, client.agent, true);
     if (auto) { st.data.lastAuto = auto; st.save(); }
     // whatever the prompt is about, the team's messages and requests come first
     const team = [d.mail, asks.context].filter(Boolean).join('\n\n');
     const first = team ? `huddle: read this first, before your user's prompt, and tell your user about anything that needs them.\n\n${team}` : '';
-    const out = ctx('UserPromptSubmit', [first, renamed, privateNote, ...d.news, stale, d.team, big].filter(Boolean).join('\n\n'));
+    const out = ctx('UserPromptSubmit', [first, renamed, privateNote, ...d.news, stale, d.team, big, sayIt].filter(Boolean).join('\n\n'));
     return asks.notice ? withNotice(asks.notice, out) : out;
   },
 

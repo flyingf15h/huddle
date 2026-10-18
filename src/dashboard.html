@@ -423,7 +423,7 @@ textarea.big { width: 100%; min-height: 55vh; font-family: "Geist Mono", ui-mono
 .spark i { width: 6px; background: var(--accent); border-radius: 2px 2px 0 0; min-height: 1px; opacity: .85; }
 
 /* ---------- needs your OK, and the catch-up line ---------- */
-#asks { margin: 0 0 14px; border: 1px solid var(--line-strong); border-left: 3px solid var(--pop); background: var(--raised); border-radius: var(--radius-sm); padding: 12px 14px; }
+#asks { margin: 0 0 14px; border: 1px solid var(--line-strong); background: var(--raised); border-radius: var(--radius-sm); padding: 12px 14px; }
 #asks h3 { margin: 0 0 6px; font-size: 14px; }
 .ask { padding: 7px 0; border-top: 1px solid var(--line); }
 .ask:first-of-type { border-top: 0; }
@@ -1195,15 +1195,17 @@ function people() {
   const by = {};
   for (const a of Object.values(S.agents)) {
     if (a.kind === 'human' && !hasClaude(a.name)) continue; // dashboard-only visitors aren't cards
-    const p = by[a.name] = by[a.name] || { name: a.name, online: false, lastSeen: 0, status: '', statusAt: 0, statusOnline: false, branch: null, runner: null, clones: [] };
+    const p = by[a.name] = by[a.name] || { name: a.name, online: false, lastSeen: 0, status: '', statusAt: 0, statusRank: 0, branch: null, runner: null, clones: [] };
     // a background Claude doing a request: listed on the card's second line, not its main status
     if (a.clone) { if (a.online) p.clones.push(a); continue; }
     p.online = p.online || a.online;
     if (a.online && a.runner && a.runner !== 'off' && p.runner !== 'full') p.runner = a.runner;
     if (a.lastSeen > p.lastSeen) { p.lastSeen = a.lastSeen; if (a.branch) p.branch = a.branch; }
-    // with several sessions open, the newest status from one that's still open wins
+    // with several sessions open: an open session over a closed one, a summary the Claude wrote over
+    // huddle's guess from a prompt, then the newest
     const at = a.statusAt || a.lastSeen || 0;
-    if (a.status && ((a.online && !p.statusOnline) || (a.online === p.statusOnline && at > p.statusAt))) { p.status = a.status; p.statusAt = at; p.statusOnline = !!a.online; }
+    const rank = (a.online ? 2 : 0) + (a.statusAuto ? 0 : 1);
+    if (a.status && (rank > (p.statusRank || 0) || (rank === p.statusRank && at > p.statusAt))) { p.status = a.status; p.statusAt = at; p.statusRank = rank; }
   }
   // on an older huddle than the newest one on the team (or one that doesn't know its version): no background work
   const newest = Math.max(0, ...Object.values(S.agents).filter(a => a.online && a.build && a.build.at).map(a => a.build.at));
@@ -1231,12 +1233,14 @@ function nowDoing(name) {
 }
 // The card's two lines: what they're working on, as one short phrase (Claude's own status, or the
 // summary huddle makes of their last prompt), and a small line for what's happening right now.
-function lastPrompt(name) { for (let i = S.entries.length - 1; i >= 0; i--) if (S.entries[i].who === name && S.entries[i].kind === 'prompt') return S.entries[i]; return null; }
 // a status as a short phrase: no "asked:" / "answering kelly:" prefixes, quotes or trailing period
 function cleanStatus(st) {
-  let t = String(st || '').trim().replace(/^asked:\s*/i, '').replace(/^(answering|request from) [^:]{1,40}:\s*/i, '');
-  t = t.replace(/^[“"]|[”"]$/g, '').replace(/\.$/, '');
-  return shortTitle(t, 70);
+  let t = String(st || '').trim().replace(/^asked:\s*/i, '').replace(/^(answering|request from|task) [^:]{0,40}:\s*/i, '');
+  t = t.replace(/^[“"]|[”"]$/g, '');
+  // one sentence: cut at the end of the first one when it's long enough to stand alone
+  const end = t.search(/[.?!;](\s|$)/);
+  if (end > 12) t = t.slice(0, end);
+  return shortTitle(t.replace(/\.$/, ''), 72);
 }
 // what a tool step was, in a few words: "Editing routes.py", "Running uv run pytest"
 function stepWords(text) {
@@ -1249,10 +1253,9 @@ const STALE = 3 * 3600 * 1000;
 // The card's two lines. First: what they're working on (their Claude's newest status, or their last
 // prompt), dropped once it's hours old. Second: what's happening right now, and any background Claudes.
 function cardLine(p) {
-  const lp = lastPrompt(p.name);
+  // the summary their Claude gave; huddle's stand-in from the prompt until it does
   let main = '';
   if (p.status && Date.now() - p.statusAt < STALE) main = cleanStatus(p.status);
-  else if (lp && Date.now() - lp.at < STALE) main = cleanStatus(lp.text);
   let e = null;
   for (let i = S.entries.length - 1; i >= 0 && !e; i--) if (S.entries[i].who === p.name && TURN_KINDS.has(S.entries[i].kind) && S.entries[i].kind !== 'msg') e = S.entries[i];
   const bits = [];
@@ -1374,15 +1377,17 @@ function sessionBusy(a) {
   }
   return false;
 }
-// "Session on main, since 9:02: Reviewing the CAD guide"
+// a session is called by what it's working on: "Fixing the CAD guide labels · since 9:02"
 function sessionLabel(a) {
-  const st = a.status && Date.now() - (a.statusAt || 0) < 3 * 3600 * 1000 ? cleanStatus(a.status) : '';
-  return `Session${a.branch ? ' on ' + a.branch : ''}${a.joined ? ', since ' + clock(a.joined) : ''}${st ? ': ' + shortTitle(st, 44) : ''}`;
+  let what = a.status && Date.now() - (a.statusAt || 0) < 3 * 3600 * 1000 ? cleanStatus(a.status) : '';
+  if (!what) for (let i = S.entries.length - 1; i >= 0; i--) { const e = S.entries[i]; if (e.agent === a.id && e.kind === 'prompt') { what = cleanStatus(e.text); break; } }
+  return `${shortTitle(what, 48) || 'New session, nothing yet'}${a.joined ? ' · since ' + clock(a.joined) : ''}`;
 }
 function sessionName(id) {
   const a = S.agents[id];
   const who = a ? a.name : String(id).split('#')[0];
-  return `${who === myName() ? 'your' : who + "'s"} session${a && a.branch ? ' on ' + a.branch : ''}`;
+  const what = a ? sessionLabel(a).replace(/ · since .*$/, '') : '';
+  return `${who === myName() ? 'your' : who + "'s"} session${what && !/^New session/.test(what) ? ` “${what}”` : ''}`;
 }
 // "Ask" on someone in the team list: the request box, aimed at their Claude
 function askClaude(name) {

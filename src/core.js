@@ -76,6 +76,18 @@ function blockingLock(p, who, branch, fp, dir) {
 const NEEDS_A_PERSON = /\b(push|deploy|publish|release|wrangler|vercel|netlify|heroku|gh\s+(pr|release|repo|api)|npm\s+(publish|login)|sudo|pkexec|su\s|ssh|scp|rsync|curl|wget|docker\s+(push|login)|kubectl|terraform|rm\s+-[a-z]*r|reset\s+--hard|clean\s+-[a-z]*f|kill(all)?\b|systemctl|shutdown|reboot|chmod\s+-R|chown|mkfs|dd\s+if=)|main checkout|your checkout|outside (the|this) (project|folder|repo)|(^|\s)~\/|\/etc\/|\/usr\//i;
 function needsAPerson(command) { return NEEDS_A_PERSON.test(command); }
 
+// A request's first line as a title: "can you / please" and the like dropped, cut at the end of the first
+// sentence, at most ~60 characters. Its Claude renames it to a few plain words when it starts.
+function requestTitle(text) {
+  let t = String(text || '').split('\n').map(l => l.trim()).find(Boolean) || '';
+  t = t.replace(/^(hey|hi|ok(ay)?|so|also|and|now)[,!.]?\s+/i, '')
+    .replace(/^(can|could|would|will) (you|u)\s+(please\s+)?|^please\s+|^i (want|need|would like) (you )?to\s+|^(let'?s|go ahead and)\s+/i, '');
+  const end = t.search(/[.?!;](\s|$)/);
+  if (end > 12) t = t.slice(0, end);
+  if (t.length > 60) t = t.slice(0, 60).replace(/\s+\S*$/, '') + '…';
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
 // a person's canonical name: aliases first, then a name that only differs in capitals ("kelly" -> "Kelly")
 function canonicalName(p, name) {
   name = (p.aliases || {})[name] || name;
@@ -176,7 +188,7 @@ class Project {
   }
   publicAgent(a) {
     return { id: a.id, name: a.name, host: a.host, checkout: a.checkout, kind: a.kind, branch: a.branch || null, runner: a.runner || null,
-      status: a.status, statusAt: a.statusAt || null, lastSeen: a.lastSeen, joined: a.joined || null, online: this.online(a), build: a.build || null, clone: a.clone || null };
+      status: a.status, statusAuto: !!a.statusAuto, statusAt: a.statusAt || null, lastSeen: a.lastSeen, joined: a.joined || null, online: this.online(a), build: a.build || null, clone: a.clone || null };
   }
   fileMeta(f) {
     return { path: f.path, branch: f.branch || null, hash: f.hash, by: f.by, byName: f.byName, at: f.at,
@@ -442,7 +454,11 @@ const routes = {
     if (status === a.status) return { ok: true };
     // only replace the status the caller saw (a late summary never overwrites a newer status)
     if (b.ifStatus !== undefined && a.status !== b.ifStatus) return { ok: false, status: a.status };
+    // a status guessed from a prompt is only a stand-in: it doesn't replace the summary the Claude itself
+    // set for the work it's on (follow-up prompts on the same work would otherwise overwrite it)
+    if (b.auto && a.status && !a.statusAuto && now() - (a.statusAt || 0) < 30 * 60 * 1000) return { ok: true, kept: true };
     a.status = status;
+    a.statusAuto = !!b.auto;
     a.statusAt = now();
     if (status) {
       p.worklog = p.worklog || [];
@@ -792,7 +808,7 @@ const routes = {
     if (to) {
       goal.status = 'planned';
       goal.planner = to;
-      pushTask(p, { goalId: goal.id, title: text.split('\n')[0].slice(0, 200), detail: text, owner: to, direct: true }, a);
+      pushTask(p, { goalId: goal.id, title: requestTitle(text), detail: text, owner: to, direct: true }, a);
     }
     boardChanged(p, 'goal', { goal }, a);
     return { ok: true, goal };
@@ -858,6 +874,12 @@ const routes = {
       t.status = b.status;
     }
     if (b.owner !== undefined) t.owner = b.owner || null;
+    // its Claude names it properly: a few plain words for the outcome (a request to one Claude names its goal too)
+    if (b.title && String(b.title).trim()) {
+      t.title = String(b.title).replace(/\s+/g, ' ').trim().slice(0, 80);
+      const g = t.direct && p.board.goals.find(x => x.id === t.goalId);
+      if (g) g.title = t.title;
+    }
     if (b.limitHit !== undefined) t.limitHit = !!b.limitHit;
     // what checked the work before it merged: { review: 'ok'|'fixed'|'issues', tests: 'passed'|'failed'|'none', merged }
     if (b.checks && typeof b.checks === 'object') t.checks = { ...(t.checks || {}), ...b.checks };
@@ -1164,5 +1186,5 @@ function waitOn(p, pred, timeoutMs, onAbort) {
   });
 }
 
-module.exports = { needsAPerson, handOn, assignByUsage, Project, routes, waitOn, parseFrontmatter, fileKey, GIT_CHUNK, sha, now, httpError, sameSecret, normPath, aiLabel, taskIdsIn, blockingLock,
+module.exports = { needsAPerson, requestTitle, handOn, assignByUsage, Project, routes, waitOn, parseFrontmatter, fileKey, GIT_CHUNK, sha, now, httpError, sameSecret, normPath, aiLabel, taskIdsIn, blockingLock,
   ONLINE_MS, MAX_FILE_BYTES, OPEN_IDLE_MS, OPEN_MAX_PROJECTS, OPEN_CREATES_PER_HOUR };

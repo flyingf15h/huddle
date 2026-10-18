@@ -268,11 +268,11 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
     assert.match(await alice.tool('huddle_autopilot', { mode: 'requests' }), /requests only/);
     await until(async () => (await api('state')).agents.some(a => a.name === 'alice' && a.runner === 'requests'), 8000, "alice's runner on requests");
     await api('goal', { agent: human, text: 'rename add to plus', to: 'alice' });
-    await until(() => /rename add to plus/.test(runs()), 10000, 'request run by alice\'s Claude');
-    await until(async () => (await api('board')).tasks.some(t => t.title === 'rename add to plus' && t.status === 'done'), 8000, 'request marked done');
+    await until(() => /rename add to plus/i.test(runs()), 10000, 'request run by alice\'s Claude');
+    await until(async () => (await api('board')).tasks.some(t => t.title === 'Rename add to plus' && t.status === 'done'), 8000, 'request marked done');
     // the answer goes back to whoever asked, with any command that needs alice's OK
     await until(async () => (await api('messages')).messages.some(m => m.to === 'carol' && m.fromName === 'alice'
-      && /Re your request "rename add to plus"/.test(m.text) && /Renamed add to plus/.test(m.text) && /Needs alice's OK: npm test/.test(m.text)), 8000, 'reply to carol');
+      && /Re your request "Rename add to plus"/.test(m.text) && /Renamed add to plus/.test(m.text) && /Needs alice's OK: npm test/.test(m.text)), 8000, 'reply to carol');
     await api('goal', { agent: human, text: 'whole team: write docs' });
     await sleep(1500);
     assert(!/write docs/.test(runs()), 'requests mode must not take team-wide goals');
@@ -304,7 +304,7 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
     await api('goal', { agent: human, text: 'do this later', to: 'alice' });
     await sleep(2000);
     assert.equal(runs(), before, 'off means requests wait');
-    assert.equal((await api('board')).tasks.find(t => t.title === 'do this later').status, 'todo');
+    assert.equal((await api('board')).tasks.find(t => t.title === 'Do this later').status, 'todo');
     ok("Claudes are active by default and answer each other once; big prompts are split by remaining usage; off makes requests wait");
 
     // whatever the person asks, their Claude reads the team's messages and open requests first
@@ -312,7 +312,7 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
     const first = alice.hook('prompt', { prompt: 'fix the typo in the readme' }).hookSpecificOutput.additionalContext;
     assert(first.startsWith("huddle: read this first, before your user's prompt"), first);
     assert.match(first, /please update huddle/);
-    assert.match(first, /Requests sent to you \(alice's Claude\):\n- \[\w+\] from carol, todo: do this later/);
+    assert.match(first, /Requests sent to you \(alice's Claude\):\n- \[\w+\] from carol, todo: Do this later/);
     assert.match(first, /runner is off, so these wait for you/);
     ok('every prompt starts with the messages and open requests sent to that Claude');
 
@@ -323,7 +323,7 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
     assert.match(named, /Requests sent to you \(Pip, alice's Claude\)/);
     assert(!/named you/.test(alice.hook('prompt', { prompt: 'again' }).hookSpecificOutput.additionalContext), 'only said once');
     await api('goal', { agent: human, text: 'task for pip', to: 'pip' });
-    assert.equal((await api('board')).tasks.find(t => t.title === 'task for pip').owner, 'alice');
+    assert.equal((await api('board')).tasks.find(t => t.title === 'Task for pip').owner, 'alice');
     await api('message', { agent: human, to: 'Pip', text: 'hello pip' });
     assert.equal((await api('messages')).messages.find(m => m.text === 'hello pip').to, 'alice');
     assert.match((await api('setting', { agent: human, aiName: 'pip' })).error, /already someone/);
@@ -337,13 +337,13 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
     alice.hook('prompt', { prompt: 'baseline' });
     bob.hook('prompt', { prompt: 'add a search box to the parts library panel' });
     const teamSeen = alice.hook('prompt', { prompt: 'what now' }).hookSpecificOutput.additionalContext;
-    assert.match(teamSeen, /what the other Claudes are doing changed:\n- bob's Claude: asked: “add a search box to the parts library panel”/);
+    assert.match(teamSeen, /what the other Claudes are doing changed:\n- bob's Claude: Add a search box to the parts library panel/);
     assert(!/Claudes are doing/.test((alice.hook('prompt', { prompt: 'and now' }).hookSpecificOutput || {}).additionalContext || ''), 'unchanged team is not repeated');
     bob.hook('prompt', { prompt: 'yes go ahead' });
     assert(!/Claudes are doing/.test((alice.hook('prompt', { prompt: 'again' }).hookSpecificOutput || {}).additionalContext || ''), 'a short follow-up keeps the status');
     await bob.tool('huddle_set_status', { status: 'parts search: filtering by category' });
     assert.match(alice.hook('prompt', { prompt: 'x' }).hookSpecificOutput.additionalContext, /- bob's Claude: parts search: filtering by category/);
-    assert.match(await alice.tool('huddle_status'), /Recently started work[\s\S]*bob, \d+s ago: asked: “add a search box[\s\S]*bob, \d+s ago: parts search/);
+    assert.match(await alice.tool('huddle_status'), /Recently started work[\s\S]*bob, \d+s ago: Add a search box[\s\S]*bob, \d+s ago: parts search/);
     ok("each Claude's current work reaches the others as it changes, and only then");
 
     // folder locks: only one Claude edits inside a locked folder, and locks never overlap
@@ -380,8 +380,8 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
     carol.hook('post', notesEdit);
     carol.hook('session-end', {});
     const autoNote = (await api('handoffs')).handoffs.find(h => h.name === 'carol');
-    assert(autoNote && autoNote.auto && /Was on: asked: “tighten the error messages/.test(autoNote.text) && autoNote.files.includes('notes.txt'), JSON.stringify(autoNote));
-    assert.match(carol.hook('session-start', {}).hookSpecificOutput.additionalContext, /Where people left off[\s\S]*you \(an earlier session\)[^\n]*tighten the error[\s\S]*- bob, /);
+    assert(autoNote && autoNote.auto && /Was on: tighten the error messages/i.test(autoNote.text) && autoNote.files.includes('notes.txt'), JSON.stringify(autoNote));
+    assert.match(carol.hook('session-start', {}).hookSpecificOutput.additionalContext, /Where people left off[\s\S]*you \(an earlier session\)[^\n]*tighten the error[\s\S]*- bob, /i);
     carol.hook('session-end', {});
     assert.match(await alice.tool('huddle_status'), /Hand-off notes[\s\S]*bob[^\n]*parts search works/);
     ok('hand-off notes reach the team and the next session, written by huddle when Claude leaves none');

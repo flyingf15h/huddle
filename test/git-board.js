@@ -219,7 +219,7 @@ setTimeout(() => {
     const runner = ap.createRunner({ cfg: dcfg, client: new Client(dcfg, identity(dcfg, 'autopilot')), log: () => {} });
     await runner.refreshMode();
     runner.work();
-    const reqs = () => api('board').then(bd => bd.tasks.filter(t => ['write notes A', 'write notes B', 'touch calc please'].includes(t.title)));
+    const reqs = () => api('board').then(bd => bd.tasks.filter(t => ['write notes a', 'write notes b', 'touch calc please'].includes(t.title.toLowerCase())));
     const end = Date.now() + 20000;
     while (!(await reqs()).every(t => t.status === 'done')) { assert(Date.now() < end, 'requests never finished'); await new Promise(r => setTimeout(r, 200)); }
     runner.stop();
@@ -234,15 +234,15 @@ setTimeout(() => {
     }
     const reviews = runs.filter(r => r[0] === 'review');
     assert(reviews.length >= 2 && reviews.every(r => r[1] === 'true' && r[2] === r[3] && r[2].startsWith(path.join(tmp, 'clones'))), 'each change is reviewed by Sonnet in its own worktree');
-    assert.equal((await reqs()).find(t => t.title === 'write notes A').checks.review, 'ok');
+    assert.equal((await reqs()).find(t => t.title === 'Write notes A').checks.review, 'ok');
     assert(fs.existsSync(path.join(dave.root, `notes-${ra}.txt`)) && fs.existsSync(path.join(dave.root, `notes-${rb}.txt`)), 'clean results merged into dave\'s branch');
     assert(dave.read('calc.py').includes('# wip') && !dave.read('calc.py').includes('# from the request'), "dave's own work is untouched");
-    const calcId = (await reqs()).find(t => t.title === 'touch calc please').id;
+    const calcId = (await reqs()).find(t => t.title === 'Touch calc please').id;
     assert(dave.git('branch').includes(`huddle-request-${calcId}`) && !dave.git('branch').includes(`huddle-request-${ra}`));
     assert.equal(dave.git('worktree', 'list').split('\n').length, 1, 'worktrees are cleaned up');
     const replies = (await api('messages')).messages.filter(m => m.to === 'erin' && /Re your request/.test(m.text));
     assert.equal(replies.filter(m => /merged into dave's main/.test(m.text)).length, 2);
-    assert.match(replies.find(m => /touch calc/.test(m.text)).text, new RegExp(`on branch huddle-request-${calcId}`));
+    assert.match(replies.find(m => /touch calc/i.test(m.text)).text, new RegExp(`on branch huddle-request-${calcId}`));
     ok('requests run as their own Claudes in parallel worktrees; clean results merge in, the rest wait on a branch');
 
     // checks before merging: failing tests keep the work on its branch; commands it couldn't run wait for dave's OK
@@ -262,7 +262,7 @@ if (p.includes('ship it')) { fs.writeFileSync('ship.txt', 'ready\\n'); console.l
     const runner2 = ap.createRunner({ cfg: dcfg, client: new Client(dcfg, identity(dcfg, 'autopilot')), log: () => {} });
     await runner2.refreshMode();
     runner2.work();
-    const task2 = (title) => api('board').then(bd => bd.tasks.find(t => t.title === title));
+    const task2 = (title) => api('board').then(bd => bd.tasks.find(t => t.title.toLowerCase() === title));
     const end2 = Date.now() + 30000;
     while (!((await task2('break the tests')).checks && (await task2('ship it')).status === 'done')) { assert(Date.now() < end2, 'checked requests never finished'); await new Promise(r => setTimeout(r, 200)); }
     const broke = await task2('break the tests');

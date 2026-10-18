@@ -89,8 +89,8 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: { test_command: { type: 'string', description: 'e.g. "npm test"; empty string to go back to guessing' }, review: { type: 'boolean' } } } },
   { name: 'huddle_claim_task', description: 'Take an unassigned task from the board (only one agent can win it).',
     inputSchema: { type: 'object', properties: { task_id: { type: 'string' } }, required: ['task_id'] } },
-  { name: 'huddle_update_task', description: 'Update a task: status todo|doing|done|blocked, an optional note (what you did, or why blocked), or reassign with owner.',
-    inputSchema: { type: 'object', properties: { task_id: { type: 'string' }, status: { type: 'string', enum: ['todo', 'doing', 'done', 'blocked'] }, note: { type: 'string' }, owner: { type: 'string' } }, required: ['task_id'] } },
+  { name: 'huddle_update_task', description: 'Update a task: status todo|doing|done|blocked, an optional note (what you did, or why blocked), reassign with owner, or rename it with title (2 to 6 plain words).',
+    inputSchema: { type: 'object', properties: { task_id: { type: 'string' }, status: { type: 'string', enum: ['todo', 'doing', 'done', 'blocked'] }, note: { type: 'string' }, owner: { type: 'string' }, title: { type: 'string' } }, required: ['task_id'] } },
   { name: 'huddle_autopilot', description: "See or change this person's autopilot setting: 'full' (default, active: answers messages from the other Claudes while the person is away, runs requests and assigned tasks as background Claudes, plans team goals), 'requests' (only what is sent to this person's Claude directly), or 'off' (everything waits for the person). Omit mode to see the current setting.",
     inputSchema: { type: 'object', properties: { mode: { type: 'string', enum: ['off', 'requests', 'full', 'on'] } } } },
   { name: 'huddle_name', description: "See or change the name your person gave you (their Claude), e.g. \"Pip\". The team sees it on the dashboard and can send you work with to=<name>. Only change it when your user asks; an empty name removes it.",
@@ -394,8 +394,8 @@ function runMcp() {
         return r.ok ? `task ${a.task_id} is yours: ${r.task.title}` : `${r.owner} already has that task`;
       }
       case 'huddle_update_task': {
-        const r = await client.post('task-update', { id: a.task_id, status: a.status, note: a.note, owner: a.owner });
-        return `task ${r.task.id} is now ${r.task.status}${r.task.owner ? ' (' + r.task.owner + ')' : ''}`;
+        const r = await client.post('task-update', { id: a.task_id, status: a.status, note: a.note, owner: a.owner, title: a.title });
+        return `task ${r.task.id} "${r.task.title}" is now ${r.task.status}${r.task.owner ? ' (' + r.task.owner + ')' : ''}`;
       }
       case 'huddle_autopilot': {
         if (a.mode) {
