@@ -63,26 +63,36 @@ GitHub isn't involved in any of this. Everything goes through the huddle server 
 - **Hand-off notes.** When a session ends, it leaves a short note on where it left off and what's next (Claude writes it with `huddle_handoff`, or huddle writes one from its status, edited files and commits). The rest of the team sees it, and so does your next session.
 - **Commits are shared automatically.** Whenever a Claude finishes a turn, any new commits are sent to the rest of the team through huddle. People on other branches get them when they merge (see [branches and merging](#different-versions-branches-and-merging)).
 - **The Claudes message each other.** A Claude can message the whole team or one person's Claude, and the message shows up in the other Claude's context at its next step. A Claude that gets a direct message has to answer it before it stops. They also coordinate through the shared task list.
-- **Requests start right away, messages wait.** Something sent to a person's Claude with *Message Claude* starts immediately if their Claude takes requests (the default, see [Autopilot](#autopilot-what-your-claude-does-with-work-from-the-team)). Messages between Claudes are read at their next step.
+- **Requests start right away.** Something sent to a person's Claude with *New request* starts immediately unless their Claude is set to Off (see [Autopilot](#autopilot-what-your-claude-does-with-work-from-the-team)). A Claude that's mid-turn reads messages at its next step; an idle one answers in the background.
 
 ## Talking to all the Claudes at once
 
-Write it in the **Message Claude** box at the bottom of the dashboard (or run `huddle ask "add a history feature with tests"`) and pick who it's for:
+Write it in the **New request** box at the bottom of the dashboard (or run `huddle ask "add a history feature with tests"`) and pick who it's for:
 
 - **Full team:** the first free Claude claims it, looks at the code, splits it into tasks with an owner each (split by file so nobody collides, with dependencies where needed), and tells the team. Every Claude is told which tasks are theirs, works on them, commits, and marks them done. Progress shows under **Tasks** on the right side of the dashboard.
 - **One person:** only that person's Claude gets it, as a task of its own (`huddle ask "..." --to alex` from the terminal).
 
 ### Autopilot: what your Claude does with work from the team
 
-Each person chooses, and can change it any time:
+Each person chooses, and can change it any time. It decides what starts in the background on your computer while your own Claude session isn't doing it:
 
-| Setting | What happens |
-|---|---|
-| **Active** (default) | Your Claude works with the others even while you're away, as long as you have Claude Code open in the project folder. When another Claude messages yours and your session is idle, a short background Claude answers it (automatic answers never start another run, so two Claudes can't keep each other going). Requests sent to your Claude, tasks assigned to it and team-wide requests all start on their own. Each one gets a Claude of its own (a new conversation in its own git worktree, up to 3 at once), so the conversation you're having isn't interrupted. When one finishes, its commits merge into your branch if they merge cleanly; otherwise they wait on `huddle-request-<id>` and the sender is told. |
-| **Requests only** | Only what someone sends straight to your Claude starts on its own. Messages, tasks and team-wide requests wait for you. |
-| **Off** | Nothing starts on its own. Requests wait until you tell your Claude to work on them. |
+| Setting | Requests and messages sent to your Claude | Team-wide requests and unassigned tasks |
+|---|---|---|
+| **Active** (default) | Start on their own | Your Claude plans team requests and takes open tasks |
+| **Requests only** | Start on their own | Left to the others |
+| **Off** | Wait until you open Claude in the project | Left to the others |
 
-Change it from the **My Claude** menu at the top of the dashboard, with `/autopilot on`, `/autopilot requests` or `/autopilot off` inside Claude Code (or just ask Claude), or with `huddle autopilot on|requests|off` in a terminal. The team can see each person's setting on their card: **Active**, **Requests only**, **Online** (open but not taking requests) or **Away**.
+What that means in practice:
+
+- **It doesn't matter who sent it.** A request from a person on the dashboard and one from another person's Claude (`huddle_ask_team` with a name) are treated the same, and so are messages.
+- **Requests never need approval.** The only approval step is for shell commands (see [Commands that need your OK](#commands-that-need-your-ok)), and that applies in every mode.
+- **Messages:** when another Claude messages yours and your session is idle, a short background Claude answers it. Automatic answers never start another run, so two Claudes can't keep each other going. If your session is busy, your Claude reads the message at its next step instead. With Off, messages wait for you.
+- **Each request runs as its own Claude** (a new conversation in its own git worktree, up to 3 at once), so the conversation you're having isn't interrupted. When one finishes, its commits merge into your branch if they merge cleanly; otherwise they wait on `huddle-request-<id>` and the sender is told.
+- **With Off,** your Claude is reminded about waiting requests when you next start it, and you decide what to do with them.
+
+Background work needs Claude Code open in the project folder, or `huddle autopilot` running in a terminal there.
+
+Change it from the menu at the bottom of the dashboard's sidebar, with `/autopilot on`, `/autopilot requests` or `/autopilot off` inside Claude Code (or just ask Claude), or with `huddle autopilot on|requests|off` in a terminal. The team list shows each person's status with a dot: orange for Active, green for online, grey for away.
 
 ### Checks before background work lands
 
@@ -90,7 +100,7 @@ Before work from a background Claude merges into your branch, two things check i
 
 ### Commands that need your OK
 
-A background Claude can only run git and the commands you've allowed. When it needs another one, like a build or a deploy, it does what it can and asks. The command shows under **Needs your OK** in the dashboard, and you get a notification. Allow it there, or with `huddle approve ID` in a terminal, or just tell your Claude. The task then runs again with that exact command allowed. Only you can approve commands for your Claude. Approving from a browser needs the page to be opened with `huddle open` on your computer, which hands it a key nobody else has, so don't share that link.
+A background Claude runs in Claude Code's auto mode, like your own sessions: safe commands go through and risky ones (deploys, publishing, deleting things outside the project) are refused, because nobody is there to approve them. When it needs one of those, it does what it can and asks. The command shows under **Awaiting your approval** in the dashboard, and you get a notification. Allow it there, or with `huddle approve ID` in a terminal, or just tell your Claude. The task then runs again with that exact command allowed. Only you can approve commands for your Claude. Approving from a browser needs the page to be opened with `huddle open` on your computer, which hands it a key nobody else has, so don't share that link.
 
 ### When someone runs out of usage or leaves
 
@@ -108,7 +118,7 @@ Coming back after half an hour or more, the dashboard shows one dismissible line
 
 When you give your Claude a prompt with several separate pieces of work, huddle suggests splitting it. Your Claude calls `huddle_distribute` with each part and how big it is (light, medium or heavy). huddle gives the heavier parts to whoever has the most of their 5-hour Claude window left, the other Claudes start on theirs right away, and your Claude does the parts it kept. Team-wide requests from the dashboard are split the same way. Each person's Claude Code status line reports how much of their window is used, and their card on the dashboard shows what's left.
 
-Autopilot runs Claude on *your* computer with *your* Claude subscription, so your laptop has to be on. It needs either a Claude Code session open in the folder, or `huddle autopilot` running in a terminal there (for when you don't want Claude open). By default it can edit files and use git. Allow more with `--allow`, for example `huddle autopilot --allow "Bash(npm test:*)"`, or set `"autopilotAllow": ["Bash(npm test:*)"]` in `.huddle/config.json` so it also applies in the background.
+Autopilot runs Claude on *your* computer with *your* Claude subscription, so your laptop has to be on. It needs either a Claude Code session open in the folder, or `huddle autopilot` running in a terminal there (for when you don't want Claude open). Each request, task or answer is its own Claude Code session, the same as if you had started a new conversation yourself: it starts for that one job and ends when the job is done. It runs in auto mode (accounts without auto mode get `acceptEdits`, which allows edits, git and the commands you've allowed), with your settings, your `CLAUDE.md` and `CLAUDE.local.md`, your `.claude/settings.local.json` and the MCP servers you added for the project folder. Pick another mode with `"autopilotPermissionMode": "acceptEdits"` in `.huddle/config.json`, or `huddle autopilot --permission-mode acceptEdits`. Allow more with `--allow`, for example `huddle autopilot --allow "Bash(npm test:*)"`, or set `"autopilotAllow": ["Bash(npm test:*)"]` in `.huddle/config.json` so it also applies in the background.
 
 You hear about messages and requests sent to your Claude right away: while a Claude Code session is open in the folder, huddle shows a desktop notification for each message to you (or to everyone) and each request for your Claude, so you don't have to wait for your next prompt. Your Claude also leads its next turn with them. Set `"notify": false` in `.huddle/config.json` to turn the pop-ups off.
 
@@ -134,17 +144,19 @@ Only sessions started in a joined folder (or a folder linked with `huddle link`)
 
 ## The dashboard
 
-Open it with `huddle open` in a joined folder, or with the dashboard link `join` printed. It updates live, so you can leave it open in a tab while you work. It comes in a cream light theme and a warm dark theme (or Auto, following your system), switched from the header.
+Open it with `huddle open` in a joined folder, or with the dashboard link `join` printed. It updates live, so you can leave it open in a tab while you work. It has a light and a dark theme (following your system until you pick one with the button in the header), both drawn over a still image of water in the style of the Submerge wallpaper.
 
-- **Team cards** across the top, one per person, saying in plain words what they and their Claude are doing right now ("Claude edited viewer/src/Scene.tsx", "Claude is idle"), whether they're online, which branch they're on, and how many tasks they have in progress. Click a card to see only that person.
-- **Timeline:** everything that happens, grouped into turns per person: what they asked their Claude, the steps it took (long runs collapse), and a one-line summary of its reply (hover it for the whole thing). Messages between the Claudes and task updates show up in between. Filter it with the chips above it.
+- **Sidebar:** the project switcher at the top, then the four pages, then the team list: what each person and their Claude are doing right now, how much Claude usage they have left, and a dot for their status. Click someone to see only their activity. Your Claude's mode is at the bottom.
+- **Activity:** everything that happens, newest at the bottom. Each row says who did what ("tszfei requested from the team", "kelly messaged you"), then the content: prompts, the steps Claude took (long runs collapse), a one-line summary of its reply (hover for all of it), plans, and messages. Filter by Everything, Claude's work or Messages.
 - **Code:** pick anyone's shared branch and browse its files. A file someone is editing right now is marked with a lock and has a **Show live version** button, so you can watch it change before anything is committed.
-- **Brief & memory:** the project brief, team memory and shared skills that every Claude reads when it starts. You can read and edit all of it right there.
-- **Right side:** task progress for every goal, which files are being edited right now and by whom, and recently changed files.
-- **Message Claude:** the box at the bottom, for giving the Claudes something to build (see above).
-- **Invite people** shows the exact steps and command to send a teammate.
+- **Brief & memory:** the project brief, team memory and shared skills that every Claude reads when it starts. You can read and edit all of it there.
+- **Usage:** how much each person used Claude in this project.
+- **Right side:** task progress for every request, which files are being edited right now and by whom, and recently changed files.
+- **New request:** the box at the bottom, for giving the Claudes something to build (see above).
+- **The bell** lists messages to you, requests for your Claude and commands waiting for your approval, with **Mark all as read**. Set it to **Do not disturb** to keep collecting them without pop-ups or desktop alerts, and turn desktop alerts on from there.
+- **Invite people** shows the command to send a teammate. The **?** button explains huddle, including the modes, and runs a short tour.
 
-If you're in several projects, each one has its own dashboard address (`…/#p=project-name`), so separate tabs and bookmarks stay on their own project. The plain address opens the project you used last, and a switcher in the header lists every project you've opened in that browser.
+If you're in several projects, each one has its own dashboard address (`…/#p=project-name`), so separate tabs and bookmarks stay on their own project. The plain address opens the project you used last, and the switcher at the top of the sidebar lists every project you've opened in that browser. Press Escape or **Back** on the invite screen to return to the project you came from.
 
 ## What's shared, and what isn't
 

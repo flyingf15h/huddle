@@ -107,7 +107,7 @@ function taskPrompt(t, b, me, canRun, aiName) {
 Your task [${t.id}]: ${t.title}
 ${t.detail ? '\n' + t.detail + '\n' : ''}${goal ? `\nIt is part of the team goal from ${goal.byName}: ${goal.text}\n${goal.plan ? 'Plan: ' + goal.plan + '\n' : ''}` : ''}${others.length ? '\nOther tasks in this goal:\n' + others.join('\n') + '\n' : ''}
 Do the task in this repository. Stay inside its scope; if you need a file someone else is working on, message them with huddle_send instead of waiting silently.${t.paths && t.paths.length ? `\nYou hold the lock on ${t.paths.join(', ')} for this task; keep your changes there unless the task really needs more.` : ''}
-Shell commands: ${canRun}${t.allow && t.allow.length ? `, and ${me} approved: ${t.allow.join('; ')}` : ''}. Don't try others; they will be refused and nobody is there to approve them. If you can't run a check, say what you couldn't verify in your note instead of blocking the task.
+Shell commands: ${canRun}${t.allow && t.allow.length ? `, and ${me} approved: ${t.allow.join('; ')}` : ''}. Nobody is watching this session to approve anything, so a refused command stays refused; don't retry it. If you can't run a check, say what you couldn't verify in your note instead of blocking the task.
 If the task needs a command you weren't allowed to run, finish what you can, then end your final message with "Needs ${me}'s OK:" and one line per command, as "- <command> — why". ${me} can approve them from the dashboard, and you'll be run again with them allowed. Don't mark the task blocked for this.${t.notes && t.notes.length ? `\nNotes on this task so far:\n${t.notes.slice(-4).map(n => `- ${n.by}: ${n.text}`).join('\n')}` : ''}
 When it's done, commit it with git (one short message; anything left uncommitted is committed for you). Then call huddle_update_task with task_id "${t.id}", status "done" and a one-line note of what you did. Only use status "blocked" for a real problem in the work itself.${t.direct ? `
 ${t.by} sent you this directly, and your final message goes back to ${t.by} as your reply. Always answer, even if you can't finish: read what's needed, do what you can without the refused commands, then end with a short reply saying what you did or found.` : ''}`;
@@ -167,6 +167,19 @@ ${detail.slice(-4000)}
 Fix the code so this is resolved. Only fix real problems; if one is wrong, skip it and say why.${cmd ? ` You may run \`${cmd}\` to check.` : ''} Commit your fix with git (one short message).`;
 }
 
+// The MCP servers a Claude started in the person's folder would have that a worktree wouldn't: ones
+// added with `claude mcp add` for that folder (kept in ~/.claude.json by path) and an uncommitted .mcp.json.
+function folderMcpServers(root) {
+  const out = {};
+  try { Object.assign(out, JSON.parse(fs.readFileSync(path.join(root, '.mcp.json'), 'utf8')).mcpServers || {}); } catch {}
+  try {
+    const all = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude.json'), 'utf8'));
+    Object.assign(out, ((all.projects || {})[root] || {}).mcpServers || {});
+  } catch {}
+  delete out.huddle;   // the clone gets its own huddle server
+  return out;
+}
+
 // A worktree on a branch of its own for one request, set up as the same person in the same huddle.
 // null when this isn't a git checkout with commits (the request then runs in the folder itself).
 function makeClone(cfg, id) {
@@ -189,10 +202,14 @@ function makeClone(cfg, id) {
       try { fs.symlinkSync(path.join(root, d), path.join(dir, d), 'junction'); } catch {}
     }
   }
+  // the person's own, uncommitted Claude setup comes along, so the clone works like a conversation they started
   const local = path.join(root, '.claude', 'settings.local.json');
   if (fs.existsSync(local)) {
     fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
     fs.copyFileSync(local, path.join(dir, '.claude', 'settings.local.json'));
+  }
+  if (fs.existsSync(path.join(root, 'CLAUDE.local.md')) && !fs.existsSync(path.join(dir, 'CLAUDE.local.md'))) {
+    fs.copyFileSync(path.join(root, 'CLAUDE.local.md'), path.join(dir, 'CLAUDE.local.md'));
   }
   return { id, dir, branch, base, person };
 }
@@ -252,7 +269,9 @@ async function getMode(client) {
 // log: status lines; out: Claude's own output (null to discard).
 function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
   const me = cfg.name;
-  const permission = flags['permission-mode'] || cfg.autopilotPermissionMode || 'acceptEdits';
+  // auto, like the person's own sessions: Claude Code's safety check approves what's safe and refuses what's
+  // risky. Accounts without auto mode fall back to acceptEdits (edits plus the allowed commands).
+  let permission = flags['permission-mode'] || cfg.autopilotPermissionMode || 'auto';
   const extraAllow = [].concat(flags.allow || cfg.autopilotAllow || []).flatMap(a => String(a).split(',')).map(a => a.trim()).filter(Boolean);
   // how many request Claudes may run at once (one when they'd share this folder)
   const max = Math.max(1, Number(flags.parallel || cfg.requestsParallel || 3));
@@ -264,24 +283,36 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
   let pumping = false, again = false, mode = DEFAULT_MODE, stopped = false;
 
   // model: e.g. 'sonnet' for reviews and test fixes; allow: extra tools for this run; readOnly: no edits
-  const runClaude = (prompt, { cwd = cfg.root, session, mcpRoot, model, allow = [], readOnly = false } = {}) => new Promise((resolve) => {
+  const runOnce = (prompt, { cwd = cfg.root, session, mcpRoot, model, allow = [], readOnly = false } = {}) => new Promise((resolve) => {
     const allowed = ['mcp__huddle', 'Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git log:*)', 'Bash(git show:*)', 'Bash(git add:*)', 'Bash(git commit:*)', ...extraAllow, ...allow];
     const args = ['-p', prompt, '--permission-mode', permission];
-    // a worktree isn't the folder the huddle MCP server was registered for, so hand it over directly
-    if (mcpRoot) args.push('--mcp-config', JSON.stringify({ mcpServers: { huddle: { type: 'stdio', command: process.execPath, args: [CLI, 'mcp'], env: { HUDDLE_ROOT: mcpRoot } } } }));
+    // a worktree isn't the folder the huddle MCP server (or the person's other folder-level servers) were
+    // registered for, so hand them over directly
+    if (mcpRoot) args.push('--mcp-config', JSON.stringify({ mcpServers: { ...(mcpRoot !== cfg.root ? folderMcpServers(cfg.root) : {}), huddle: { type: 'stdio', command: process.execPath, args: [CLI, 'mcp'], env: { HUDDLE_ROOT: mcpRoot } } } }));
     if (model || flags.model || cfg.autopilotModel) args.push('--model', model || flags.model || cfg.autopilotModel);
     if (readOnly) args.push('--disallowedTools', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit');
     args.push('--allowedTools', ...allowed);
     // (the session's MCP server runs with HUDDLE_ROOT set to the person's folder; a clone has its own)
     const env = { ...process.env, HUDDLE_AUTOPILOT: '1', ...(session ? { HUDDLE_SESSION: session } : {}), ...(mcpRoot ? { HUDDLE_ROOT: mcpRoot } : {}) };
     const child = spawn('claude', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env });
-    let text = '';
+    let text = '', err = '';
     child.stdout.on('data', d => { text += d; if (out) out(String(d)); });
-    child.stderr.on('data', d => { if (out) out(String(d)); });
-    child.on('error', e => { log('could not start claude: ' + e.message); resolve({ code: 1, out: text }); });
-    child.on('close', code => resolve({ code, out: text }));
+    child.stderr.on('data', d => { err += d; if (out) out(String(d)); });
+    child.on('error', e => { log('could not start claude: ' + e.message); resolve({ code: 1, out: text, err }); });
+    child.on('close', code => resolve({ code, out: text, err }));
   });
+  // each run is its own Claude Code session, started for this one job and ended when it's done (claude -p exits)
+  const runClaude = async (prompt, opts) => {
+    const res = await runOnce(prompt, opts);
+    if (res.code !== 0 && permission === 'auto' && /auto mode|permission.mode/i.test(res.err + res.out)) {
+      log('auto mode is not available for this account; background Claudes use acceptEdits instead');
+      permission = 'acceptEdits';
+      return runOnce(prompt, opts);
+    }
+    return res;
+  };
   const canRun = () => permission === 'bypassPermissions' ? 'you may run any command'
+    : permission === 'auto' ? `the same as in ${me}'s own sessions: Claude Code's auto mode lets safe commands through and refuses risky ones (deploys, publishing, deleting things outside this folder)`
     : `only git (status, diff, log, add, commit)${extraAllow.length ? ', ' + extraAllow.join(', ') : ''} and whatever the project's .claude/settings.json allows`;
 
   async function refreshMode() {
