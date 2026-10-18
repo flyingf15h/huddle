@@ -334,6 +334,12 @@ details.goal[open] > summary .chev { transform: rotate(90deg); }
 .tmeta .st.doing { color: var(--accent); font-weight: 600; } .tmeta .st.blocked { color: var(--bad); font-weight: 600; } .tmeta .st.done { color: var(--ok); }
 .slabel { flex: none; font-size: 11.5px; font-weight: 600; padding: 0 7px; border-radius: 999px; }
 .slabel.doing { color: var(--accent-soft-ink); background: var(--accent-soft); } .slabel.blocked { color: var(--bad); background: var(--bad-soft); }
+.goal.single { background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 10px; box-shadow: var(--shadow-sm); padding: 2px 2px; }
+.goal.single > .trow { border-radius: var(--radius); }
+.ttag { display: inline-block; font-size: 10.5px; font-weight: 600; letter-spacing: .03em; padding: 0 6px; margin-right: 6px; border-radius: 4px; border: 1px solid var(--line-strong); color: var(--muted); vertical-align: 2px; }
+.twhy { display: block; font-size: 12.5px; color: var(--bad); margin: 1px 0 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tacts { display: flex; gap: 6px; margin: -2px 8px 8px 31px; }
+.tacts button { padding: 3px 10px; font-size: 12.5px; }
 .tdetail { margin: 0 8px 8px 27px; padding: 8px 11px; border-left: 2px solid var(--line-strong); font-size: 13.5px; }
 .tdetail .tfull { font-weight: 600; margin: 0 0 4px; }
 .tdetail p { margin: 2px 0 6px; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -1474,17 +1480,61 @@ function checkBits(t, short) {
   else if (c.review === 'ok') out.push('<span class="ck good" title="Reviewed by Sonnet">Reviewed</span>');
   return out.join('');
 }
-function taskRow(t, b) {
+// a task or request as the team should read it: past "From Kelly (…):", "Re:", "[TAG]" and "NON-DEMO, do not
+// start before …" to the actual ask (the same cleanup the server does for new ones); the tag becomes a label
+function titleParts(raw) {
+  const text = String(raw || '');
+  const tag = ((/^\s*\[([^\]]{1,20})\]/.exec(text) || [])[1] || (/^\s*([A-Z][A-Z0-9-]{2,20})\s*[,:—–]/.exec(text) || [])[1] || '').trim();
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  let t = lines.shift() || '';
+  for (let k = 0; k < 6; k++) {
+    const before = t;
+    t = t.replace(/^from [\w .'-]{1,40}?(\s*\([^)]{0,100}\))?\s*[:,—–-]\s*/i, '')
+      .replace(/^[\w .'-]{1,30} asked (her|his|their|my|your) claude to [^:]{0,40}:\s*/i, '')
+      .replace(/^(re|fwd?|task|request|todo|note)\s*:\s*/i, '')
+      .replace(/^\[[^\]]{1,30}\]\s*/, '')
+      .replace(/^[A-Z][A-Z0-9-]{2,20}\s*[,:—–-]\s*/, '')
+      .replace(/^(do not|don'?t) start (before|until)[^.;]*[.;]\s*/i, '')
+      .replace(/^finish request [0-9a-f]{6,10}\s*\(["“]?([^"”)]+)["”]?\)[.:]?\s*/i, '$1. ');
+    if (!t.trim() && lines.length) t = lines.shift();
+    if (t === before) break;
+  }
+  const end = t.search(/[.?!;](\s|$)/);
+  if (end > 12) t = t.slice(0, end);
+  return { title: shortTitle(t, 64) || shortTitle(text, 64), tag: tag && !/^(RE|FWD|TODO|NOTE)$/i.test(tag) ? tag : '' };
+}
+// the first of these that still says something once cleaned (a stored title can be cut off right after
+// its preamble; the request's full text then has the real ask)
+function bestTitle(...texts) {
+  let first = null;
+  for (const x of texts) {
+    if (!x) continue;
+    const r = titleParts(x);
+    first = first || r;
+    if ((r.title.match(/[A-Za-z0-9]/g) || []).length >= 4) return { title: r.title, tag: r.tag || first.tag };
+  }
+  return first || { title: '', tag: '' };
+}
+const tagChip = (tag) => tag ? `<span class="ttag">${esc(tag)}</span>` : '';
+// why a stuck task is stuck, in one line (its latest note, without huddle's prefixes)
+function stuckReason(t) {
+  const n = t.notes && t.notes.length ? t.notes[t.notes.length - 1].text : '';
+  return shortTitle(String(n).replace(/^(autopilot run (failed|finished)|tests failed \([^)]*\))\s*:\s*/i, '').split('\n')[0], 90);
+}
+function taskRow(t, b, groupTag) {
   const open = S.openTask === t.id;
   const waits = (t.after || []).map(id => b.tasks.find(x => x.id === id)).filter(x => x && x.status !== 'done');
   const note = t.notes && t.notes.length ? t.notes[t.notes.length - 1] : null;
+  const { title, tag: tg } = bestTitle(t.title, t.detail);
+  const tag = tg && tg !== groupTag ? tg : '';
+  const why = t.status === 'blocked' ? stuckReason(t) : '';
   return `<button class="trow ${t.status}" data-task="${esc(t.id)}" aria-expanded="${open}">
       <span class="dot ${t.status}" aria-hidden="true"></span>
-      <span class="tmain"><span class="tt">${esc(shortTitle(t.title, 52))}</span>
-        <span class="tmeta">${t.owner ? avatar(t.owner, true) + `<span class="who">${esc(t.owner)}</span>` : '<span class="who">Nobody yet</span>'}${TASK_STATE[t.status] ? `<span class="st ${t.status}">${TASK_STATE[t.status]}</span>` : ''}${waits.length && t.status === 'todo' ? '<span>Waiting on another task</span>' : ''}${checkBits(t, true)}</span></span>
+      <span class="tmain"><span class="tt">${tagChip(tag)}${esc(title)}</span>${why ? `<span class="twhy">${esc(why)}</span>` : ''}
+        <span class="tmeta">${t.owner ? avatar(t.owner, true) + `<span class="who">${esc(t.owner)}</span>` : '<span class="who">Nobody yet</span>'}${TASK_STATE[t.status] ? `<span class="st ${t.status}">${TASK_STATE[t.status]}</span>` : ''}${waits.length && t.status === 'todo' ? '<span>Waiting on another task</span>' : ''}${t.status !== 'done' && (t.updated || t.at) ? `<span class="faint" title="last change">${esc(ago(t.updated || t.at))}</span>` : ''}${checkBits(t, true)}</span></span>
     </button>
+    ${t.status === 'blocked' || open ? `<div class="tacts">${t.status !== 'done' ? `<button class="small" data-taskdo="todo" data-tid="${esc(t.id)}">Run again</button><button class="small" data-taskdo="done" data-tid="${esc(t.id)}">Mark done</button>` : `<button class="small" data-taskdo="todo" data-tid="${esc(t.id)}">Reopen</button>`}</div>` : ''}
     ${open ? `<div class="tdetail">
-      ${shortTitle(t.title, 72) !== t.title ? `<p class="tfull">${esc(t.title)}</p>` : ''}
       <div class="small muted">${statusWord(t.status)}${t.effort ? ' · ' + EFFORT_WORD[t.effort] + ' job' : ''} · from ${esc(t.by)} ${ago(t.at)}${checkBits(t) ? ' · ' : ''}<span class="tmeta" style="display:inline-flex">${checkBits(t)}</span></div>
       ${t.detail && t.detail.trim() !== t.title.trim() ? `<p>${esc(t.detail)}</p>` : ''}
       ${waits.length ? `<p><b>Waiting for:</b> ${waits.map(x => esc(x.title)).join('; ')}</p>` : ''}
@@ -1535,7 +1585,9 @@ function renderSide() {
   let goals = b ? b.goals.slice().reverse() : [];
   if (S.tf === 'open') goals = goals.filter(g => g.status !== 'done');
   if (S.tf === 'mine') goals = goals.filter(g => b.tasks.some(t => t.goalId === g.id && t.owner === mine));
-  goals = goals.slice(0, 15);
+  // stuck work first, then work in progress, then what's waiting, then finished
+  const rank = (g) => { const ts = b.tasks.filter(t => t.goalId === g.id); return ts.some(t => t.status === 'blocked') ? 0 : ts.some(t => t.status === 'doing') ? 1 : g.status === 'done' ? 3 : 2; };
+  goals = goals.map((g, i) => [g, i]).sort((x, y) => rank(x[0]) - rank(y[0]) || x[1] - y[1]).map(x => x[0]).slice(0, 15);
   const filt = `<div class="tfilter">${[['open', 'Open'], ['mine', 'Mine'], ['all', 'All']].map(([k, l]) => `<button data-tf="${k}" class="${S.tf === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
   const body = goals.map((g, i) => {
     let ts = b.tasks.filter(t => t.goalId === g.id);
@@ -1546,11 +1598,15 @@ function renderSide() {
     const isOpen = S.goalOpen[g.id] ?? (g.status !== 'done' && i < 4);
     const doneTs = ts.filter(t => t.status === 'done'), liveTs = ts.filter(t => t.status !== 'done');
     const showDone = S.showDone[g.id] || !liveTs.length;
+    // a request that is one task is shown as that task, not as a heading with a copy of it underneath
+    if (all.length === 1 && ts.length === 1) return `<div class="goal single">${taskRow(ts[0], b)}</div>`;
+    if (!all.length) { const { title, tag } = bestTitle(g.title, g.text); return `<div class="goal single"><div class="trow todo"><span class="dot todo" aria-hidden="true"></span><span class="tmain"><span class="tt">${tagChip(tag)}${esc(title)}</span><span class="tmeta"><span>${g.status === 'planning' ? 'Being split up' : 'Waiting for a Claude'}</span><span>from ${esc(g.byName)}</span></span></span></div></div>`; }
+    const gp = bestTitle(g.title, g.text);
     return `<details class="goal" data-goal="${esc(g.id)}" ${isOpen ? 'open' : ''}>
-      <summary><div class="gtitle"><svg class="chev" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 3l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="gt" title="${esc(g.text.slice(0, 600))}">${esc(g.title || shortTitle(g.text, 48))}</span></div>
+      <summary><div class="gtitle"><svg class="chev" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 3l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="gt" title="${esc(g.text.slice(0, 600))}">${tagChip(gp.tag)}${esc(gp.title)}</span></div>
         <div class="gmeta"><span class="num">${all.length ? (done === all.length ? 'All done' : `${done} of ${all.length} done`) : g.status === 'planning' ? 'Being split up' : 'Waiting for a Claude'}</span>${all.length ? `<span class="progress" aria-hidden="true"><span style="width:${Math.round(100 * done / all.length)}%"></span></span>` : ''}</div></summary>
-      <div class="tlist">${liveTs.map(t => taskRow(t, b)).join('')}
-        ${doneTs.length ? (showDone ? doneTs.map(t => taskRow(t, b)).join('') : `<button class="link showdone" data-showdone="${esc(g.id)}">Show ${doneTs.length} done</button>`) : ''}
+      <div class="tlist">${liveTs.map(t => taskRow(t, b, gp.tag)).join('')}
+        ${doneTs.length ? (showDone ? doneTs.map(t => taskRow(t, b, gp.tag)).join('') : `<button class="link showdone" data-showdone="${esc(g.id)}">Show ${doneTs.length} done</button>`) : ''}
         ${!ts.length && all.length ? '<div class="quiet">None of these are yours.</div>' : ''}</div>
     </details>`;
   }).join('');
@@ -1563,6 +1619,15 @@ function renderSide() {
   $('files').innerHTML = files.map(f => `<button class="row-item" data-file="${esc(f.path)}" data-branch="${esc(f.branch || '')}">${avatar(f.byName, true)}<span class="grow"><span class="path">${esc(f.path)}</span><br><span class="small muted">${esc(f.byName)} · ${ago(f.at)}</span></span></button>`).join('')
     || '<div class="quiet">No recent changes.</div>';
 }
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-taskdo]');
+  if (!b) return;
+  e.stopPropagation();
+  b.disabled = true;
+  const status = b.dataset.taskdo;
+  await api('task-update', { id: b.dataset.tid, status, note: status === 'done' ? `${myName()} marked it done from the dashboard` : `${myName()} asked for it to run again` }).catch(() => {});
+  await loadBoard().catch(() => {});
+}, true);
 document.addEventListener('toggle', (e) => { if (e.target.matches && e.target.matches('details.goal')) S.goalOpen[e.target.dataset.goal] = e.target.open; }, true);
 
 // ---------- clicks that work anywhere ----------

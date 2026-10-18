@@ -92,7 +92,22 @@ function shortInviteCode() {
 // A request's first line as a title: "can you / please" and the like dropped, cut at the end of the first
 // sentence, at most ~60 characters. Its Claude renames it to a few plain words when it starts.
 function requestTitle(text) {
-  let t = String(text || '').split('\n').map(l => l.trim()).find(Boolean) || '';
+  // look past what a Claude passing work on puts first: "From Kelly (Kelly asked her Claude to send this):",
+  // "Re:", "[NON-DEMO]", "NON-DEMO, do not start before …", "Finish request 1a2b3c4d ("the real ask")"
+  const lines = String(text || '').split('\n').map(l => l.trim()).filter(Boolean);
+  let t = lines.shift() || '';
+  for (let k = 0; k < 6; k++) {
+    const before = t;
+    t = t.replace(/^from [\w .'-]{1,40}?(\s*\([^)]{0,100}\))?\s*[:,—–-]\s*/i, '')
+      .replace(/^[\w .'-]{1,30} asked (her|his|their|my|your) claude to [^:]{0,40}:\s*/i, '')
+      .replace(/^(re|fwd?|task|request|todo|note)\s*:\s*/i, '')
+      .replace(/^\[[^\]]{1,30}\]\s*/, '')
+      .replace(/^[A-Z][A-Z0-9-]{2,20}\s*[,:—–-]\s*/, '')
+      .replace(/^(do not|don'?t) start (before|until)[^.;]*[.;]\s*/i, '')
+      .replace(/^finish request [0-9a-f]{6,10}\s*\(["“]?([^"”)]+)["”]?\)[.:]?\s*/i, '$1. ');
+    if (!t.trim() && lines.length) t = lines.shift();
+    if (t === before) break;
+  }
   t = t.replace(/^(hey|hi|ok(ay)?|so|also|and|now)[,!.]?\s+/i, '')
     .replace(/^(can|could|would|will) (you|u)\s+(please\s+)?|^please\s+|^i (want|need|would like) (you )?to\s+|^(let'?s|go ahead and)\s+/i, '');
   const end = t.search(/[.?!;](\s|$)/);
@@ -818,6 +833,9 @@ const routes = {
     if (!text) throw httpError(400, 'what should the team do?');
     const to = personFor(p, b.to);
     const goal = { id: crypto.randomBytes(4).toString('hex'), text, by: a.id, byName: a.name, at: now(), status: 'open', planner: null, to: to || null };
+    // a short title from whoever sent it (a Claude handing work on gives one), else one made from the text
+    const given = String(b.title || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    if (given) goal.title = given;
     p.board.goals.push(goal);
     if (p.board.goals.length > 100) p.board.goals.splice(0, p.board.goals.length - 100);
     // aimed at one person's Claude: skip planning, it's simply their task
@@ -826,7 +844,7 @@ const routes = {
     if (to) {
       goal.status = 'planned';
       goal.planner = to;
-      pushTask(p, { goalId: goal.id, title: requestTitle(text), detail: text, owner: to, direct: true }, a);
+      pushTask(p, { goalId: goal.id, title: given || requestTitle(text), detail: text, owner: to, direct: true }, a);
     }
     boardChanged(p, 'goal', { goal }, a);
     return { ok: true, goal };

@@ -65,8 +65,8 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: { ref: { type: 'string', description: 'person/branch or person' } }, required: ['ref'] } },
   { name: 'huddle_board', description: 'The team board: goals people gave the team and the tasks they were split into, with owners and status.',
     inputSchema: { type: 'object', properties: {} } },
-  { name: 'huddle_ask_team', description: "Give the whole team (every agent) a goal, or one person's Claude a task with to=name. Use when your user wants to hand work to the team.",
-    inputSchema: { type: 'object', properties: { text: { type: 'string' }, to: { type: 'string' } }, required: ['text'] } },
+  { name: 'huddle_ask_team', description: "Give the whole team (every agent) a goal, or one person's Claude a task with to=name. Use when your user wants to hand work to the team. title: 2 to 6 plain words naming the outcome, as the team will see it (no \"From …\" preamble).",
+    inputSchema: { type: 'object', properties: { title: { type: 'string' }, text: { type: 'string' }, to: { type: 'string' } }, required: ['title', 'text'] } },
   { name: 'huddle_claim_goal', description: 'Claim the planning of a team goal. Only one agent wins; if you do, split the goal into tasks and call huddle_plan.',
     inputSchema: { type: 'object', properties: { goal_id: { type: 'string' } }, required: ['goal_id'] } },
   { name: 'huddle_plan', description: "Record the plan for a goal you claimed: tasks with owners (agent names; balance the work, include yourself, avoid two people editing the same files) and optional dependencies (after = indexes of earlier tasks in this list).",
@@ -340,7 +340,7 @@ function runMcp() {
       }
       case 'huddle_board': return board.format(await client.get('board'));
       case 'huddle_ask_team': {
-        const r = await client.post('goal', { text: a.text, to: a.to || null });
+        const r = await client.post('goal', { text: a.text, title: a.title, to: a.to || null });
         return a.to ? `sent to ${a.to}'s Claude as a task` : `posted team goal ${r.goal.id}; a free agent will claim and plan it`;
       }
       case 'huddle_claim_goal': {

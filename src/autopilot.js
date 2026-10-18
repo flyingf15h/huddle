@@ -567,6 +567,8 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
       if (ev.type === 'project-setting') projectSettings = ev.settings || {};
       // approved: run it again with the command allowed
       if (ev.type === 'board' && ev.action === 'approve' && ev.task) skip.delete(ev.task.id);
+      // someone pressed "Run again" on a stuck task
+      if (ev.type === 'board' && ev.action === 'task-update' && ev.task && ev.task.status === 'todo') skip.delete(ev.task.id);
       if (ev.type === 'board') return work();
     },
     stop() { stopped = true; },
