@@ -356,6 +356,20 @@ const routes = {
     mergePerson(p, from, into);
     return { ok: true };
   },
+  // change your own name: everything you did moves to the new one, and sessions still using the old
+  // name are shown under the new one (they pick it up into their own config the next time they look)
+  'POST rename': (p, b) => {
+    const a = p.touch(b.agent);
+    const into = String(b.name || '').trim().replace(/\s+/g, '-').slice(0, 40);
+    if (!into) throw httpError(400, 'a name is required');
+    const from = a.name;
+    if (into === from) return { ok: true, name: into };
+    const taken = [...Object.values(p.agents).map(x => x.name), ...Object.keys(p.settings || {}), ...Object.keys(p.stats || {})];
+    if (taken.some(n => n !== from && n.toLowerCase() === into.toLowerCase())) throw httpError(409, `someone on the team is already called ${into}`);
+    mergePerson(p, from, into);
+    p.dirty = true;
+    return { ok: true, name: into };
+  },
   // tidy the team list: names that only differ in capitals become one person (the one used most
   // recently wins), and each person keeps a single offline row
   'POST tidy': (p, b) => {
@@ -663,29 +677,40 @@ const routes = {
   'GET approvals': (p) => ({ approvals: (p.approvals || []).slice(-50) }),
   // Only the person whose Claude asked can say yes: from their own huddle (CLI or Claude), or from a
   // browser holding the key their machine gave it (huddle open). Saying yes lets the task run again
-  // with that exact command allowed.
+  // with that exact command allowed. Several can be decided at once (ids), so a task that needs a few
+  // commands runs again once with all of them, not once per command.
   'POST approve': (p, b) => {
     const a = p.touch(b.agent);
-    const x = (p.approvals || []).find(y => y.id === b.id);
-    if (!x) throw httpError(404, 'no such approval');
+    const ids = Array.isArray(b.ids) ? b.ids.slice(0, 20) : [b.id];
+    const list = ids.map(id => {
+      const x = (p.approvals || []).find(y => y.id === id);
+      if (!x) throw httpError(404, 'no such approval');
+      return x;
+    });
     const fromBrowser = a.kind === 'human';
-    const keyOk = b.key && p.keys && p.keys[x.owner] && sha(String(b.key)) === p.keys[x.owner];
-    if (a.name !== x.owner || (fromBrowser && !keyOk)) {
-      throw httpError(403, fromBrowser && a.name === x.owner ? 'open the dashboard with `huddle open` on your computer to approve from here' : `only ${x.owner} can approve commands for their Claude`);
+    for (const x of list) {
+      const keyOk = b.key && p.keys && p.keys[x.owner] && sha(String(b.key)) === p.keys[x.owner];
+      if (a.name !== x.owner || (fromBrowser && !keyOk)) {
+        throw httpError(403, fromBrowser && a.name === x.owner ? 'open the dashboard with `huddle open` on your computer to approve from here' : `only ${x.owner} can approve commands for their Claude`);
+      }
     }
-    if (x.status !== 'waiting') return { ok: true, approval: x };
-    x.status = b.allow === false ? 'denied' : 'approved';
-    x.by = a.name; x.decidedAt = now();
-    const t = p.board.tasks.find(y => y.id === x.taskId);
-    if (t) {
-      if (x.status === 'approved') { t.allow = [...new Set([...(t.allow || []), x.command])].slice(-10); t.status = 'todo'; t.held = null; }
-      t.notes = [...(t.notes || []), { by: a.name, at: now(), text: `${x.status === 'approved' ? 'Allowed' : 'Said no to'}: ${x.command}` }].slice(-20);
-      t.updated = now();
-      boardChanged(p, 'approve', { task: t, approval: x }, a);
+    const touched = new Map();
+    for (const x of list) {
+      if (x.status !== 'waiting') continue;
+      x.status = b.allow === false ? 'denied' : 'approved';
+      x.by = a.name; x.decidedAt = now();
+      const t = p.board.tasks.find(y => y.id === x.taskId);
+      if (t) {
+        if (x.status === 'approved') { t.allow = [...new Set([...(t.allow || []), x.command])].slice(-10); t.status = 'todo'; t.held = null; }
+        t.notes = [...(t.notes || []), { by: a.name, at: now(), text: `${x.status === 'approved' ? 'Allowed' : 'Said no to'}: ${x.command}` }].slice(-20);
+        t.updated = now();
+        touched.set(t.id, { t, x });
+      }
+      p.emit('approval', { approval: x });
     }
-    p.emit('approval', { approval: x });
+    for (const { t, x } of touched.values()) boardChanged(p, 'approve', { task: t, approval: x }, a);
     p.dirty = true;
-    return { ok: true, approval: x };
+    return { ok: true, approval: list[0], approvals: list };
   },
   // the status line reports how much of the person's 5-hour and weekly windows is used, so plans
   // can hand heavier work to whoever has more left. Numbers only; it doesn't count as being online.
@@ -995,6 +1020,7 @@ function mergePerson(p, from, into) {
   for (const m of p.shared.memories) fix(m, 'byName');
   if (p.settings && p.settings[from]) { p.settings[into] = p.settings[into] || p.settings[from]; delete p.settings[from]; }
   if (p.stats && p.stats[from]) { p.stats[into] = addStats(p.stats[into] || newStats(), p.stats[from]); delete p.stats[from]; }
+  if (p.keys && p.keys[from]) { p.keys[into] = p.keys[into] || p.keys[from]; delete p.keys[from]; }
   p.activityChanged = p.sharedChanged = true;
   p.board.version++;
   p.emit('merge', { from, into });

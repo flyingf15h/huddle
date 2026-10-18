@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { spawn, spawnSync } = require('child_process');
-const { loadConfig, identity, Client, relPath, hashFile, formatMessages, ago, build, ownerKey, sha, CONFIG_DIR } = require('./client');
+const { loadConfig, identity, Client, relPath, hashFile, formatMessages, ago, build, ownerKey, sha, adoptName, CONFIG_DIR } = require('./client');
 const gitx = require('./git');
 
 const PKG_DIR = path.resolve(__dirname, '..');
@@ -86,7 +86,7 @@ Day to day:
   huddle invite                 print this project's invite code again
   huddle open                   open the live dashboard in your browser (it can approve
                                 commands for your Claude, so don't share that link)
-  huddle approve [ID] [--deny]  commands your background Claudes need your OK for
+  huddle approve [ID|--all] [--deny]  commands your background Claudes need your OK for
   huddle tests ["CMD"] [--review on|off]
                                 what checks background work before it merges: the test
                                 command (default: guessed) and a Sonnet review
@@ -858,11 +858,18 @@ async function cmdSummarize() {
 
 async function cmdApprove({ pos, flags }) {
   const client = humanClient();
+  adoptName(client.cfg, ((await client.get('state').catch(() => null)) || {}).aliases);
+  if (flags.all) {
+    const w = (await client.get('approvals')).approvals.filter(x => x.status === 'waiting' && x.owner === client.cfg.name);
+    if (!w.length) return console.log('Nothing is waiting for your OK.');
+    await client.post('approve', { ids: w.map(x => x.id), allow: !flags.deny });
+    return console.log(`${flags.deny ? 'said no to' : 'approved'} ${w.length} command${w.length === 1 ? '' : 's'}:\n${w.map(x => '  ' + x.command).join('\n')}`);
+  }
   if (!pos[0]) {
     const w = (await client.get('approvals')).approvals.filter(x => x.status === 'waiting' && x.owner === client.cfg.name);
     if (!w.length) return console.log('Nothing is waiting for your OK.');
     for (const x of w) console.log(`${x.id}  ${x.command}${x.why ? `  (${x.why})` : ''}\n          for "${x.title}"`);
-    return console.log('\nhuddle approve ID  lets that task run again with the command allowed; --deny says no.');
+    return console.log('\nhuddle approve ID  lets that task run again with the command allowed; --deny says no. --all decides every one at once.');
   }
   const r = await client.post('approve', { id: pos[0], allow: !flags.deny });
   console.log(r.approval.status === 'approved' ? `approved: ${r.approval.command}` : `said no to: ${r.approval.command}`);

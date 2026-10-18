@@ -24,7 +24,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const os = require('os');
-const { identity, Client, sha, CONFIG_DIR } = require('./client');
+const { identity, Client, sha, adoptName, CONFIG_DIR } = require('./client');
 const CLI = path.join(__dirname, 'cli.js');
 const board = require('./board');
 const gitx = require('./git');
@@ -268,7 +268,7 @@ async function getMode(client) {
 // The work loop shared by the background runner and `huddle autopilot`.
 // log: status lines; out: Claude's own output (null to discard).
 function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
-  const me = cfg.name;
+  let me = cfg.name;
   // auto, like the person's own sessions: Claude Code's safety check approves what's safe and refuses what's
   // risky. Accounts without auto mode fall back to acceptEdits (edits plus the allowed commands).
   let permission = flags['permission-mode'] || cfg.autopilotPermissionMode || 'auto';
@@ -284,7 +284,10 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
 
   // model: e.g. 'sonnet' for reviews and test fixes; allow: extra tools for this run; readOnly: no edits
   const runOnce = (prompt, { cwd = cfg.root, session, mcpRoot, model, allow = [], readOnly = false } = {}) => new Promise((resolve) => {
-    const allowed = ['mcp__huddle', 'Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git log:*)', 'Bash(git show:*)', 'Bash(git add:*)', 'Bash(git commit:*)', ...extraAllow, ...allow];
+    // in its own worktree (on its own branch) a Claude can also bring in and rearrange history freely:
+    // nothing reaches the person's branch until it has been reviewed, tested and merged by huddle
+    const own = cwd !== cfg.root ? ['fetch', 'merge', 'cherry-pick', 'rebase', 'pull', 'restore', 'checkout', 'switch', 'stash', 'reset', 'branch'].map(g => `Bash(git ${g}:*)`) : [];
+    const allowed = ['mcp__huddle', 'Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git log:*)', 'Bash(git show:*)', 'Bash(git add:*)', 'Bash(git commit:*)', ...own, ...extraAllow, ...allow];
     const args = ['-p', prompt, '--permission-mode', permission];
     // a worktree isn't the folder the huddle MCP server (or the person's other folder-level servers) were
     // registered for, so hand them over directly
@@ -318,6 +321,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
   async function refreshMode() {
     mode = flags.mode ? normMode(flags.mode) : await getMode(client).catch(() => mode);
     const st = await client.get('state').catch(() => null);
+    if (st && adoptName(cfg, st.aliases)) { log(`now called ${cfg.name}`); me = cfg.name; }
     if (st) { usage = (st.usage || {})[me] || null; projectSettings = st.projectSettings || {}; }
     await client.post('hello', { runner: mode }).catch(() => {});
     return mode;
@@ -537,6 +541,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     // react to live events: board changes mean new work, setting changes may switch modes
     async onEvent(ev) {
       if (ev.type === 'setting' && ev.name === me) { await refreshMode(); log(`mode: ${MODE_WORDS[mode]}`); return work(); }
+      if (ev.type === 'merge' && ev.from === me) { await refreshMode(); return work(); }
       if (ev.type === 'message' && wantsAnswer(ev.message)) {
         replied.add(ev.message.id); answeredAt.push(Date.now());
         // a reply is short, so it doesn't wait for a free slot

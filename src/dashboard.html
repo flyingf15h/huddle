@@ -30,28 +30,28 @@
 /* ---------- dark: Submerge, deep pond blue with koi orange and teal, panels are tinted glass over the water ---------- */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --page: #030a1e; --hover: rgba(140, 180, 255, .06);
-    --bg: rgba(5, 12, 32, .58); --surface: rgba(6, 14, 38, .46); --raised: rgba(14, 27, 62, .88); --sunk: rgba(2, 7, 22, .45);
-    --ink: #dbe7ff; --muted: #a6b5d8; --faint: #8392b9; --line: rgba(120, 155, 235, .15); --line-strong: rgba(120, 155, 235, .3);
+    --page: #030a1e; --hover: rgba(160, 185, 240, .05);
+    --bg: rgba(6, 12, 30, .78); --surface: rgba(7, 14, 34, .7); --raised: rgba(16, 27, 56, .92); --sunk: rgba(3, 8, 22, .5);
+    --ink: #dbe7ff; --muted: #a6b5d8; --faint: #8392b9; --line: rgba(150, 175, 230, .1); --line-strong: rgba(150, 175, 230, .2);
     --accent: #5a96ff; --accent-ink: #030a1f; --accent-soft: rgba(61, 109, 255, .22); --accent-soft-ink: #bdd4ff;
     --pop: #ff8a3d; --pop-soft: rgba(255, 138, 61, .15); --pop-ink: #ffb784;
     --ok: #3ad1b8; --ok-soft: rgba(58, 209, 184, .14); --warn: #ffa03c; --warn-soft: rgba(255, 160, 60, .14); --bad: #ff7d66; --bad-soft: rgba(255, 90, 54, .16);
     --code: rgba(2, 7, 20, .55); --hl: rgba(255, 160, 60, .2);
-    --wash: rgba(5, 12, 32, .3); --mark: var(--accent-soft); --mark-ink: var(--accent-soft-ink); --mark-line: var(--accent);
+    --wash: rgba(6, 12, 30, .5); --mark: var(--accent-soft); --mark-ink: var(--accent-soft-ink); --mark-line: var(--accent);
     --shade: rgba(1, 4, 14, .6);
     --shadow-sm: none; --shadow: 0 1px 0 rgba(140, 180, 255, .05) inset, 0 8px 24px rgba(0, 2, 12, .4); --shadow-lg: 0 20px 60px rgba(0, 2, 12, .6);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --page: #030a1e; --hover: rgba(140, 180, 255, .06);
-  --bg: rgba(5, 12, 32, .58); --surface: rgba(6, 14, 38, .46); --raised: rgba(14, 27, 62, .88); --sunk: rgba(2, 7, 22, .45);
-  --ink: #dbe7ff; --muted: #a6b5d8; --faint: #8392b9; --line: rgba(120, 155, 235, .15); --line-strong: rgba(120, 155, 235, .3);
+  --page: #030a1e; --hover: rgba(160, 185, 240, .05);
+  --bg: rgba(6, 12, 30, .78); --surface: rgba(7, 14, 34, .7); --raised: rgba(16, 27, 56, .92); --sunk: rgba(3, 8, 22, .5);
+  --ink: #dbe7ff; --muted: #a6b5d8; --faint: #8392b9; --line: rgba(150, 175, 230, .1); --line-strong: rgba(150, 175, 230, .2);
   --accent: #5a96ff; --accent-ink: #030a1f; --accent-soft: rgba(61, 109, 255, .22); --accent-soft-ink: #bdd4ff;
   --pop: #ff8a3d; --pop-soft: rgba(255, 138, 61, .15); --pop-ink: #ffb784;
   --ok: #3ad1b8; --ok-soft: rgba(58, 209, 184, .14); --warn: #ffa03c; --warn-soft: rgba(255, 160, 60, .14); --bad: #ff7d66; --bad-soft: rgba(255, 90, 54, .16);
   --code: rgba(2, 7, 20, .55); --hl: rgba(255, 160, 60, .2);
-  --wash: rgba(5, 12, 32, .3); --mark: var(--accent-soft); --mark-ink: var(--accent-soft-ink); --mark-line: var(--accent);
+  --wash: rgba(6, 12, 30, .5); --mark: var(--accent-soft); --mark-ink: var(--accent-soft-ink); --mark-line: var(--accent);
   --shade: rgba(1, 4, 14, .6);
   --shadow-sm: none; --shadow: 0 1px 0 rgba(140, 180, 255, .05) inset, 0 8px 24px rgba(0, 2, 12, .4); --shadow-lg: 0 20px 60px rgba(0, 2, 12, .6);
   color-scheme: dark;
@@ -108,7 +108,8 @@ a { color: var(--accent); text-underline-offset: 3px; }
 .railhead button { margin-left: auto; }
 .iconbtn.sm { width: 28px; height: 28px; } .iconbtn.sm svg { width: 16px; height: 16px; }
 .mepanel { margin-top: auto; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--line); background: var(--sunk); min-height: 56px; }
-.mepanel .you { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; min-width: 0; flex: 1; }
+.mepanel .you { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; min-width: 0; flex: 1; cursor: pointer; border-radius: 6px; padding: 2px 4px; margin-left: -4px; }
+.mepanel .you:hover { background: var(--hover); }
 .mepanel .you span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 header { display: flex; align-items: center; gap: 12px; padding: 10px 20px; min-height: 58px; border-bottom: 1px solid var(--line); flex-wrap: wrap; background: var(--bg); }
 header h1 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
@@ -164,10 +165,12 @@ header .grow { flex: 1; }
 .menu .namefield { padding: 6px 10px 10px; }
 .menu .namefield label { font-size: 12.5px; color: var(--muted); font-weight: 600; display: block; margin-bottom: 5px; }
 .menu .namefield input { width: 100%; }
-#namepop { position: fixed; z-index: 50; background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-lg); padding: 12px; width: 250px; }
-#namepop label { display: block; font-size: 12.5px; color: var(--muted); margin-bottom: 6px; }
+#namepop { position: fixed; z-index: 50; background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-lg); padding: 14px; width: 270px; }
+#namepop label { display: block; font-size: 12.5px; color: var(--muted); margin: 0 0 5px; }
+#namepop input + label { margin-top: 10px; }
+#namepop .perr:empty { display: none; } #namepop .perr { margin-top: 8px; }
 #namepop input { width: 100%; font-size: 14px; padding: 6px 9px; }
-#namepop .row { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; }
+#namepop .row { display: flex; gap: 6px; justify-content: flex-end; margin-top: 12px; }
 
 /* ---------- team list in the sidebar ---------- */
 #team { flex: 1; overflow-y: auto; padding: 2px 10px 10px; scrollbar-width: thin; }
@@ -409,13 +412,17 @@ textarea.big { width: 100%; min-height: 55vh; font-family: "Geist Mono", ui-mono
 .spark i { width: 6px; background: var(--accent); border-radius: 2px 2px 0 0; min-height: 1px; opacity: .85; }
 
 /* ---------- needs your OK, and the catch-up line ---------- */
-#asks { margin: 0 0 14px; border: 1px solid var(--mark-line); background: var(--raised); border-radius: var(--radius); padding: 10px 12px; box-shadow: 0 0 0 3px var(--mark); }
+#asks { margin: 0 0 14px; border: 1px solid var(--line-strong); border-left: 3px solid var(--pop); background: var(--raised); border-radius: var(--radius-sm); padding: 12px 14px; }
 #asks h3 { margin: 0 0 6px; font-size: 14px; }
 .ask { padding: 7px 0; border-top: 1px solid var(--line); }
 .ask:first-of-type { border-top: 0; }
-.ask code { display: block; padding: 5px 8px; margin: 2px 0 4px; overflow-x: auto; white-space: nowrap; border: 1px solid var(--line); border-radius: 6px; }
-.ask .why { font-size: 12.5px; color: var(--muted); }
-.ask .row { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+.ask + .ask { margin-top: 4px; }
+.ask .ahead { font-size: 13px; color: var(--muted); margin-bottom: 2px; }
+.ask .ahead b { color: var(--ink); font-weight: 600; }
+.acmds { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.acmds code { display: block; padding: 5px 8px; overflow-x: auto; white-space: nowrap; border: 1px solid var(--line); border-radius: 6px; font-size: 12.5px; }
+.acmds .why { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.ask .row { display: flex; gap: 6px; align-items: center; margin-top: 10px; }
 .ask .row button { padding: 4px 12px; font-size: 13px; }
 .ask .row .err { font-size: 12.5px; }
 .tmeta .ck { font-weight: 600; } .tmeta .ck.good { color: var(--ok); } .tmeta .ck.bad { color: var(--bad); } .tmeta .ck.wait { color: var(--mark-ink); }
@@ -503,8 +510,8 @@ ol.steps { padding-left: 20px; } ol.steps li { margin-bottom: 10px; }
 }
 /* ---------- Submerge water behind everything (a small, fishless take on the KDE wallpaper) ---------- */
 :root { --glass: rgba(250, 252, 255, .92); --glass-bar: rgba(244, 249, 255, .86); --vig: rgba(30, 70, 150, .16); --scan: rgba(30, 60, 140, .045); --grain: .22; --edge: rgba(42, 95, 224, .3); }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --glass: rgba(10, 22, 54, .9); --glass-bar: rgba(5, 13, 36, .82); --vig: rgba(0, 2, 10, .55); --scan: rgba(0, 3, 14, .22); --grain: .55; --edge: rgba(110, 160, 255, .32); } }
-:root[data-theme="dark"] { --glass: rgba(10, 22, 54, .9); --glass-bar: rgba(5, 13, 36, .82); --vig: rgba(0, 2, 10, .55); --scan: rgba(0, 3, 14, .22); --grain: .55; --edge: rgba(110, 160, 255, .32); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --glass: rgba(10, 22, 54, .9); --glass-bar: rgba(5, 13, 36, .82); --vig: rgba(0, 2, 10, .35); --scan: rgba(0, 3, 14, .08); --grain: .25; --edge: rgba(110, 160, 255, .22); } }
+:root[data-theme="dark"] { --glass: rgba(10, 22, 54, .9); --glass-bar: rgba(5, 13, 36, .82); --vig: rgba(0, 2, 10, .35); --scan: rgba(0, 3, 14, .08); --grain: .25; --edge: rgba(110, 160, 255, .22); }
 #water, #water-grade { display: none; }
 html.pond #water { display: block; position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: -2; pointer-events: none; }
 /* film grain, scanlines and a vignette laid over the water but under the panels */
@@ -730,7 +737,7 @@ void main() {
   vec2 uv = vec2(gl_FragCoord.x / res.x, 1.0 - gl_FragCoord.y / res.y);
   float aspect = res.x / res.y, t = time;
   vec2 p = vec2(uv.x * aspect, uv.y);
-  float split = 0.014 * aspect * (1.0 - light * 0.6);
+  float split = 0.009 * aspect;
   vec3 cl = vec3(body(p + vec2(split, 0.0), t), body(p, t), body(p - vec2(split, 0.0), t));
   float vig = 1.0 - 0.55 * length((uv - vec2(0.5, 0.5)) * vec2(1.0, 1.25));
   vec3 b = smoothstep(0.22, 0.78, cl) * vig;
@@ -753,13 +760,13 @@ void main() {
   }
   vec3 col;
   if (light < 0.5) {
-    col = mix(vec3(0.008, 0.026, 0.09), vec3(0.08, 0.3, 0.85), b);
-    col += vec3(0.02, 0.08, 0.26) * smoothstep(0.6, 0.85, cl.g);
-    col += vec3(0.22, 0.6, 1.0) * c * top * 0.22 + vec3(0.1, 0.4, 1.0) * exp(-uv.y * 12.0) * 0.12;
+    col = mix(vec3(0.014, 0.032, 0.095), vec3(0.05, 0.17, 0.46), b);
+    col += vec3(0.01, 0.04, 0.12) * smoothstep(0.6, 0.85, cl.g);
+    col += vec3(0.22, 0.6, 1.0) * c * top * 0.12 + vec3(0.1, 0.4, 1.0) * exp(-uv.y * 12.0) * 0.08;
     col = mix(col, vec3(1.0, 0.74, 0.3) * 0.5, sun * 0.16);
     col *= 1.0 - shade * 0.3;
     float lum = dot(col, vec3(0.299, 0.587, 0.114));
-    col = max(mix(vec3(lum), col, 1.25 + 0.3 * smoothstep(0.3, 0.85, field)), 0.0);
+    col = max(mix(vec3(lum), col, 1.1 + 0.15 * smoothstep(0.3, 0.85, field)), 0.0);
   } else {
     col = mix(vec3(0.9, 0.94, 0.99), vec3(0.5, 0.68, 0.97), b * 0.85);
     col += vec3(0.5, 0.65, 0.9) * smoothstep(0.62, 0.85, cl.g) * -0.12;
@@ -1145,12 +1152,15 @@ function people() {
   const by = {};
   for (const a of Object.values(S.agents)) {
     if (a.kind === 'human' && !hasClaude(a.name)) continue; // dashboard-only visitors aren't cards
-    const p = by[a.name] = by[a.name] || { name: a.name, online: false, lastSeen: 0, status: '', branch: null, runner: null, clones: 0 };
-    if (a.online && a.clone) { p.clones++; continue; } // a background Claude doing a request: counted, not the card's status
+    const p = by[a.name] = by[a.name] || { name: a.name, online: false, lastSeen: 0, status: '', statusAt: 0, statusOnline: false, branch: null, runner: null, clones: [] };
+    // a background Claude doing a request: listed on the card's second line, not its main status
+    if (a.clone) { if (a.online) p.clones.push(a); continue; }
     p.online = p.online || a.online;
     if (a.online && a.runner && a.runner !== 'off' && p.runner !== 'full') p.runner = a.runner;
     if (a.lastSeen > p.lastSeen) { p.lastSeen = a.lastSeen; if (a.branch) p.branch = a.branch; }
-    if (a.status && (!p.status || a.online)) p.status = a.status;
+    // with several sessions open, the newest status from one that's still open wins
+    const at = a.statusAt || a.lastSeen || 0;
+    if (a.status && ((a.online && !p.statusOnline) || (a.online === p.statusOnline && at > p.statusAt))) { p.status = a.status; p.statusAt = at; p.statusOnline = !!a.online; }
   }
   return Object.values(by).sort((x, y) => y.online - x.online || y.lastSeen - x.lastSeen);
 }
@@ -1173,23 +1183,43 @@ function nowDoing(name) {
 // The card's two lines: what they're working on, as one short phrase (Claude's own status, or the
 // summary huddle makes of their last prompt), and a small line for what's happening right now.
 function lastPrompt(name) { for (let i = S.entries.length - 1; i >= 0; i--) if (S.entries[i].who === name && S.entries[i].kind === 'prompt') return S.entries[i]; return null; }
+// a status as a short phrase: no "asked:" / "answering kelly:" prefixes, quotes or trailing period
+function cleanStatus(st) {
+  let t = String(st || '').trim().replace(/^asked:\s*/i, '').replace(/^(answering|request from) [^:]{1,40}:\s*/i, '');
+  t = t.replace(/^[“"]|[”"]$/g, '').replace(/\.$/, '');
+  return shortTitle(t, 70);
+}
+// what a tool step was, in a few words: "Editing routes.py", "Running uv run pytest"
+function stepWords(text) {
+  const w = toolWords(text);
+  const arg = w.code ? w.arg.split('\n')[0].slice(0, 40) : w.arg.split('/').pop();
+  const verbs = { edited: 'Editing', wrote: 'Writing', read: 'Reading', ran: 'Running', searched: 'Searching', 'looked for': 'Looking for', opened: 'Reading', 'searched web': 'Searching the web' };
+  return verbs[w.verb] ? `${verbs[w.verb]} ${arg}`.trim() : `${w.verb.charAt(0).toUpperCase()}${w.verb.slice(1)} ${arg}`.trim();
+}
+const STALE = 3 * 3600 * 1000;
+// The card's two lines. First: what they're working on (their Claude's newest status, or their last
+// prompt), dropped once it's hours old. Second: what's happening right now, and any background Claudes.
 function cardLine(p) {
-  const st = (p.status || '').trim();
-  const raw = /^asked: “?(.*?)”?$/.exec(st);
   const lp = lastPrompt(p.name);
-  let main = st && !raw ? st : shortTitle(raw ? raw[1] : lp ? lp.text : '', 70);
-  main = main.replace(/\.$/, '');
+  let main = '';
+  if (p.status && Date.now() - p.statusAt < STALE) main = cleanStatus(p.status);
+  else if (lp && Date.now() - lp.at < STALE) main = cleanStatus(lp.text);
   let e = null;
   for (let i = S.entries.length - 1; i >= 0 && !e; i--) if (S.entries[i].who === p.name && TURN_KINDS.has(S.entries[i].kind) && S.entries[i].kind !== 'msg') e = S.entries[i];
-  const c = aiName(p.name) || 'Claude';
-  let live = '';
-  if (e && p.online) {
-    const recent = Date.now() - e.at < 2 * 60 * 1000;
-    if (e.kind === 'tool' && recent) { const w = toolWords(e.text); live = `${c} ${w.verb} ${w.arg.split('/').pop()}`.trim(); }
-    else if (['prompt', 'tool', 'reply'].includes(e.kind) && recent) live = `${c} is working`;
-    else live = `Idle · ${ago(e.at)}`;
-  } else if (!p.online && e) live = `Last active ${ago(e.at)}`;
-  return { main, live };
+  const bits = [];
+  if (p.online) {
+    const recent = e && Date.now() - e.at < 2 * 60 * 1000;
+    if (recent && e.kind === 'tool') bits.push(stepWords(e.text));
+    else if (recent && e.kind !== 'end') bits.push('Claude is working');
+    else if (!p.clones.length) bits.push(e && Date.now() - e.at > 60000 ? `Idle for ${ago(e.at).replace(' ago', '')}` : 'Idle');
+  } else {
+    bits.push(`Away${p.lastSeen ? ', last active ' + ago(p.lastSeen) : ''}`);
+  }
+  if (p.clones.length) {
+    const first = p.clones.map(c => cleanStatus(c.status || c.clone || '')).find(Boolean);
+    bits.push(p.clones.length === 1 ? `In the background: ${first || '1 request'}` : `${p.clones.length} running in the background`);
+  }
+  return { main, live: bits.join(' · ') };
 }
 // how much of someone's Claude plan is used, from their status line (huddle gives heavier work to whoever has more left)
 function usageText(n) {
@@ -1209,12 +1239,12 @@ function renderTeam() {
     const last = lastOf(p.name);
     const busy = p.online && last && ['tool', 'prompt'].includes(last.kind) && Date.now() - last.at < 90 * 1000;
     const t = doingCount(p.name), c = cardLine(p), use = usageText(p.name);
-    return `<button class="person${S.who === p.name ? ' sel' : ''}${p.online ? '' : ' away'}" data-person="${esc(p.name)}" title="${S.who === p.name ? 'Show everyone' : 'Show only ' + esc(p.name) + "'s activity"}${p.name === myName() && hasClaude(p.name) ? ' · right-click to name your Claude' : ''}">
+    return `<button class="person${S.who === p.name ? ' sel' : ''}${p.online ? '' : ' away'}" data-person="${esc(p.name)}" title="${S.who === p.name ? 'Show everyone' : 'Show only ' + esc(p.name) + "'s activity"}${p.name === myName() ? ' · right-click to rename' : ''}">
       <span class="pav">${avatar(p.name, false, busy)}<i class="pres ${p.online ? (p.runner === 'full' ? 'auto' : 'on') : 'off'}"></i></span>
       <span class="pbody">
         <span class="top"><span class="name">${esc(p.name)}${p.name === myName() ? ' <span class="faint" style="font-weight:500">(you)</span>' : ''}</span>${use ? `<span class="use">${use}</span>` : ''}</span>
-        <span class="doing">${c.main ? esc(c.main) : `<span class="faint">${p.online ? 'Nothing yet' : 'Away' + (p.lastSeen ? ' · ' + ago(p.lastSeen) : '')}</span>`}</span>
-        ${c.live || t || p.branch ? `<span class="live">${[c.live && esc(c.live), t && `${t} task${t === 1 ? '' : 's'} in progress`, p.branch && '⎇ ' + esc(p.branch)].filter(Boolean).join(' · ')}</span>` : ''}
+        ${c.main ? `<span class="doing">${esc(c.main)}</span>` : ''}
+        <span class="live">${esc(c.live)}${t ? ` · ${t} task${t === 1 ? '' : 's'} open` : ''}</span>
       </span>
     </button>`;
   }).join('') || `<div class="quiet">Nobody has joined yet. <button class="link" data-invite>Invite your team</button></div>`;
@@ -1240,7 +1270,7 @@ function renderMine() {
   if (!mine) return;
   const m = myMode();
   $('mineDot').className = 'mydot' + (m === 'off' ? ' off' : m === 'full' ? ' full' : '');
-  $('mineLabel').textContent = `${aiName(myName()) || 'My Claude'} · ${MODES.find(x => x[0] === m)[1]}`;
+  $('mineLabel').textContent = `${aiName(myName()) || 'Claude'} · ${MODES.find(x => x[0] === m)[1]}`;
   $('mineBtn').title = 'What your Claude does on its own, and its name';
 }
 $('mineBtn').onclick = () => {
@@ -1272,37 +1302,55 @@ document.addEventListener('click', (e) => {
   if (S.view !== 'timeline') showView('timeline');
   renderTeam(); renderFeed();
 });
-// right-click your own card to name your Claude (only your own: the server only lets you name yours)
+// right-click your own card (or click your name at the bottom of the sidebar) to rename yourself or your Claude
 async function saveAiName(v) {
   const r = await api('setting', { aiName: v });
   S.settings[myName()] = r.settings;
   renderTeam();
 }
 function closeNamePop() { const p = $('namepop'); if (p) p.remove(); }
-$('team').addEventListener('contextmenu', (e) => {
-  const card = e.target.closest('[data-person]');
-  if (!card || card.dataset.person !== myName() || !hasClaude(myName())) return;
-  e.preventDefault();
+function openNamePop(x, y) {
   closeNamePop();
+  const withClaude = hasClaude(myName());
   const pop = document.createElement('form');
   pop.id = 'namepop';
-  pop.innerHTML = `<label for="namepopIn">Name your Claude (the team sees it and can send it work by this name)</label>
-    <input id="namepopIn" maxlength="32" placeholder="e.g. Pip" value="${esc(aiName(myName()))}">
-    <div class="row">${aiName(myName()) ? '<button type="button" class="ghost" data-clear>Remove name</button>' : ''}<button type="submit">Save</button></div>`;
+  pop.innerHTML = `<label for="namepopMe">Your name</label>
+    <input id="namepopMe" maxlength="40" value="${esc(myName())}" autocomplete="off">
+    ${withClaude ? `<label for="namepopAi">Your Claude's name</label>
+    <input id="namepopAi" maxlength="32" placeholder="${esc(myName())}'s Claude" value="${esc(aiName(myName()))}" autocomplete="off">` : ''}
+    <div class="perr err small" role="alert"></div>
+    <div class="row"><button type="button" data-cancel>Cancel</button><button type="submit" class="primary">Save</button></div>`;
   document.body.appendChild(pop);
-  pop.style.left = Math.max(8, Math.min(e.clientX, innerWidth - pop.offsetWidth - 8)) + 'px';
-  pop.style.top = Math.max(8, Math.min(e.clientY, innerHeight - pop.offsetHeight - 8)) + 'px';
-  const input = $('namepopIn');
-  input.focus(); input.select();
-  const save = async (v) => {
-    try { await saveAiName(v); closeNamePop(); }
-    catch (err) { pop.querySelector('label').textContent = "Couldn't name it: " + err.message; input.focus(); }
+  pop.style.left = Math.max(8, Math.min(x, innerWidth - pop.offsetWidth - 8)) + 'px';
+  pop.style.top = Math.max(8, Math.min(y, innerHeight - pop.offsetHeight - 8)) + 'px';
+  const me = $('namepopMe'), ai = $('namepopAi');
+  me.focus(); me.select();
+  pop.onsubmit = async (ev) => {
+    ev.preventDefault();
+    const err = pop.querySelector('.perr');
+    err.textContent = '';
+    try {
+      if (ai && ai.value.trim() !== aiName(myName())) await saveAiName(ai.value.trim());
+      const n = me.value.trim().replace(/\s+/g, '-');
+      if (n && n !== myName()) {
+        await api('rename', { name: n });
+        auth.name = n; store.set('huddle.name', n);
+        location.reload();   // everything the team did is now under the new name
+        return;
+      }
+      closeNamePop();
+    } catch (e2) { err.textContent = e2.message; }
   };
-  pop.onsubmit = (ev) => { ev.preventDefault(); save(input.value); };
-  const clear = pop.querySelector('[data-clear]');
-  if (clear) clear.onclick = () => save('');
-  input.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeNamePop(); });
+  pop.querySelector('[data-cancel]').onclick = closeNamePop;
+  pop.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeNamePop(); });
+}
+$('team').addEventListener('contextmenu', (e) => {
+  const card = e.target.closest('[data-person]');
+  if (!card || card.dataset.person !== myName()) return;
+  e.preventDefault();
+  openNamePop(e.clientX, e.clientY);
 });
+$('you').addEventListener('click', () => { if (!auth.name) return; const r = $('you').getBoundingClientRect(); openNamePop(r.left, r.top - 8); });
 document.addEventListener('mousedown', (e) => { if ($('namepop') && !e.target.closest('#namepop')) closeNamePop(); });
 
 // ---------- side panel: tasks, locks, files ----------
@@ -1339,25 +1387,39 @@ function taskRow(t, b) {
       ${t.owner ? `<button class="link small" data-person-filter="${esc(t.owner)}">See ${esc(t.owner)}'s work</button>` : ''}
     </div>` : ''}`;
 }
+// commands a background Claude of mine wasn't allowed to run, one card per request so they're decided together
 function renderAsks() {
   const mine = (S.approvals || []).filter(x => x.owner === myName());
   $('asks').hidden = !mine.length;
   if (!mine.length) return;
-  $('asks').innerHTML = `<h3>Awaiting your approval</h3>` + mine.map(x => `<div class="ask" data-ask="${esc(x.id)}">
-    <div class="small">For “${esc(shortTitle(x.title, 60))}”</div><code>${esc(x.command)}</code>${x.why ? `<div class="why">${esc(x.why)}</div>` : ''}
-    <div class="row"><button class="primary" data-allow="1">Approve</button><button data-allow="0">Decline</button><span class="err"></span></div></div>`).join('');
+  const groups = new Map();
+  for (const x of mine) { const k = x.taskId || x.id; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(x); }
+  const canHere = !!keys[auth.project];
+  $('asks').innerHTML = `<h3>Awaiting your approval</h3>` + [...groups.values()].map(list => {
+    const t = S.board && S.board.tasks.find(y => y.id === list[0].taskId);
+    const from = t && t.by && t.by !== myName() ? `${esc(t.by)}'s request` : 'A task';
+    const many = list.length > 1;
+    return `<div class="ask" data-ask="${esc(list.map(x => x.id).join(','))}">
+      <div class="ahead">${from}: <b>${esc(shortTitle(list[0].title, 70))}</b></div>
+      <div class="small muted">Your Claude stopped short of ${many ? 'these commands' : 'this command'}. Approving runs the request again with ${many ? 'them' : 'it'} allowed.</div>
+      <ul class="acmds">${list.map(x => `<li><code>${esc(x.command)}</code>${x.why ? `<span class="why">${esc(x.why)}</span>` : ''}</li>`).join('')}</ul>
+      <div class="row"><button class="primary" data-allow="1" ${canHere ? '' : 'disabled'}>${many ? 'Approve all' : 'Approve'}</button><button data-allow="0" ${canHere ? '' : 'disabled'}>${many ? 'Decline all' : 'Decline'}</button><span class="err"></span></div>
+      ${canHere ? '' : '<div class="small muted">To decide here, open the dashboard with <code>huddle open</code> on your computer, or run <code>huddle approve --all</code>.</div>'}
+    </div>`;
+  }).join('');
 }
 document.addEventListener('click', async (e) => {
   const b = e.target.closest('[data-allow]');
   if (!b) return;
   const box = b.closest('[data-ask]');
+  const ids = box.dataset.ask.split(',');
   for (const x of box.querySelectorAll('button')) x.disabled = true;
   try {
-    await api('approve', { id: box.dataset.ask, allow: b.dataset.allow === '1', key: keys[auth.project] });
-    S.approvals = S.approvals.filter(x => x.id !== box.dataset.ask);
+    await api('approve', { ids, allow: b.dataset.allow === '1', key: keys[auth.project] });
+    S.approvals = S.approvals.filter(x => !ids.includes(x.id));
     renderAsks();
   } catch (err) {
-    box.querySelector('.err').textContent = /huddle open/.test(err.message) ? 'Open this page with huddle open on your computer to approve here, or run huddle approve.' : err.message;
+    box.querySelector('.err').textContent = /huddle open/.test(err.message) ? 'Open the dashboard with huddle open on your computer to decide here.' : err.message;
     for (const x of box.querySelectorAll('button')) x.disabled = false;
   }
 });
@@ -1825,6 +1887,7 @@ function showMe() {
   $('pnameText').textContent = prettyProject(auth.project);
   document.title = `${prettyProject(auth.project)} · huddle`;
   $('you').innerHTML = auth.name ? `${avatar(auth.name, true)}<span>${esc(auth.name)}</span>` : '';
+  $('you').title = 'Change your name or your Claude\'s name';
 }
 // the project name in the header switches between every project this browser has opened
 $('pname').onclick = () => {

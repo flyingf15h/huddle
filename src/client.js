@@ -165,4 +165,19 @@ function ownerKey(cfg) {
   } catch { return null; }
 }
 
-module.exports = { loadConfig, identity, Client, relPath, hashFile, sha, ownerKey, ago, formatMessages, findRoot, build, CONFIG_DIR };
+// the person renamed themselves on the dashboard: take the new name into this folder's config, so the
+// hooks, the MCP tools and the CLI use it too. Returns true when the name changed.
+function adoptName(cfg, aliases) {
+  const to = (aliases || {})[cfg.name];
+  if (!to || to === cfg.name || process.env.HUDDLE_NAME) return false;
+  const file = path.join(cfg.root, CONFIG_DIR, 'config.json');
+  try {
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+    raw.name = to;
+    fs.writeFileSync(file, JSON.stringify(raw, null, 2), { mode: 0o600 });
+  } catch {}
+  cfg.name = to;
+  return true;
+}
+
+module.exports = { loadConfig, identity, Client, relPath, hashFile, sha, ownerKey, ago, formatMessages, findRoot, build, adoptName, CONFIG_DIR };
