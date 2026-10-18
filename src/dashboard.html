@@ -255,6 +255,10 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; grid-template
 .note { font-size: 13px; color: var(--muted); padding: 5px 20px; display: flex; gap: 12px; align-items: center; }
 .note .ic { width: 32px; flex: none; display: grid; place-items: center; color: var(--faint); }
 .note .ic svg { width: 16px; height: 16px; }
+.note .ncount { margin-left: auto; font-size: 11.5px; font-weight: 600; color: var(--muted); padding: 0 7px; border-radius: 10px; border: 1px solid var(--line-strong); font-variant-numeric: tabular-nums; }
+.note .ncount:empty { display: none; }
+.note .ncount + .nt { margin-left: 8px; }
+.note .ncount:empty + .nt { margin-left: auto; }
 .note .nt { margin-left: auto; font-size: 12px; color: var(--faint); flex: none; font-variant-numeric: tabular-nums; }
 .note b { color: var(--ink); font-weight: 600; }
 .card { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 14px; margin: 8px 20px 8px 64px; background: var(--raised); animation: in .25s ease-out; max-width: 720px; }
@@ -975,11 +979,11 @@ function backgroundAsk(text) {
 function fromActivity(it) {
   if (it.kind === 'prompt') {
     const ask = backgroundAsk(it.text);
-    return { kind: 'prompt', who: it.name, at: it.at, text: ask || it.text, bg: !!(it.bg || ask) };
+    return { kind: 'prompt', who: it.name, at: it.at, text: ask || it.text, bg: !!(it.bg || ask), agent: it.agent };
   }
-  if (it.kind === 'text') return { kind: 'reply', who: it.name, at: it.at, text: it.text };
-  if (it.kind === 'tool') return { kind: 'tool', who: it.name, at: it.at, text: it.text };
-  return { kind: 'end', who: it.name, at: it.at };
+  if (it.kind === 'text') return { kind: 'reply', who: it.name, at: it.at, text: it.text, agent: it.agent };
+  if (it.kind === 'tool') return { kind: 'tool', who: it.name, at: it.at, text: it.text, agent: it.agent };
+  return { kind: 'end', who: it.name, at: it.at, agent: it.agent };
 }
 function fromEvent(ev) {
   switch (ev.type) {
@@ -1020,7 +1024,7 @@ const NOTE_ICON = {
   handoff: '<path d="M6 4.5h12v15H6z"/><path d="M9 9h6M9 12.5h6M9 16h3"/>'
 };
 const noteIc = (k) => `<span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${NOTE_ICON[k]}</svg></span>`;
-let turn = null, lastDay = '';
+let turn = null, lastDay = '', noteRun = null;
 function noteHtml(e) {
   const who = `<b>${esc(e.who)}</b>`;
   const fileBtn = (p, b) => `<button class="link" data-file="${esc(p)}" data-branch="${esc(b || '')}">${esc(p)}</button>`;
@@ -1067,7 +1071,7 @@ const BOT_KINDS = new Set(['reply', 'tool', 'end', 'plan']);
 function rowContext(e) {
   if (e.kind === 'goal') return 'requested from ' + (e.goal.to ? claudeOf(e.goal.to) : 'the team');
   if (e.kind === 'prompt') return e.bg ? 'started on a request in the background' : 'prompted ' + (aiName(e.who) || 'their Claude');
-  if (e.kind === 'msg') return e.to ? 'messaged ' + (auth.name && e.to.toLowerCase() === myName().toLowerCase() ? 'you' : e.to) : 'messaged everyone';
+  if (e.kind === 'msg') return e.to ? 'messaged ' + (String(e.to).includes('#') ? sessionName(e.to) : auth.name && e.to.toLowerCase() === myName().toLowerCase() ? 'you' : e.to) : 'messaged everyone';
   if (e.kind === 'plan') return 'posted a plan';
   return '';
 }
@@ -1075,16 +1079,32 @@ const ROW_KINDS = new Set([...TURN_KINDS, 'goal', 'plan']);
 function appendEntry(e, feed) {
   const d = new Date(e.at).toDateString();
   if (d !== lastDay) {
-    lastDay = d; turn = null;
+    lastDay = d; turn = null; noteRun = null;
     feed.insertAdjacentHTML('beforeend', `<div class="day">${d === new Date().toDateString() ? 'Today' : new Date(e.at).toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })}</div>`);
   }
   if (!ROW_KINDS.has(e.kind)) {
     turn = null;
-    feed.insertAdjacentHTML('beforeend', noteHtml(e));
+    // the same line again in a stretch of notes (a lock that keeps being released, say) shows once, with a count
+    const html = noteHtml(e);
+    if (!html) return;
+    noteRun = noteRun || new Map();
+    const seen = noteRun.get(html);
+    if (seen) {
+      seen.n++;
+      seen.el.querySelector('.ncount').textContent = '+' + (seen.n - 1);
+      seen.el.querySelector('.ncount').title = `Happened ${seen.n} times`;
+      seen.el.querySelector('.nt').textContent = clock(e.at);
+      return;
+    }
+    feed.insertAdjacentHTML('beforeend', html);
     const n = feed.lastElementChild;
-    if (n && n.classList.contains('note')) n.insertAdjacentHTML('beforeend', `<time class="nt" title="${esc(fullDate(e.at))}">${clock(e.at)}</time>`);
+    if (n && n.classList.contains('note')) {
+      n.insertAdjacentHTML('beforeend', `<span class="ncount"></span><time class="nt" title="${esc(fullDate(e.at))}">${clock(e.at)}</time>`);
+      noteRun.set(html, { el: n, n: 1 });
+    }
     return;
   }
+  noteRun = null;
   const bot = BOT_KINDS.has(e.kind) || !!e.bg, ctx = rowContext(e), key = (bot ? 'c:' : 'h:') + e.who + '|' + ctx;
   // Claude's steps and reply stay under the request it started on in the background
   const sameRun = bot && !ctx && turn && turn.key.startsWith('c:' + e.who + '|') && e.at - turn.at <= 10 * 60 * 1000;
@@ -1113,7 +1133,7 @@ function appendEntry(e, feed) {
 }
 function renderFeed() {
   const feed = $('feed');
-  turn = null; lastDay = '';
+  turn = null; lastDay = ''; noteRun = null;
   feed.innerHTML = '';
   const list = S.entries.filter(visible).slice(-700);
   if (!list.length) {
@@ -1275,10 +1295,17 @@ function renderTeam() {
   fitMain();
   // composer recipients
   // straight to any one person's Claude (theirs runs it in the background), or to the whole team
-  const others = ps.filter(p => p.name !== myName() && hasClaude(p.name));
+  // or to one session that's open right now (a message it reads at its next step), when someone has several
+  const withClaude = ps.filter(p => hasClaude(p.name)).sort((x, y) => (y.name === myName()) - (x.name === myName()));
   const sel = $('to'), cur = sel.value;
-  const label = (p) => `${claudeOf(p.name)}${p.online ? '' : ' (away)'}`;
-  sel.innerHTML = `<option value="">The whole team</option>${hasClaude(myName()) ? `<option value="${esc(myName())}">Your Claude</option>` : ''}${others.length ? `<optgroup label="A teammate's Claude">${others.map(p => `<option value="${esc(p.name)}">${esc(label(p))}</option>`).join('')}</optgroup>` : ''}`;
+  const group = (p) => {
+    const mine = p.name === myName(), ss = sessionsOf(p.name);
+    const head = `<option value="${esc(p.name)}">${esc(mine ? 'Your Claude' : claudeOf(p.name))}, new background session${p.online ? '' : ' (away)'}</option>`;
+    const seen = {};
+    const labels = ss.map(a => { const l = sessionLabel(a); seen[l] = (seen[l] || 0) + 1; return seen[l] > 1 ? `${l} (${seen[l]})` : l; });
+    return `<optgroup label="${esc(mine ? 'You' : p.name)}">${head}${ss.map((a, i) => `<option value="@${esc(a.id)}">${esc(labels[i])}</option>`).join('')}</optgroup>`;
+  };
+  sel.innerHTML = `<option value="">The whole team</option>${withClaude.map(group).join('')}`;
   sel.value = [...sel.options].some(o => o.value === cur) ? cur : '';
   updateHint();
   renderMine();
@@ -1328,6 +1355,28 @@ document.addEventListener('click', (e) => {
   if (S.view !== 'timeline') showView('timeline');
   renderTeam(); renderFeed();
 });
+// someone's Claude Code sessions that are open right now (not background runs), newest first
+function sessionsOf(name) {
+  return Object.values(S.agents).filter(a => a.name === name && a.online && !a.clone && a.kind !== 'human')
+    .sort((x, y) => (y.joined || y.lastSeen) - (x.joined || x.lastSeen));
+}
+function sessionBusy(a) {
+  for (let i = S.entries.length - 1; i >= 0; i--) {
+    const e = S.entries[i];
+    if (e.agent === a.id) return e.kind !== 'end' && Date.now() - e.at < 2 * 60 * 1000;
+  }
+  return false;
+}
+// "Session on main, since 9:02: Reviewing the CAD guide"
+function sessionLabel(a) {
+  const st = a.status && Date.now() - (a.statusAt || 0) < 3 * 3600 * 1000 ? cleanStatus(a.status) : '';
+  return `Session${a.branch ? ' on ' + a.branch : ''}${a.joined ? ', since ' + clock(a.joined) : ''}${st ? ': ' + shortTitle(st, 44) : ''}`;
+}
+function sessionName(id) {
+  const a = S.agents[id];
+  const who = a ? a.name : String(id).split('#')[0];
+  return `${who === myName() ? 'your' : who + "'s"} session${a && a.branch ? ' on ' + a.branch : ''}`;
+}
 // "Ask" on someone in the team list: the request box, aimed at their Claude
 function askClaude(name) {
   const sel = $('to');
@@ -1788,6 +1837,12 @@ async function loadBoard() { S.board = await api('board'); renderSide(); renderT
 // only says something when it helps: whether the person you picked will start right away
 function updateHint() {
   const who = $('to').value;
+  if (who.startsWith('@')) {
+    const a = S.agents[who.slice(1)];
+    $('text').placeholder = `Message ${a ? sessionName(a.id) : 'that session'}. It replies to you here.`;
+    $('hint').textContent = !a || !a.online ? 'That session has closed.' : sessionBusy(a) ? 'It is working now and reads this at its next step.' : `It's idle, so it reads this when ${a.name === myName() ? 'you use it' : a.name + ' next uses it'}.`;
+    return;
+  }
   $('text').placeholder = !who ? 'Describe what the team should build or fix, and what done looks like.'
     : who === myName() ? 'What should your Claude do?' : `What should ${claudeOf(who)} do? It replies to you here.`;
   if (!who) { $('hint').textContent = 'One Claude splits it into tasks for everyone.'; return; }
@@ -1806,6 +1861,14 @@ $('composer').onsubmit = async (e) => {
   const to = $('to').value || null;
   $('sendbtn').disabled = true;
   try {
+    if (to && to.startsWith('@')) {
+      await api('message', { to: to.slice(1), text });
+      $('text').value = ''; grow();
+      $('sendmsg').textContent = `Sent to ${sessionName(to.slice(1))}.`;
+      setTimeout(() => { $('sendmsg').textContent = ''; }, 4000);
+      $('sendbtn').disabled = false;
+      return;
+    }
     await api('goal', { text, to });
     $('text').value = ''; grow();
     $('sendmsg').textContent = !to ? 'Sent to the team' : to === myName() ? 'Sent to your Claude' : `Sent to ${claudeOf(to)}. The reply will show up here.`;

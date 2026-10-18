@@ -158,7 +158,7 @@ class Project {
   }
   publicAgent(a) {
     return { id: a.id, name: a.name, host: a.host, checkout: a.checkout, kind: a.kind, branch: a.branch || null, runner: a.runner || null,
-      status: a.status, statusAt: a.statusAt || null, lastSeen: a.lastSeen, online: this.online(a), build: a.build || null, clone: a.clone || null };
+      status: a.status, statusAt: a.statusAt || null, lastSeen: a.lastSeen, joined: a.joined || null, online: this.online(a), build: a.build || null, clone: a.clone || null };
   }
   fileMeta(f) {
     return { path: f.path, branch: f.branch || null, hash: f.hash, by: f.by, byName: f.byName, at: f.at,
@@ -209,10 +209,13 @@ class Project {
   }
   sweep() {
     const t = now();
-    for (const l of Object.values(this.locks)) {
+    // (locks are keyed by branch and path, so delete by the key: deleting by path left branch locks in
+    // place, and every sweep announced the same release again)
+    for (const [key, l] of Object.entries(this.locks)) {
       const a = this.agents[l.holder];
       if (!a || (t - a.lastSeen > LOCK_STALE_MS && !this.isConnected(a.id))) {
-        delete this.locks[l.path];
+        delete this.locks[key];
+        this.dirty = true;
         this.emit('unlock', { path: l.path, holder: l.holder, holderName: l.holderName, reason: 'stale' });
       }
     }

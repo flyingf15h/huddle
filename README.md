@@ -71,6 +71,7 @@ Write it in the **New request** box at the bottom of the dashboard (or run `hudd
 
 - **Full team:** the first free Claude claims it, looks at the code, splits it into tasks with an owner each (split by file so nobody collides, with dependencies where needed), and tells the team. Every Claude is told which tasks are theirs, works on them, commits, and marks them done. Progress shows under **Tasks** on the right side of the dashboard.
 - **One person's Claude:** pick them under **to**, or hover them in the team list and press **Ask**. Only their Claude gets it, as a task of its own, and runs it in the background on their computer if their mode allows; your own Claude isn't involved. Its reply comes back to you in the activity feed and your notifications. From the terminal: `huddle ask "..." --to alex`.
+- **One open session:** when someone has several Claude Code sessions open, each is listed under their name in **to**, with its branch, when it started and what it's doing. Picking one sends that session a message: it reads it at its next step if it's working, or when its person next uses it if it's idle, and it replies to you in the feed.
 
 ### Autopilot: what your Claude does with work from the team
 
