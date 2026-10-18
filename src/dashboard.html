@@ -176,6 +176,12 @@ header .grow { flex: 1; }
 #team { flex: 1; overflow-y: auto; padding: 2px 10px 10px; scrollbar-width: thin; }
 .person { display: flex; gap: 10px; align-items: flex-start; width: 100%; text-align: left; border: 0; background: none; border-radius: 10px; padding: 8px 10px; font-weight: 400; }
 .person:hover { background: var(--hover); }
+.prow { position: relative; }
+.pask { position: absolute; top: 7px; right: 8px; z-index: 1; font-size: 12px; font-weight: 500; padding: 1px 9px; border-radius: 6px; border: 1px solid var(--line-strong); background: var(--raised); color: var(--ink); cursor: pointer; opacity: 0; transition: opacity .12s; }
+.prow:hover .pask, .pask:focus-visible { opacity: 1; }
+.prow:hover .person .use { visibility: hidden; }
+.pask:hover { border-color: var(--accent); color: var(--accent); }
+@media (hover: none) { .pask { opacity: 1; } .person .use { visibility: hidden; } }
 .person.sel { background: var(--accent-soft); }
 .person.away .pav { opacity: .55; }
 .pav { position: relative; flex: none; }
@@ -265,6 +271,7 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; grid-template
 .cbox:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow); }
 .ctop { display: flex; align-items: center; gap: 8px; }
 .ctop .clabel { font-weight: 600; font-size: 13px; }
+.ctop .tolabel { font-size: 13px; color: var(--muted); }
 .ctop select { padding: 3px 8px; font-size: 13px; background: var(--sunk); }
 #text { width: 100%; border: 0; background: transparent; padding: 8px 2px 4px; resize: none; min-height: 44px; max-height: 240px; outline: none; line-height: 1.5; box-shadow: none; }
 .cbottom { display: flex; align-items: center; gap: 10px; }
@@ -493,7 +500,7 @@ ol.steps { padding-left: 20px; } ol.steps li { margin-bottom: 10px; }
   .navlist { flex-direction: row; overflow-x: auto; }
   .navlist button { flex: none; } .navlist button.on::before { display: none; }
   #team { display: flex; gap: 6px; overflow-x: auto; flex: none; }
-  .person { width: 220px; flex: none; }
+  .prow { width: 220px; flex: none; } .person { width: 100%; }
   .mepanel { margin-top: 0; }
   main { grid-template-columns: minmax(0, 1fr); height: auto; }
   #left { border-right: 0; min-height: 75vh; }
@@ -610,7 +617,7 @@ dialog { background: var(--glass); backdrop-filter: blur(22px) saturate(1.3); bo
       <div id="statsview" hidden></div>
       <form id="composer">
         <div class="cbox">
-          <div class="ctop"><span class="clabel">New request</span><select id="to" aria-label="Which Claude"></select></div>
+          <div class="ctop"><span class="clabel">New request</span><label class="tolabel" for="to">to</label><select id="to"></select></div>
           <textarea id="text" rows="2" placeholder="Describe what should be built or fixed, and what done looks like."></textarea>
           <div class="cbottom"><span class="hint" id="hint"></span><span class="kbd hide-sm">Ctrl+Enter to send</span><span class="small muted" id="sendmsg"></span><button class="primary" id="sendbtn">Send</button></div>
         </div>
@@ -1255,20 +1262,23 @@ function renderTeam() {
     const last = lastOf(p.name);
     const busy = p.online && last && ['tool', 'prompt'].includes(last.kind) && Date.now() - last.at < 90 * 1000;
     const t = doingCount(p.name), c = cardLine(p), use = usageText(p.name);
-    return `<button class="person${S.who === p.name ? ' sel' : ''}${p.online ? '' : ' away'}" data-person="${esc(p.name)}" title="${S.who === p.name ? 'Show everyone' : 'Show only ' + esc(p.name) + "'s activity"}${p.name === myName() ? ' · right-click to rename' : ''}">
+    const ask = hasClaude(p.name) ? `<span class="pask" role="button" tabindex="0" data-askto="${esc(p.name)}" title="Ask ${esc(p.name === myName() ? 'your Claude' : claudeOf(p.name))} to do something">Ask</span>` : '';
+    return `<div class="prow">${ask}<button class="person${S.who === p.name ? ' sel' : ''}${p.online ? '' : ' away'}" data-person="${esc(p.name)}" title="${S.who === p.name ? 'Show everyone' : 'Show only ' + esc(p.name) + "'s activity"}${p.name === myName() ? ' · right-click to rename' : ''}">
       <span class="pav">${avatar(p.name, false, busy)}<i class="pres ${p.online ? (p.runner === 'full' ? 'auto' : 'on') : 'off'}"></i></span>
       <span class="pbody">
         <span class="top"><span class="name">${esc(p.name)}${p.name === myName() ? ' <span class="faint" style="font-weight:500">(you)</span>' : ''}</span>${use ? `<span class="use">${use}</span>` : ''}</span>
         ${c.main ? `<span class="doing">${esc(c.main)}</span>` : ''}
         <span class="live">${esc(c.live)}${t ? ` · ${t} task${t === 1 ? '' : 's'} open` : ''}</span>
       </span>
-    </button>`;
+    </button></div>`;
   }).join('') || `<div class="quiet">Nobody has joined yet. <button class="link" data-invite>Invite your team</button></div>`;
   fitMain();
   // composer recipients
-  const names = ps.map(p => p.name).filter(n => n !== myName());
+  // straight to any one person's Claude (theirs runs it in the background), or to the whole team
+  const others = ps.filter(p => p.name !== myName() && hasClaude(p.name));
   const sel = $('to'), cur = sel.value;
-  sel.innerHTML = `<option value="">Full team</option>${names.map(n => `<option value="${esc(n)}">${esc(aiName(n) ? `${aiName(n)} (${n}'s Claude)` : n)}</option>`).join('')}`;
+  const label = (p) => `${claudeOf(p.name)}${p.online ? '' : ' (away)'}`;
+  sel.innerHTML = `<option value="">The whole team</option>${hasClaude(myName()) ? `<option value="${esc(myName())}">Your Claude</option>` : ''}${others.length ? `<optgroup label="A teammate's Claude">${others.map(p => `<option value="${esc(p.name)}">${esc(label(p))}</option>`).join('')}</optgroup>` : ''}`;
   sel.value = [...sel.options].some(o => o.value === cur) ? cur : '';
   updateHint();
   renderMine();
@@ -1318,6 +1328,15 @@ document.addEventListener('click', (e) => {
   if (S.view !== 'timeline') showView('timeline');
   renderTeam(); renderFeed();
 });
+// "Ask" on someone in the team list: the request box, aimed at their Claude
+function askClaude(name) {
+  const sel = $('to');
+  if (![...sel.options].some(o => o.value === name)) return;
+  sel.value = name; updateHint();
+  $('text').focus();
+}
+document.addEventListener('click', (e) => { const a = e.target.closest('[data-askto]'); if (a) { e.stopPropagation(); askClaude(a.dataset.askto); } }, true);
+document.addEventListener('keydown', (e) => { const a = e.target.closest && e.target.closest('[data-askto]'); if (a && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); askClaude(a.dataset.askto); } });
 // right-click your own card (or click your name at the bottom of the sidebar) to rename yourself or your Claude
 async function saveAiName(v) {
   const r = await api('setting', { aiName: v });
@@ -1769,9 +1788,11 @@ async function loadBoard() { S.board = await api('board'); renderSide(); renderT
 // only says something when it helps: whether the person you picked will start right away
 function updateHint() {
   const who = $('to').value;
-  if (!who) { $('hint').textContent = ''; return; }
+  $('text').placeholder = !who ? 'Describe what the team should build or fix, and what done looks like.'
+    : who === myName() ? 'What should your Claude do?' : `What should ${claudeOf(who)} do? It replies to you here.`;
+  if (!who) { $('hint').textContent = 'One Claude splits it into tasks for everyone.'; return; }
   const p = people().find(x => x.name === who);
-  $('hint').textContent = !p || !p.online ? `${who} is away. The request will wait.` : p.runner === 'full' || p.runner === 'requests' ? 'Starts right away.' : 'Seen at its next step.';
+  $('hint').textContent = !p || !p.online ? `${who} is away. It waits until their Claude is back.` : p.runner === 'full' || p.runner === 'requests' ? 'Starts right away in the background.' : `${who} has background work off. It waits for them.`;
 }
 $('to').addEventListener('change', updateHint);
 const grow = () => { const t = $('text'); t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 240) + 'px'; };
@@ -1787,7 +1808,7 @@ $('composer').onsubmit = async (e) => {
   try {
     await api('goal', { text, to });
     $('text').value = ''; grow();
-    $('sendmsg').textContent = to ? 'Sent' : 'Sent to the team';
+    $('sendmsg').textContent = !to ? 'Sent to the team' : to === myName() ? 'Sent to your Claude' : `Sent to ${claudeOf(to)}. The reply will show up here.`;
     setTimeout(() => { $('sendmsg').textContent = ''; }, 4000);
   } catch (err) { $('sendmsg').innerHTML = `<span class="err">Couldn't send: ${esc(err.message)}</span>`; }
   $('sendbtn').disabled = false;

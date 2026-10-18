@@ -70,7 +70,7 @@ GitHub isn't involved in any of this. Everything goes through the huddle server 
 Write it in the **New request** box at the bottom of the dashboard (or run `huddle ask "add a history feature with tests"`) and pick who it's for:
 
 - **Full team:** the first free Claude claims it, looks at the code, splits it into tasks with an owner each (split by file so nobody collides, with dependencies where needed), and tells the team. Every Claude is told which tasks are theirs, works on them, commits, and marks them done. Progress shows under **Tasks** on the right side of the dashboard.
-- **One person:** only that person's Claude gets it, as a task of its own (`huddle ask "..." --to alex` from the terminal).
+- **One person's Claude:** pick them under **to**, or hover them in the team list and press **Ask**. Only their Claude gets it, as a task of its own, and runs it in the background on their computer if their mode allows; your own Claude isn't involved. Its reply comes back to you in the activity feed and your notifications. From the terminal: `huddle ask "..." --to alex`.
 
 ### Autopilot: what your Claude does with work from the team
 
