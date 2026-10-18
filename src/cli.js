@@ -118,7 +118,31 @@ function decodeInvite(code) {
   if (!j.s || !j.t || !j.p) throw new Error('incomplete invite');
   return { server: j.s, token: j.t, project: j.p };
 }
-const joinCommand = (code) => `npx -y github:flyingf15h/huddle join ${code}`;
+// a long invite carries its server; a short one is looked up on the public server unless told otherwise
+const joinCommand = (code, server) => `npx -y github:flyingf15h/huddle join ${code}${server && server !== PUBLIC_SERVER && code.length <= 12 ? ' --server ' + server : ''}`;
+// the invite however it was given: a short code (12 characters), a dashboard link with one, or a long invite
+async function resolveInvite(text, flags = {}) {
+  text = String(text || '').trim();
+  const link = /^(https?:\/\/[^/#\s]+)[^#\s]*#(?:[^#\s]*&)?invite=([\w-]+)/.exec(text);
+  const words = link ? [link[2]] : text.split(/\s+/);
+  const short = words.find(w => /^[A-Za-z0-9][\w-]{11}$/.test(w));
+  if (short) {
+    const server = String((link && link[1]) || flags.server || PUBLIC_SERVER).replace(/\/+$/, '');
+    let r;
+    try {
+      const res = await fetch(`${server}/api/invite/${short}`, { signal: AbortSignal.timeout(10000) });
+      r = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(r.error || `HTTP ${res.status}`);
+    } catch (e) { need(false, `Couldn't look up invite ${short} on ${server}: ${e.message}${link || flags.server ? '' : '\n(If it was made on your own server, add --server URL.)'}`); }
+    return { server: (link && link[1]) || flags.server ? server : r.server || server, token: r.token, project: r.project };
+  }
+  return decodeInvite(text);
+}
+// this project's short invite, or the long one from an older server that can't make short ones
+async function shortInvite(cfg) {
+  try { return (await new Client(cfg, identity(cfg, 'invite')).post('invite-code', {})).code; }
+  catch { return encodeInvite(cfg.server, cfg.token, cfg.project); }
+}
 
 function need(cond, msg) { if (!cond) { console.error(msg); process.exit(1); } }
 
@@ -458,15 +482,15 @@ async function cmdNew({ pos, flags }) {
   } catch (e) {
     need(false, `couldn't create a project on ${server}: ${e.cause ? e.cause.code || e.message : e.message}`);
   }
-  const code = encodeInvite(server, r.token, r.project);
+  const code = await shortInvite({ server, token: r.token, project: r.project, name: 'invite', root: process.cwd() });
   console.log(`created project ${r.project.replace(/-[0-9a-f]{6,8}$/, '')}
 
 Teammates run this in their copy of the project (it asks for their name):
-  ${joinCommand(code)}
+  ${joinCommand(code, server)}
 Anyone with the invite can join and see the project, so only send it to your team.`);
   if (flags['no-join']) return;
   console.log('');
-  await cmdJoin({ pos: [code], flags });
+  await cmdJoin({ pos: [encodeInvite(server, r.token, r.project)], flags });
 }
 
 // what to call this person: --name, the name they joined this folder with before, or asked for
@@ -492,7 +516,7 @@ function checkTools() {
 async function cmdJoin({ pos, flags }) {
   need(pos[0], 'usage: huddle join <invite> [--name NAME]   (the invite can be the code, the dashboard link or the whole command)');
   let inv;
-  try { inv = decodeInvite(pos.join(' ')); } catch { need(false, 'That invite looks broken. Ask for a fresh one (Invite people on the dashboard, or `huddle invite`).'); }
+  try { inv = await resolveInvite(pos.join(' '), flags); } catch { need(false, 'That invite looks broken. Ask for a fresh one (Invite people on the dashboard, or `huddle invite`).'); }
   const root = path.resolve(flags.dir || process.cwd());
   checkTools();
   const name = await pickName(flags, root);
@@ -520,7 +544,7 @@ async function cmdJoin({ pos, flags }) {
   installHooks(root, dir);
   installCommand(root);
   const mcp = installMcp(root, dir);
-  const code = encodeInvite(inv.server, inv.token, inv.project);
+  const code = await shortInvite(cfg);
   console.log(`
 ✓ joined "${inv.project.replace(/-[0-9a-f]{6,8}$/, '')}" as ${name}${mcp ? '' : ' (the huddle tools need registering by hand, see above)'}
   Dashboard: ${inv.server}/#invite=${code}`);
@@ -1177,10 +1201,10 @@ function cmdSharing({ pos }) {
   }[level] + (pos[0] ? '' : '\nchange with: huddle sharing full|tools|off'));
 }
 
-function cmdInvite() {
+async function cmdInvite() {
   const cfg = configured();
-  const code = encodeInvite(cfg.server, cfg.token, cfg.project);
-  console.log(joinCommand(code));
+  const code = await shortInvite(cfg);
+  console.log(joinCommand(code, cfg.server));
   console.log(`\ndashboard: ${cfg.server}/#invite=${code}`);
 }
 

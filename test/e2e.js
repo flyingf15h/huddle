@@ -421,9 +421,12 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
 
     const joinOut = spawnSync(process.execPath, [CLI, 'new', 'demo', '--server', pub.url, '--no-join'], { encoding: 'utf8' }).stdout;
     const code = joinOut.match(/join (\S+)/)[1];
-    const inv = JSON.parse(Buffer.from(code, 'base64url'));
-    assert.equal(await st(inv.p, inv.t), 200);
-    ok('`huddle new` prints a working invite');
+    assert.match(code, /^[A-Za-z0-9][\w-]{11}$/, 'a short invite');
+    assert.match(joinOut, new RegExp(`--server ${pub.url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`), 'with its server, since it isn\'t the public one');
+    const inv = await (await fetch(`${pub.url}/api/invite/${code}`)).json();
+    assert.equal(await st(inv.project, inv.token), 200);
+    assert.equal((await fetch(`${pub.url}/api/invite/AAAAAAAAAAAA`)).status, 404);
+    ok('`huddle new` prints a working short invite');
 
     console.log('\nall good');
   } catch (e) {

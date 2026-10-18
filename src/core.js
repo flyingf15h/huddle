@@ -76,6 +76,19 @@ function blockingLock(p, who, branch, fp, dir) {
 const NEEDS_A_PERSON = /\b(push|deploy|publish|release|wrangler|vercel|netlify|heroku|gh\s+(pr|release|repo|api)|npm\s+(publish|login)|sudo|pkexec|su\s|ssh|scp|rsync|curl|wget|docker\s+(push|login)|kubectl|terraform|rm\s+-[a-z]*r|reset\s+--hard|clean\s+-[a-z]*f|kill(all)?\b|systemctl|shutdown|reboot|chmod\s+-R|chown|mkfs|dd\s+if=)|main checkout|your checkout|outside (the|this) (project|folder|repo)|(^|\s)~\/|\/etc\/|\/usr\//i;
 function needsAPerson(command) { return NEEDS_A_PERSON.test(command); }
 
+// A short invite: 12 characters from letters, digits, "-" and "_" (about 4.7e21 possibilities), starting
+// with a letter or digit so it can't be mistaken for a command-line flag. The server keeps which project
+// (and token) it stands for.
+const INVITE_FIRST = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+const INVITE_REST = INVITE_FIRST + '-_';
+const SHORT_INVITE = /^[A-Za-z0-9][\w-]{11}$/;
+function shortInviteCode() {
+  const b = crypto.randomBytes(12);
+  let s = '';
+  for (let i = 0; i < 12; i++) { const set = i ? INVITE_REST : INVITE_FIRST; s += set[b[i] % set.length]; }
+  return s;
+}
+
 // A request's first line as a title: "can you / please" and the like dropped, cut at the end of the first
 // sentence, at most ~60 characters. Its Claude renames it to a few plain words when it starts.
 function requestTitle(text) {
@@ -319,6 +332,11 @@ const routes = {
     return { ...p.snapshot(), you: p.publicAgent(a), ...(b.handoffs ? { handoffs: (p.handoffs || []).slice(-20) } : {}) };
   },
   'GET state': (p) => p.snapshot(),
+  // this project's short invite (the same one every time); the server records what it stands for
+  'POST invite-code': (p) => {
+    if (!p.inviteCode) { p.inviteCode = shortInviteCode(); p.emit('invite-code', {}); }
+    return { code: p.inviteCode };
+  },
   'GET worklog': (p, b, q) => ({ worklog: (p.worklog || []).slice(-Math.min(Number(q.get('limit')) || 20, MAX_WORKLOG)) }),
   // one call per prompt instead of five: share the prompt, set the status, read mail, and get the
   // team's state and this person's open tasks back
@@ -1186,5 +1204,5 @@ function waitOn(p, pred, timeoutMs, onAbort) {
   });
 }
 
-module.exports = { needsAPerson, requestTitle, handOn, assignByUsage, Project, routes, waitOn, parseFrontmatter, fileKey, GIT_CHUNK, sha, now, httpError, sameSecret, normPath, aiLabel, taskIdsIn, blockingLock,
+module.exports = { needsAPerson, requestTitle, SHORT_INVITE, handOn, assignByUsage, Project, routes, waitOn, parseFrontmatter, fileKey, GIT_CHUNK, sha, now, httpError, sameSecret, normPath, aiLabel, taskIdsIn, blockingLock,
   ONLINE_MS, MAX_FILE_BYTES, OPEN_IDLE_MS, OPEN_MAX_PROJECTS, OPEN_CREATES_PER_HOUR };

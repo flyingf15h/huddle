@@ -867,6 +867,15 @@ if (store.get('huddle.token') && store.get('huddle.project')) known[store.get('h
 // "human" was the old dashboard's placeholder name; ask for a real one instead
 let auth = { token: null, project: null, name: store.get('huddle.name') === 'human' ? '' : (store.get('huddle.name') || '') };
 const fromInvite = params.get('invite') && decodeInvite(params.get('invite'));
+// a short invite (12 characters) is looked up on this server before starting
+const SHORT_INVITE = /^[A-Za-z0-9][\w-]{11}$/;
+const shortFromLink = !fromInvite && SHORT_INVITE.test(String(params.get('invite') || '').trim()) ? params.get('invite').trim() : null;
+async function lookUpInvite(code) {
+  const res = await fetch('/api/invite/' + encodeURIComponent(code));
+  const r = await res.json().catch(() => ({}));
+  if (!res.ok || !r.token) throw new Error(r.error || 'no such invite');
+  return { token: r.token, project: r.project };
+}
 // `huddle open` adds this person's approve key (and name); kept per project, never put back in the address bar
 const keys = (() => { try { return JSON.parse(store.get('huddle.keys') || '{}'); } catch { return {}; } })();
 if (fromInvite && params.get('k')) { keys[fromInvite.project] = params.get('k'); store.set('huddle.keys', JSON.stringify(keys)); }
@@ -1898,10 +1907,13 @@ $('composer').onsubmit = async (e) => {
 for (const b of document.querySelectorAll('[data-close]')) b.onclick = () => b.closest('dialog').close();
 for (const d of document.querySelectorAll('dialog')) d.addEventListener('click', (e) => { if (e.target === d) d.close(); });
 $('dlg-file').addEventListener('close', () => { S.file = null; });
-$('btn-invite').onclick = () => { $('joincmd').textContent = `npx -y github:flyingf15h/huddle join ${inviteCode()}`; $('dlg-invite').showModal(); };
+// the project's short invite from the server (an older server can't make one: the long form then)
+let shortCode = null;
+const invite = async () => shortCode || (shortCode = await api('invite-code', {}).then(r => r.code).catch(() => inviteCode()));
+$('btn-invite').onclick = async () => { $('joincmd').textContent = `npx -y github:flyingf15h/huddle join ${await invite()}`; $('dlg-invite').showModal(); };
 const copy = (text, btn, label) => navigator.clipboard.writeText(text).then(() => { btn.textContent = 'Copied'; setTimeout(() => { btn.textContent = label; }, 1500); });
 $('copyjoin').onclick = () => copy($('joincmd').textContent, $('copyjoin'), 'Copy');
-$('copydash').onclick = () => copy(`${location.origin}/#invite=${inviteCode()}`, $('copydash'), 'copy dashboard link');
+$('copydash').onclick = async () => copy(`${location.origin}/#invite=${await invite()}`, $('copydash'), 'copy dashboard link');
 $('btn-help').onclick = () => $('dlg-help').showModal();
 $('tourgo').onclick = () => { $('dlg-help').close(); startTour(); };
 
@@ -2056,8 +2068,11 @@ function goBack() {
 $('lback').onclick = goBack;
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('login').hidden && !document.querySelector('dialog[open]')) goBack(); });
 $('linvite').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('lgo').click(); });
-$('lgo').onclick = () => {
-  const inv = decodeInvite($('linvite').value);
+$('lgo').onclick = async () => {
+  const typed = $('linvite').value.trim();
+  const short = (/[#&]invite=([\w-]+)/.exec(typed) || [])[1] || typed.split(/\s+/).find(w => SHORT_INVITE.test(w));
+  let inv = decodeInvite(typed);
+  if (!inv && short) inv = await lookUpInvite(short).catch(() => null);
   if (!inv) return showLogin("That doesn't look like an invite code.");
   Object.assign(auth, inv);
   auth.name = $('lname').value.trim().replace(/\s+/g, '-') || auth.name;
@@ -2274,7 +2289,9 @@ async function start() {
   setInterval(() => { if (auth.name) api('hello', {}).catch(() => {}); }, 60000);
   setInterval(() => { renderTeam(); renderSide(); }, 30000);
 }
-start();
+if (shortFromLink) lookUpInvite(shortFromLink).then(inv => { auth = { ...auth, ...inv }; if (params.get('k')) { keys[inv.project] = params.get('k'); store.set('huddle.keys', JSON.stringify(keys)); } start(); })
+  .catch(() => { auth.token = null; showLogin("That invite didn't work. Ask for a new one."); });
+else start();
 </script>
 </body>
 </html>

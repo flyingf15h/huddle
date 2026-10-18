@@ -97,6 +97,9 @@ function createServer(opts = {}) {
   }
 
   const dashboard = fs.readFileSync(path.join(__dirname, 'dashboard.html'), 'utf8');
+  const invitesFile = path.join(dataDir, 'invites.json');
+  let invites = {};
+  try { invites = JSON.parse(fs.readFileSync(invitesFile, 'utf8')); } catch {}
 
   // large blobs (git bundle pieces) live next to the project file, not inside it
   function blobStore(name) {
@@ -133,6 +136,12 @@ function createServer(opts = {}) {
         return res.end(dashboard);
       }
       if (url.pathname === '/health') return send(200, { ok: true, open });
+      const short = url.pathname.match(/^\/api\/invite\/([\w-]{12})$/);
+      if (short && req.method === 'GET') {
+        const inv = invites[short[1]];
+        if (!inv) throw httpError(404, 'no such invite');
+        return send(200, { server: `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}`, project: inv.project, token: inv.token });
+      }
       if (url.pathname === '/api/new' && req.method === 'POST') {
         const body = await readBody(req);
         if (!open) checkAdmin(req, url);
@@ -155,12 +164,19 @@ function createServer(opts = {}) {
       let body = {};
       if (req.method === 'POST') body = await readBody(req);
       const ctx = { waitFor: (pred, ms) => waitOn(p, pred, ms, (abort) => req.on('close', abort)), blobs: blobStore(p.name) };
-      send(200, await route(p, body, url.searchParams, ctx));
+      const out = await route(p, body, url.searchParams, ctx);
+      // what a short invite stands for: the project and the token of whoever asked for it
+      if (m[2] === 'invite-code') saveInvite(out.code, { project: p.name, token: given(req, url) });
+      send(200, out);
     } catch (e) {
       send(e.code && e.code >= 400 && e.code < 600 ? e.code : 500, { error: e.message });
     }
   });
 
+  function saveInvite(code, inv) {
+    invites[code] = inv;
+    try { fs.mkdirSync(dataDir, { recursive: true }); fs.writeFileSync(invitesFile, JSON.stringify(invites), { mode: 0o600 }); } catch {}
+  }
   function given(req, url) {
     const h = req.headers.authorization || '';
     return String((h.startsWith('Bearer ') ? h.slice(7) : url.searchParams.get('token')) || '');

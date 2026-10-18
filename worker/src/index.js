@@ -53,6 +53,14 @@ export default {
         const name = `${slug}-${rand}`;
         return json({ project: name, token: await projectToken(env, name) });
       }
+      // a short invite: which project it opens, with that project's token
+      const short = url.pathname.match(/^\/api\/invite\/([\w-]{12})$/);
+      if (short && request.method === 'GET') {
+        const idx = env.PROJECTS.get(env.PROJECTS.idFromName('invite:' + short[1]));
+        const r = await (await idx.fetch(new Request('https://index/', { headers: { 'x-huddle-index': short[1] } }))).json();
+        if (!r.project) throw httpError(404, 'no such invite');
+        return json({ server: url.origin, project: r.project, token: await projectToken(env, r.project) });
+      }
       const m = url.pathname.match(/^\/api\/p\/([\w.-]{1,64})\/([\w-]+)$/);
       if (!m) return json({ error: 'not found' }, 404);
       const name = m[1];
@@ -61,7 +69,15 @@ export default {
       const stub = env.PROJECTS.get(env.PROJECTS.idFromName(name));
       const headers = new Headers(request.headers);
       headers.set('x-huddle-project', name);
-      return stub.fetch(new Request(request, { headers }));
+      headers.delete('x-huddle-index');
+      const res = await stub.fetch(new Request(request, { headers }));
+      // remember what a project's short invite stands for (written each time it's asked for, so it can't go missing)
+      if (m[2] === 'invite-code' && res.ok) {
+        const { code } = await res.clone().json();
+        const idx = env.PROJECTS.get(env.PROJECTS.idFromName('invite:' + code));
+        await idx.fetch(new Request('https://index/', { method: 'PUT', headers: { 'x-huddle-index': code }, body: JSON.stringify({ project: name }) }));
+      }
+      return res;
     } catch (e) {
       return json({ error: e.message }, e.code >= 400 && e.code < 600 ? e.code : 500);
     }
@@ -158,6 +174,12 @@ export class HuddleProject extends DurableObject {
   }
 
   async fetch(request) {
+    // an instance named "invite:<code>" only remembers which project a short invite opens
+    const index = request.headers.get('x-huddle-index');
+    if (index) {
+      if (request.method === 'PUT') { await this.ctx.storage.put('invite', await request.json()); return json({ ok: true }); }
+      return json((await this.ctx.storage.get('invite')) || {});
+    }
     const url = new URL(request.url);
     const name = request.headers.get('x-huddle-project');
     const ep = url.pathname.split('/').pop();

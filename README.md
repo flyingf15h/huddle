@@ -22,17 +22,19 @@ npx -y github:flyingf15h/huddle new
 That sets up your folder and prints an invite like:
 
 ```
-npx -y github:flyingf15h/huddle join eyJzIjoiaHR0cHM6Ly9...
+npx -y github:flyingf15h/huddle join bJvEvfkVhOrA
 ```
+
+The invite is a 12-character code. Anyone with it can join, so only send it to your team.
 
 **2. Everyone else runs the invite in their copy of the project:**
 
 ```sh
 cd ~/code/myapp
-npx -y github:flyingf15h/huddle join eyJzIjoiaHR0cHM6Ly9...
+npx -y github:flyingf15h/huddle join bJvEvfkVhOrA
 ```
 
-It asks for your name (suggesting your git name), checks that Claude Code and git are installed, and offers to let Claude do routine edits, git, builds and tests without asking each time. The invite works in any form: the code, the dashboard link, or the whole command pasted as is. That's it. Start Claude Code in that folder and it's in the huddle. Each person uses their own Claude login, from anywhere.
+It asks for your name (suggesting your git name), checks that Claude Code and git are installed, and offers to let Claude do routine edits, git, builds and tests without asking each time. The invite works in any form: the short code, the dashboard link, the whole command pasted as is, or an older long invite. On your own server, add `--server URL` (or use the dashboard link, which includes it). That's it. Start Claude Code in that folder and it's in the huddle. Each person uses their own Claude login, from anywhere.
 
 Everyone needs the same starting code (clone the same repo/branch). huddle keeps files in step while you work, but it doesn't replace git.
 
