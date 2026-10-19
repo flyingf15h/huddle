@@ -1,17 +1,44 @@
 # huddle
 
-Let several AI coding agents (Claude Code and OpenAI Codex, mixed however your team likes) work on the same project at once, from different computers and different subscriptions, without stepping on each other.
+**A whole team's AI coding agents, working on one codebase at the same time.**
 
-- **File locks.** When an agent starts editing a file, it's locked for that agent. Everyone else's copy goes read-only and Claude Code refuses their edits, with a note saying who has it.
-- **Live edits.** Every edit streams to the other machines as it happens, so the others see the file change in real time (on disk, through the `huddle_view` tool, or in the web dashboard). No GitHub push needed.
-- **Claudes talk to each other.** Agents message each other with `huddle_send`. Messages show up in the other agents' context automatically, and an agent that gets a direct message answers it before it stops.
-- **Shared work.** Give the whole team a goal and the Claudes split it into tasks among themselves.
-- **Dashboard.** A web page with a card per person saying what they and their Claude are doing, a timeline of everything happening, the code on everyone's branches (with live edits), the project brief and memory, task progress, and a box to message the Claudes.
+Everyone on your team keeps using their own agent (**Claude Code** or **OpenAI Codex**, on their own subscription and computer). huddle connects them, so they see what the others are doing, never overwrite each other, hand work back and forth, and keep going while their people are away.
 
-- **Accounts and controls.** Personal invites with roles you can change or take back, rules every agent follows (commands that are always fine, commands that are never allowed, files that never leave anyone's machine), secrets hidden from everything shared, and an audit log.
-- **Notifications and health.** Slack, Discord or webhook alerts when work is stuck or needs approval, a Health page with crashes and retries, and a public `/status` page.
+```sh
+npx -y github:flyingf15h/huddle new        # start a project, get an invite
+npx -y github:flyingf15h/huddle join <invite>   # everyone else, in their copy of the repo
+```
 
-Zero dependencies. Each person needs Claude Code or Codex, Node 18+ (22+ recommended) and git (for `npx github:`). Tested on Linux; macOS should work, Windows is untested.
+That's the whole setup. No sign-up, nothing committed to your repo, zero dependencies.
+
+### Work together without collisions
+
+- **File and folder locks.** The moment an agent starts editing a file, it's locked for that agent. Everyone else's copy goes read-only, and their agent is told who has it and what to do instead.
+- **Live edits.** Every change streams to the other machines as it happens. Watch a teammate's file change in real time on disk or in the dashboard, before anything is committed.
+- **Agents talk to each other.** "Ask Kelly's agent if anyone is touching the schema" just works. Messages land in the other agent's context, and it answers before it stops.
+- **Shared team knowledge.** A project brief, team memory and skills that every agent reads when it starts, so nobody rediscovers the same gotcha twice.
+
+### Hand off work, even while you're away
+
+- **One request, split across the team.** Describe a feature once; one agent plans it and hands the parts to whoever has the most usage left in their 5-hour window.
+- **Background agents.** Requests sent to your agent run on their own, each in a separate git worktree, so several run at once without touching what you're doing.
+- **Checked before it lands.** A second agent reviews every change and the tests run before anything merges. Failing work waits on its own branch.
+- **Pull requests, if you prefer.** Switch delivery to PR and finished work shows up on GitHub with its review and test results in the description.
+
+### Stay in control
+
+- **Personal access with roles.** Owner, member or viewer. Take anyone's access back in one click, including sessions they have open.
+- **Rules every agent follows.** Commands that are always fine (`npm test`), commands no agent may ever run (`git push`, deploys), and files that never leave anyone's machine.
+- **Secrets stay secret.** API keys, tokens and passwords are stripped from everything shared, before it leaves your computer.
+- **Audit log.** Who changed access, settings and rules, every approval, and every command a background agent ran.
+
+### Know it's working
+
+- **Live dashboard.** What every person and their agent is doing right now, tasks and progress, the code on everyone's branches, and a box to send work to the team.
+- **Health page.** Crashes, automatic retries (up to three per run), who needs an update and whose background runner is on.
+- **Alerts in Slack or Discord** when work is stuck, needs your approval, or finishes. Plus a public `/status` page.
+
+Each person needs Claude Code or Codex, Node 18+ (22+ recommended) and git. Tested on Linux; macOS should work, Windows is untested.
 
 ## Quick start
 
