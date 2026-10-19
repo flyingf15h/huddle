@@ -487,6 +487,59 @@ dialog::backdrop { background: var(--shade); backdrop-filter: blur(2px); }
 .cmd { display: flex; gap: 8px; align-items: stretch; margin: 6px 0 14px; }
 .cmd code { flex: 1; padding: 8px 11px; overflow-x: auto; white-space: nowrap; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); }
 ol.steps { padding-left: 20px; } ol.steps li { margin-bottom: 10px; }
+/* Health and Team & settings */
+.pageview { flex: 1; overflow-y: auto; padding: 16px 20px 32px; }
+.pageview > * { max-width: 980px; }
+.navbadge { margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--bad); color: #fff; font-size: 11px; font-weight: 700; display: inline-grid; place-items: center; }
+.ptabs { margin-bottom: 16px; }
+.panel { background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-sm); margin-bottom: 16px; }
+.panel > h3 { margin: 0; padding: 13px 16px 0; font-size: 14.5px; font-weight: 600; }
+.panel > .pdesc { margin: 3px 16px 0; color: var(--muted); font-size: 13px; }
+.panel > .pbody { padding: 12px 16px 14px; }
+.srow { display: flex; align-items: center; gap: 10px; padding: 9px 16px; border-top: 1px solid var(--line); font-size: 13.5px; min-height: 46px; }
+.srow > select, .srow > button, .srow > .pill { flex: none; }
+.srow:first-of-type { border-top: 0; }
+.srow .grow, .switchrow .grow, .problem .pm .grow { flex: 1; min-width: 0; }
+.srow .sub { display: block; font-size: 12px; color: var(--muted); }
+.plist { border-top: 1px solid var(--line); margin-top: 12px; }
+.pill { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--sunk); color: var(--muted); white-space: nowrap; }
+.pill.ok { background: var(--ok-soft); color: var(--ok); } .pill.bad { background: var(--bad-soft); color: var(--bad); } .pill.warn { background: var(--warn-soft); color: var(--warn); } .pill.acc { background: var(--accent-soft); color: var(--accent-soft-ink); }
+.switchrow { display: flex; align-items: flex-start; gap: 12px; padding: 11px 16px; border-top: 1px solid var(--line); }
+.switchrow .grow b { display: block; font-size: 13.5px; font-weight: 600; }
+.switchrow .grow span { font-size: 12.5px; color: var(--muted); }
+.toggle { flex: none; position: relative; width: 36px; height: 20px; border-radius: 10px; border: 0; padding: 0; background: var(--line-strong); }
+.toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+.toggle[aria-checked="true"] { background: var(--accent); }
+.toggle[aria-checked="true"]::after { transform: translateX(16px); }
+.toggle:hover { background: var(--line-strong); filter: brightness(1.05); } .toggle[aria-checked="true"]:hover { background: var(--accent); }
+.fieldset { display: grid; gap: 14px; }
+.fieldset label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+.fieldset .hintline { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+.fieldset textarea { width: 100%; min-height: 84px; font-family: var(--mono, ui-monospace, monospace); font-size: 12.5px; resize: vertical; }
+.fieldset input[type=url], .fieldset input[type=text] { width: 100%; }
+.pactions { display: flex; gap: 8px; align-items: center; justify-content: flex-end; padding: 0 16px 14px; flex-wrap: wrap; }
+.checks { display: flex; gap: 6px 14px; flex-wrap: wrap; font-size: 13px; }
+.checks label { display: inline-flex; align-items: center; gap: 6px; font-weight: 400; margin: 0; }
+.audit { width: 100%; border-collapse: collapse; font-size: 13px; }
+.audit td { padding: 8px 16px; border-top: 1px solid var(--line); vertical-align: top; }
+.audit td:first-child { white-space: nowrap; color: var(--muted); width: 1%; font-variant-numeric: tabular-nums; }
+.audit td:nth-child(2) { white-space: nowrap; width: 1%; font-weight: 600; }
+.audit code { font-size: 12px; background: var(--sunk); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+.readonly-note { font-size: 12.5px; color: var(--muted); padding: 0 16px 12px; }
+.problem { padding: 10px 16px; border-top: 1px solid var(--line); font-size: 13.5px; }
+.problem:first-of-type { border-top: 0; }
+.problem .pm { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.problem pre { margin: 8px 0 0; max-height: 180px; overflow: auto; font-size: 11.5px; background: var(--sunk); padding: 8px 10px; border-radius: 6px; white-space: pre-wrap; }
+.runs { margin: 8px 0 2px; display: grid; gap: 3px; font-size: 12.5px; }
+.runs div { display: flex; gap: 8px; align-items: baseline; }
+.invrole { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; flex-wrap: wrap; }
+.lor { display: flex; align-items: center; gap: 10px; color: var(--faint); font-size: 12px; margin: 8px 0; }
+.lor::before, .lor::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+.ghbtn { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--line-strong); background: var(--raised); color: var(--ink); text-decoration: none; font-weight: 600; font-size: 13.5px; }
+.ghbtn:hover { background: var(--sunk); }
+.ghbtn svg { width: 16px; height: 16px; }
+#lghprojects { display: grid; gap: 6px; margin-top: 8px; }
+@media (max-width: 720px) { .pageview { padding: 12px 12px 24px; } .srow { flex-wrap: wrap; } .srow .grow { flex-basis: 60%; } .audit td { padding: 8px 10px; } .audit td:nth-child(2) { white-space: normal; } }
 #login { max-width: 420px; margin: 14vh auto; padding: 0 16px; display: flex; flex-direction: column; gap: 10px; }
 #login p { margin: 4px 0; }
 .lrow { display: flex; gap: 8px; justify-content: flex-end; }
@@ -597,6 +650,11 @@ dialog { background: var(--glass); backdrop-filter: blur(22px) saturate(1.3); bo
   <input id="lname" placeholder="Your name" autocomplete="name" aria-label="Your name">
   <div class="lrow"><button id="lback" hidden>Back</button><button class="primary" id="lgo">Open project</button></div>
   <div id="lerr" class="err"></div>
+  <div id="lgh" hidden>
+    <div class="lor"><span>or</span></div>
+    <a class="ghbtn" id="lghbtn" href="/auth/github/login"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.05-.49.05-.49.81.06 1.23.83 1.23.83.72 1.23 1.88.88 2.34.67.07-.52.28-.88.51-1.08-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>Sign in with GitHub</a>
+    <div id="lghprojects"></div>
+  </div>
 </div>
 
 <div id="app" hidden>
@@ -609,6 +667,8 @@ dialog { background: var(--glass); backdrop-filter: blur(22px) saturate(1.3); bo
       <button data-view="code"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 7.5L4 12l4.5 4.5M15.5 7.5L20 12l-4.5 4.5"/></svg><span>Code</span></button>
       <button data-view="brief"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4.5h10.5L19 8v11.5H5z"/><path d="M8.5 11h7M8.5 14.5h7M8.5 8h4"/></svg><span>Brief &amp; memory</span></button>
       <button data-view="stats"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19.5V11M10 19.5V5M15 19.5v-6M20 19.5V8.5"/></svg><span>Usage</span></button>
+      <button data-view="health"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2.5-6 5 12 2.5-6h4"/></svg><span>Health</span><span class="navbadge" id="healthBadge" hidden></span></button>
+      <button data-view="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>Team &amp; settings</span></button>
     </div>
     <div class="railhead"><span>Team</span><span class="count" id="teamcount"></span><button class="ghost iconbtn sm" data-invite aria-label="Invite people" title="Invite people"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5.5v13M5.5 12h13"/></svg></button></div>
     <div id="team"></div>
@@ -619,7 +679,7 @@ dialog { background: var(--glass); backdrop-filter: blur(22px) saturate(1.3); bo
     <h1 id="vtitle">Activity</h1>
     <div id="filters" class="seg sm" role="group" aria-label="Show">
       <button data-f="all" class="on">Everything</button>
-      <button data-f="claude">Claude's work</button>
+      <button data-f="claude">Agents' work</button>
       <button data-f="talk">Messages</button>
     </div>
     <span id="whof" class="small muted"></span>
@@ -647,6 +707,8 @@ dialog { background: var(--glass); backdrop-filter: blur(22px) saturate(1.3); bo
         <div id="kbody"></div>
       </div>
       <div id="statsview" hidden></div>
+      <div id="healthview" class="pageview" hidden></div>
+      <div id="settingsview" class="pageview" hidden></div>
       <form id="composer">
         <div class="cbox">
           <div class="ctop"><span class="clabel">New request</span><label class="tolabel" for="to">to</label><select id="to"></select></div>
@@ -676,19 +738,23 @@ dialog { background: var(--glass); backdrop-filter: blur(22px) saturate(1.3); bo
 <dialog id="dlg-invite">
   <div class="dlg-head"><h3>Invite people</h3><span class="grow"></span><button data-close>Close</button></div>
   <div class="dlg-body">
-    <p style="margin-top:0">Send a teammate these steps. They need Claude Code, Node 18+ and git, and use their own Claude account.</p>
+    <p style="margin-top:0">Send a teammate these steps. They need Claude Code or Codex, Node 18+ and git, and use their own account.</p>
+    <div id="invrole" class="invrole" hidden>
+      <div class="seg sm" role="group" aria-label="Role"><button data-irole="member" class="on">Member</button><button data-irole="viewer">Viewer</button></div>
+      <span class="small muted" id="invroleText">Can send requests and edit through their agent.</span>
+    </div>
     <ol class="steps">
       <li>Open a terminal in their copy of the project, or an empty folder.</li>
       <li>Run this. It asks for their name; answer yes if it offers to set up git.<div class="cmd"><code id="joincmd"></code><button id="copyjoin">Copy</button></div></li>
-      <li>Run <code>claude</code> in that folder. The status line shows <b>● huddle</b> once connected.</li>
+      <li>Run <code>claude</code> (or <code>codex</code>) in that folder. It's in the huddle from the first prompt.</li>
     </ol>
-    <p class="small muted">To let someone watch without joining, <button class="link" id="copydash">copy the dashboard link</button>.</p>
-    <p class="small muted">Anyone with the invite can join and see the project.</p>
+    <p class="small muted" id="watchline">To let someone watch without joining, <button class="link" id="copydash">copy the dashboard link</button>.</p>
+    <p class="small muted" id="invnote">Anyone with the invite can join and see the project.</p>
   </div>
 </dialog>
 
 <dialog id="dlg-help" aria-labelledby="ovtitle">
-  <div class="ovhead"><h3 id="ovtitle">How huddle works</h3><p>Everyone's Claude works on the same project at the same time, each from their own computer, without overwriting each other.</p></div>
+  <div class="ovhead"><h3 id="ovtitle">How huddle works</h3><p>Everyone's coding agent (Claude Code or Codex) works on the same project at the same time, each from their own computer, without overwriting each other.</p></div>
   <ul class="ovlist">
     <li><span class="oi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><circle cx="17" cy="9" r="2.6"/><path d="M15.5 14.2A4.5 4.5 0 0 1 21 18.5"/></svg></span><div><b>See what everyone is doing</b><span>The team list shows what each person and their Claude are working on. Every Claude is told when someone starts something new.</span></div></li>
     <li><span class="oi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg></span><div><b>No overwrites</b><span>A file a Claude is editing is locked for everyone else. Whole folders can be locked for bigger changes.</span></div></li>
@@ -698,11 +764,11 @@ dialog { background: var(--glass); backdrop-filter: blur(22px) saturate(1.3); bo
     <li><span class="oi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="2.2"/><circle cx="6" cy="18" r="2.2"/><circle cx="18" cy="9" r="2.2"/><path d="M6 8.2v7.6M18 11.2c0 3.5-5 3-10.5 5.3"/></svg></span><div><b>Code and hand-offs</b><span>Browse everyone's shared code, watch edits live, and see where each session left off.</span></div></li>
   </ul>
   <div class="ovmodes">
-    <b>What your Claude does without you</b>
+    <b>What your agent does without you</b>
     <table>
-      <tr><th>Active</th><td>Runs requests and answers messages sent to your Claude, and plans and takes team tasks. The default.</td></tr>
-      <tr><th>Requests only</th><td>Runs requests and answers messages sent to your Claude, from people or other Claudes. Leaves team tasks to others.</td></tr>
-      <tr><th>Off</th><td>Nothing runs in the background. Requests and messages wait until you open Claude in the project.</td></tr>
+      <tr><th>Active</th><td>Runs requests and answers messages sent to your agent, and plans and takes team tasks. The default.</td></tr>
+      <tr><th>Requests only</th><td>Runs requests and answers messages sent to your agent, from people or other agents. Leaves team tasks to others.</td></tr>
+      <tr><th>Off</th><td>Nothing runs in the background. Requests and messages wait until you open your agent in the project.</td></tr>
     </table>
     <span class="small muted">Requests never need approval. Commands outside the allowed list always do, in every mode. Change the mode from the menu at the bottom of the sidebar.</span>
   </div>
@@ -905,8 +971,16 @@ const shortFromLink = !fromInvite && SHORT_INVITE.test(String(params.get('invite
 async function lookUpInvite(code) {
   const res = await fetch('/api/invite/' + encodeURIComponent(code));
   const r = await res.json().catch(() => ({}));
-  if (!res.ok || !r.token) throw new Error(r.error || 'no such invite');
-  return { token: r.token, project: r.project };
+  if (!res.ok || !(r.token || r.personal)) throw new Error(r.error || 'no such invite');
+  if (!r.personal) return { token: r.token, project: r.project };
+  // a personal invite becomes this browser's own token, under the name typed in
+  const name = ($('lname') && $('lname').value.trim()) || auth.name;
+  if (!name) throw new Error('type your name first, then open the invite');
+  const rr = await fetch(`/api/p/${encodeURIComponent(r.project)}/redeem`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code, name }) });
+  const j = await rr.json().catch(() => ({}));
+  if (!rr.ok) throw new Error(j.error || 'that invite did not work');
+  auth.name = j.name;
+  return { token: j.token, project: r.project };
 }
 // `huddle open` adds this person's approve key (and name); kept per project, never put back in the address bar
 const keys = (() => { try { return JSON.parse(store.get('huddle.keys') || '{}'); } catch { return {}; } })();
@@ -1009,9 +1083,9 @@ function md(text) {
 // A background Claude's prompt used to be posted whole: huddle's long generated instructions. Keep only
 // the request they were about ("Reply to kelly: …", the task itself, "Review the work on: …").
 function backgroundAsk(text) {
-  let m = /^You are .{1,80}?, working with a team of Claude agents through huddle\.\nYour task \[\w+\]: (.*)\n([\s\S]*?)(?:\nIt is part of the team goal|\nOther tasks in this goal|\nDo the task in this repository)/.exec(text);
+  let m = /^You are .{1,80}?, working with a team of (?:Claude agents|AI coding agents \(Claude Code and Codex\)) through huddle\.\nYour task \[\w+\]: (.*)\n([\s\S]*?)(?:\nIt is part of the team goal|\nOther tasks in this goal|\nDo the task in this repository)/.exec(text);
   if (m) return (m[2].trim() || m[1]).trim();
-  if ((m = /^You are .{1,80}?, one of a team of Claude agents[\s\S]*? (\S+) sent you this message:\n\n([\s\S]*?)\n\nAnswer it\./.exec(text))) return `Reply to ${m[1]}: ${m[2].trim()}`;
+  if ((m = /^You are .{1,80}?, one of a team of (?:Claude|AI coding) agents[\s\S]*? (\S+) sent you this message:\n\n([\s\S]*?)\n\nAnswer it\./.exec(text))) return `Reply to ${m[1]}: ${m[2].trim()}`;
   if ((m = /^You are .{1,80}?, coordinating a team of Claude agents[\s\S]*?this goal \[\w+\] \(from [^)]*\):\n\n([\s\S]*?)\nYou won the right/.exec(text))) return `Plan: ${m[1].trim()}`;
   if ((m = /^You are reviewing work another Claude just finished for the task "(.*?)"/.exec(text))) return `Review the work on: ${m[1]}`;
   if ((m = /^You are finishing the task "(.*?)" in this repository\. (.*?):/.exec(text))) return `${m[2]}: fix it in ${m[1]}`;
@@ -1070,7 +1144,7 @@ function noteHtml(e) {
   const who = `<b>${esc(e.who)}</b>`;
   const fileBtn = (p, b) => `<button class="link" data-file="${esc(p)}" data-branch="${esc(b || '')}">${esc(p)}</button>`;
   switch (e.kind) {
-    case 'join': return `<div class="note">${noteIc('join')}<span>${who} ${e.agentKind === 'autopilot' ? 'turned on autopilot' : 'opened Claude'}</span></div>`;
+    case 'join': return `<div class="note">${noteIc('join')}<span>${who} ${e.agentKind === 'autopilot' ? 'turned on autopilot' : 'opened ' + toolOf(e.who)}</span></div>`;
     case 'lock': return `<div class="note">${noteIc('lock')}<span>${who} ${e.dir ? `locked the whole <b>${esc(e.path)}</b> folder` : 'started editing ' + fileBtn(e.path, e.branch)}${e.branch ? ` on ${esc(e.branch)}` : ''}</span></div>`;
     case 'handoff': return `<div class="card"><div class="kicker">${who} left a hand-off note${e.auto ? ' <span class="faint">(noted by huddle)</span>' : ''} · ${clock(e.at)}</div><div class="small" style="white-space:pre-wrap">${esc(e.text)}</div>${e.commits.length ? `<div class="small faint" style="margin-top:4px">${e.commits.slice(0, 4).map(esc).join('<br>')}</div>` : ''}</div>`;
     case 'unlock': return `<div class="note">${noteIc('unlock')}<span>${who} ${e.stale ? 'went quiet, so huddle released' : 'is done with'} ${esc(e.path)}</span></div>`;
@@ -1111,7 +1185,7 @@ const BOT_KINDS = new Set(['reply', 'tool', 'end', 'plan']);
 // what the header line says the author did, e.g. "tszfei  requested from the team  8:01 AM"
 function rowContext(e) {
   if (e.kind === 'goal') return 'requested from ' + (e.goal.to ? claudeOf(e.goal.to) : 'the team');
-  if (e.kind === 'prompt') return e.bg ? 'started on a request in the background' : 'prompted ' + (aiName(e.who) || 'their Claude');
+  if (e.kind === 'prompt') return e.bg ? 'started on a request in the background' : 'prompted ' + (aiName(e.who) || 'their ' + toolOf(e.who));
   if (e.kind === 'msg') return e.to ? 'messaged ' + (String(e.to).includes('#') ? sessionName(e.to) : auth.name && e.to.toLowerCase() === myName().toLowerCase() ? 'you' : e.to) : 'messaged everyone';
   if (e.kind === 'plan') return 'posted a plan';
   return '';
@@ -1258,12 +1332,15 @@ function people() {
 }
 // what to call someone's Claude: the name they gave it, or "tszfei's Claude"
 function aiName(n) { return (S.settings[n] && S.settings[n].aiName) || ''; }
-function claudeOf(n) { return aiName(n) || `${n}'s Claude`; }
+// Claude Code or Codex: whichever that person's huddle said it runs
+function toolOf(n) { return S.settings[n] && S.settings[n].tool === 'codex' ? 'Codex' : 'Claude'; }
+const myTool = () => toolOf(myName());
+function claudeOf(n) { return aiName(n) || `${n}'s ${toolOf(n)}`; }
 function lastOf(name) { for (let i = S.entries.length - 1; i >= 0; i--) if (S.entries[i].who === name) return S.entries[i]; return null; }
 function nowDoing(name) {
   const e = lastOf(name);
   if (!e) return '';
-  const c = aiName(name) || 'Claude';
+  const c = aiName(name) || toolOf(name);
   if (e.kind === 'end') return `${c} is idle, finished ${ago(e.at)}`;
   if (e.kind === 'tool') { const w = toolWords(e.text); return `${c} ${w.verb} ${w.arg}`.trim(); }
   if (e.kind === 'prompt') return `Asked ${c}: “${e.text.slice(0, 120)}”`;
@@ -1303,7 +1380,7 @@ function cardLine(p) {
   if (p.online) {
     const recent = e && Date.now() - e.at < 2 * 60 * 1000;
     if (recent && e.kind === 'tool') bits.push(stepWords(e.text));
-    else if (recent && e.kind !== 'end') bits.push('Claude is working');
+    else if (recent && e.kind !== 'end') bits.push(`${toolOf(p.name)} is working`);
     else if (!p.clones.length) bits.push(e && Date.now() - e.at > 60000 ? `Idle for ${ago(e.at).replace(' ago', '')}` : 'Idle');
   } else {
     bits.push(`Away${p.lastSeen ? ', last active ' + ago(p.lastSeen) : ''}`);
@@ -1320,7 +1397,7 @@ function usageText(n) {
   const u = (S.usage || {})[n];
   if (!u || typeof u.five !== 'number' || Date.now() - u.at > 6 * 3600 * 1000) return '';
   const reset = u.fiveResets ? ` · resets ${clock(u.fiveResets * 1000)}` : '';
-  return `<span class="${u.five >= 85 ? 'usehigh' : ''}" title="${u.five}% of ${esc(n)}'s 5-hour Claude window used${typeof u.week === 'number' ? `, ${u.week}% of the week` : ''}${reset}">${100 - u.five}% left</span>`;
+  return `<span class="${u.five >= 85 ? 'usehigh' : ''}" title="${u.five}% of ${esc(n)}'s 5-hour ${toolOf(n)} window used${typeof u.week === 'number' ? `, ${u.week}% of the week` : ''}${reset}">${100 - u.five}% left</span>`;
 }
 // main fills the window below whatever sits above it (header, catch-up line, team strip)
 function fitMain() { document.documentElement.style.setProperty('--maintop', Math.round(document.querySelector('main').getBoundingClientRect().top + scrollY) + 'px'); }
@@ -1333,7 +1410,7 @@ function renderTeam() {
     const last = lastOf(p.name);
     const busy = p.online && last && ['tool', 'prompt'].includes(last.kind) && Date.now() - last.at < 90 * 1000;
     const t = doingCount(p.name), c = cardLine(p), use = usageText(p.name);
-    const ask = hasClaude(p.name) ? `<span class="pask" role="button" tabindex="0" data-askto="${esc(p.name)}" title="Ask ${esc(p.name === myName() ? 'your Claude' : claudeOf(p.name))} to do something">Ask</span>` : '';
+    const ask = hasClaude(p.name) ? `<span class="pask" role="button" tabindex="0" data-askto="${esc(p.name)}" title="Ask ${esc(p.name === myName() ? 'your ' + myTool() : claudeOf(p.name))} to do something">Ask</span>` : '';
     return `<div class="prow">${ask}<button class="person${S.who === p.name ? ' sel' : ''}${p.online ? '' : ' away'}" data-person="${esc(p.name)}" title="${S.who === p.name ? 'Show everyone' : 'Show only ' + esc(p.name) + "'s activity"}${p.name === myName() ? ' · right-click to rename' : ''}">
       <span class="pav">${avatar(p.name, false, busy)}<i class="pres ${p.online ? (p.runner === 'full' ? 'auto' : 'on') : 'off'}"></i></span>
       <span class="pbody">
@@ -1351,7 +1428,7 @@ function renderTeam() {
   const sel = $('to'), cur = sel.value;
   const group = (p) => {
     const mine = p.name === myName(), ss = sessionsOf(p.name);
-    const head = `<option value="${esc(p.name)}">${esc(mine ? 'Your Claude' : claudeOf(p.name))}, new background session${p.online ? '' : ' (away)'}</option>`;
+    const head = `<option value="${esc(p.name)}">${esc(mine ? 'Your ' + myTool() : claudeOf(p.name))}, new background session${p.online ? '' : ' (away)'}</option>`;
     const seen = {};
     const labels = ss.map(a => { const l = sessionLabel(a); seen[l] = (seen[l] || 0) + 1; return seen[l] > 1 ? `${l} (${seen[l]})` : l; });
     return `<optgroup label="${esc(mine ? 'You' : p.name)}">${head}${ss.map((a, i) => `<option value="@${esc(a.id)}">${esc(labels[i])}</option>`).join('')}</optgroup>`;
@@ -1363,8 +1440,8 @@ function renderTeam() {
 }
 // ---------- my Claude: what it does on its own, and its name ----------
 const MODES = [
-  ['full', 'Active', 'Runs requests and answers messages sent to your Claude, and takes on team tasks, even while you are away.'],
-  ['requests', 'Requests only', 'Runs requests and answers messages sent to your Claude. Leaves team tasks to others.'],
+  ['full', 'Active', 'Runs requests and answers messages sent to you, and takes on team tasks, even while you are away.'],
+  ['requests', 'Requests only', 'Runs requests and answers messages sent to you. Leaves team tasks to others.'],
   ['off', 'Off', 'Nothing runs in the background. Requests and messages wait for you.'],
 ];
 const myMode = () => (S.settings[myName()] && S.settings[myName()].autopilot) || 'full';
@@ -1374,13 +1451,13 @@ function renderMine() {
   if (!mine) return;
   const m = myMode();
   $('mineDot').className = 'mydot' + (m === 'off' ? ' off' : m === 'full' ? ' full' : '');
-  $('mineLabel').textContent = `${aiName(myName()) || 'Claude'} · ${MODES.find(x => x[0] === m)[1]}`;
-  $('mineBtn').title = 'What your Claude does on its own, and its name';
+  $('mineLabel').textContent = `${aiName(myName()) || myTool()} · ${MODES.find(x => x[0] === m)[1]}`;
+  $('mineBtn').title = `What your ${myTool()} does on its own, and its name`;
 }
 $('mineBtn').onclick = () => {
   if (menuFor === $('mineBtn')) return closeMenu();
   const m = myMode();
-  openMenu($('mineBtn'), `<div class="mh">Your Claude</div>
+  openMenu($('mineBtn'), `<div class="mh">Your ${myTool()}</div>
     ${MODES.map(([k, l, d]) => `<label class="modeopt"><input type="radio" name="mode" value="${k}" ${k === m ? 'checked' : ''}><div><b>${l}</b><span>${d}</span></div></label>`).join('')}
     <hr><div class="namefield"><label for="mineName">Name</label><input id="mineName" maxlength="32" placeholder="e.g. Pip" value="${esc(aiName(myName()))}"></div>
     <div class="mh err" id="minemsg" role="alert"></div>`, (menu) => {
@@ -1453,8 +1530,8 @@ function openNamePop(x, y) {
   pop.id = 'namepop';
   pop.innerHTML = `<label for="namepopMe">Your name</label>
     <input id="namepopMe" maxlength="40" value="${esc(myName())}" autocomplete="off">
-    ${withClaude ? `<label for="namepopAi">Your Claude's name</label>
-    <input id="namepopAi" maxlength="32" placeholder="${esc(myName())}'s Claude" value="${esc(aiName(myName()))}" autocomplete="off">` : ''}
+    ${withClaude ? `<label for="namepopAi">Your ${myTool()}'s name</label>
+    <input id="namepopAi" maxlength="32" placeholder="${esc(myName())}'s ${myTool()}" value="${esc(aiName(myName()))}" autocomplete="off">` : ''}
     <div class="perr err small" role="alert"></div>
     <div class="row"><button type="button" data-cancel>Cancel</button><button type="submit" class="primary">Save</button></div>`;
   document.body.appendChild(pop);
@@ -1502,8 +1579,8 @@ function checkBits(t, short) {
   if (c.tests === 'passed') out.push(`<span class="ck good" title="${esc(c.testCommand || '')}">Tests pass</span>`);
   if (c.tests === 'failed') out.push(`<span class="ck bad" title="${esc(c.testOutput || '')}">Tests failed</span>`);
   if (short) return out.filter(x => !/ck good|class="ck"/.test(x)).join('');
-  if (c.review === 'fixed') out.push('<span class="ck" title="A Sonnet review found problems, and they were fixed">Review fixed</span>');
-  else if (c.review === 'ok') out.push('<span class="ck good" title="Reviewed by Sonnet">Reviewed</span>');
+  if (c.review === 'fixed') out.push('<span class="ck" title="A second agent reviewed it, found problems, and they were fixed">Review fixed</span>');
+  else if (c.review === 'ok') out.push('<span class="ck good" title="Reviewed by a second agent">Reviewed</span>');
   return out.join('');
 }
 // old titles as people typed them, made readable: "Kelly: sync git" loses the name (the owner is shown anyway),
@@ -1587,6 +1664,7 @@ function taskRow(t, b, groupTag) {
     t.status === 'doing' ? `<span class="st doing">Working on it</span>` : t.status === 'blocked' && !why ? `<span class="st blocked">Stuck</span>` : '',
     waits.length && t.status === 'todo' ? '<span>Waiting on another task</span>' : '',
     t.status === 'doing' && (t.updated || t.at) ? `<span title="last change">${esc(ago(t.updated || t.at))}</span>` : '',
+    t.status === 'doing' && t.runs && t.runs.length && t.runs[t.runs.length - 1].outcome === 'retrying' ? `<span class="st blocked">Retrying (attempt ${t.runs[t.runs.length - 1].attempt + 1})</span>` : '',
     checkBits(t, true),
   ].filter(Boolean).join('');
   return `<button class="trow ${t.status}" data-task="${esc(t.id)}" aria-expanded="${open}" title="${esc(title)}">
@@ -1600,6 +1678,8 @@ function taskRow(t, b, groupTag) {
       ${t.detail && t.detail.trim() !== t.title.trim() ? `<p>${esc(t.detail)}</p>` : title !== t.title ? `<p class="muted">${esc(t.title)}</p>` : ''}
       ${waits.length ? `<p><b>Waiting for:</b> ${waits.map(x => esc(bestTitle(x.title).title)).join('; ')}</p>` : ''}
       ${note ? `<p><b>Latest note</b> <span class="faint">(${esc(note.by)}, ${ago(note.at)})</span>: ${esc(note.text)}</p>` : ''}
+      ${t.checks && t.checks.pr ? `<p><b>Pull request:</b> <a href="${esc(t.checks.pr)}" target="_blank" rel="noopener">${esc(t.checks.pr.replace(/^https:\/\/github\.com\//, ''))}</a> <span class="pill ${t.checks.prState === 'merged' ? 'ok' : t.checks.prState === 'closed' ? 'bad' : 'acc'}">${esc({ open: 'Open', merged: 'Merged', closed: 'Closed' }[t.checks.prState] || 'Open')}</span></p>` : ''}
+      ${t.runs && t.runs.length ? `<div class="runs">${t.runs.slice(-5).map(r => `<div><span class="pill ${r.outcome === 'ok' ? 'ok' : r.outcome === 'retrying' ? 'warn' : r.outcome === 'limit' ? 'acc' : 'bad'}">${esc({ ok: 'Finished', retrying: 'Retried', crashed: 'Crashed', failed: 'Failed', limit: 'Usage limit', waiting: 'Waiting' }[r.outcome] || r.outcome)}</span><span>Attempt ${r.attempt} by ${esc(r.by)}'s ${r.agent === 'codex' ? 'Codex' : 'Claude'}${r.ms ? ', ' + fmtDur(r.ms) : ''}, ${esc(ago(r.at))}${r.error ? ': ' + esc(r.error.slice(0, 160)) : ''}</span></div>`).join('')}</div>` : ''}
       ${t.owner ? `<button class="link small" data-person-filter="${esc(t.owner)}">See ${esc(t.owner)}'s work</button>` : ''}
     </div>` : ''}`;
 }
@@ -1617,7 +1697,7 @@ function renderAsks() {
     const many = list.length > 1;
     return `<div class="ask" data-ask="${esc(list.map(x => x.id).join(','))}">
       <div class="ahead">${from}: <b>${esc(shortTitle(list[0].title, 70))}</b></div>
-      <div class="small muted">Your Claude stopped short of ${many ? 'these commands' : 'this command'}. Approving runs the request again with ${many ? 'them' : 'it'} allowed.</div>
+      <div class="small muted">Your ${myTool()} stopped short of ${many ? 'these commands' : 'this command'}. Approving runs the request again with ${many ? 'them' : 'it'} allowed.</div>
       <ul class="acmds">${list.map(x => `<li><code>${esc(x.command)}</code>${x.why ? `<span class="why">${esc(x.why)}</span>` : ''}</li>`).join('')}</ul>
       <div class="row"><button class="primary" data-allow="1" ${canHere ? '' : 'disabled'}>${many ? 'Approve all' : 'Approve'}</button><button data-allow="0" ${canHere ? '' : 'disabled'}>${many ? 'Decline all' : 'Decline'}</button><span class="err"></span></div>
       ${canHere ? '' : '<div class="small muted">To decide here, open the dashboard with <code>huddle open</code> on your computer, or run <code>huddle approve --all</code>.</div>'}
@@ -1768,7 +1848,7 @@ async function loadFile(highlight) {
 }
 
 // ---------- views ----------
-const VIEW_TITLES = { timeline: 'Activity', code: 'Code', brief: 'Brief & memory', stats: 'Usage' };
+const VIEW_TITLES = { timeline: 'Activity', code: 'Code', brief: 'Brief & memory', stats: 'Usage', health: 'Health', settings: 'Team & settings' };
 function showView(v) {
   S.view = v;
   for (const b of document.querySelectorAll('[data-view]')) b.classList.toggle('on', b.dataset.view === v);
@@ -1778,7 +1858,12 @@ function showView(v) {
   $('codeview').hidden = v !== 'code';
   $('briefview').hidden = v !== 'brief';
   $('statsview').hidden = v !== 'stats';
+  $('healthview').hidden = v !== 'health';
+  $('settingsview').hidden = v !== 'settings';
+  $('composer').hidden = v === 'settings' || v === 'health';
   $('composer').classList.toggle('compact', v !== 'timeline');
+  if (v === 'health') renderHealth();
+  if (v === 'settings') renderSettings();
   if (v === 'stats') loadStats().catch(e => { $('statsview').innerHTML = `<p class="err">${esc(e.message)}</p>`; });
   if (v === 'timeline') renderFeed();
   if (v === 'code') loadCodeRefs().catch(() => {});
@@ -2007,15 +2092,15 @@ function updateHint() {
     return;
   }
   $('text').placeholder = !who ? 'Describe what the team should build or fix, and what done looks like.'
-    : who === myName() ? 'What should your Claude do?' : `What should ${claudeOf(who)} do? It replies to you here.`;
-  if (!who) { $('hint').textContent = 'One Claude splits it into tasks for everyone.'; return; }
+    : who === myName() ? `What should your ${myTool()} do?` : `What should ${claudeOf(who)} do? It replies to you here.`;
+  if (!who) { $('hint').textContent = 'One agent splits it into tasks for everyone.'; return; }
   const p = people().find(x => x.name === who);
   const mode = (S.settings[who] || {}).autopilot;
-  $('hint').textContent = !p || !p.online ? `${who} is away. It waits until their Claude is back.`
+  $('hint').textContent = !p || !p.online ? `${who} is away. It waits until their ${toolOf(who)} is back.`
     : mode === 'off' ? `${who} turned background work off. It waits for them.`
     : p.runner === 'full' || p.runner === 'requests' ? 'Starts right away in the background.'
     : p.outdated ? `${who}'s huddle needs an update before it can run background work. Until then it waits for them.`
-    : `${who}'s Claude isn't running background work right now. It waits for them.`;
+    : `${who}'s ${toolOf(who)} isn't running background work right now. It waits for them.`;
 }
 $('to').addEventListener('change', updateHint);
 const grow = () => { const t = $('text'); t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 240) + 'px'; };
@@ -2044,14 +2129,14 @@ $('composer').onsubmit = async (e) => {
     if (to && isQuickQuestion(text)) {
       await api('message', { to, text });
       $('text').value = ''; grow();
-      $('sendmsg').textContent = `Asked ${to === myName() ? 'your Claude' : claudeOf(to)}. The answer will show up here.`;
+      $('sendmsg').textContent = `Asked ${to === myName() ? 'your ' + myTool() : claudeOf(to)}. The answer will show up here.`;
       setTimeout(() => { $('sendmsg').textContent = ''; }, 4000);
       $('sendbtn').disabled = false;
       return;
     }
     await api('goal', { text, to });
     $('text').value = ''; grow();
-    $('sendmsg').textContent = !to ? 'Sent to the team' : to === myName() ? 'Sent to your Claude' : `Sent to ${claudeOf(to)}. The reply will show up here.`;
+    $('sendmsg').textContent = !to ? 'Sent to the team' : to === myName() ? `Sent to your ${myTool()}` : `Sent to ${claudeOf(to)}. The reply will show up here.`;
     setTimeout(() => { $('sendmsg').textContent = ''; }, 4000);
   } catch (err) { $('sendmsg').innerHTML = `<span class="err">Couldn't send: ${esc(err.message)}</span>`; }
   $('sendbtn').disabled = false;
@@ -2064,7 +2149,29 @@ $('dlg-file').addEventListener('close', () => { S.file = null; });
 // the project's short invite from the server (an older server can't make one: the long form then)
 let shortCode = null;
 const invite = async () => shortCode || (shortCode = await api('invite-code', {}).then(r => r.code).catch(() => inviteCode()));
-$('btn-invite').onclick = async () => { $('joincmd').textContent = `npx -y github:flyingf15h/huddle join ${await invite()}`; $('dlg-invite').showModal(); };
+// with accounts on, each Invite people makes a personal invite for one person, with a role
+let inviteRole = 'member';
+async function fillInvite() {
+  $('invrole').hidden = !S.me.accounts;
+  // with accounts, a watcher gets a Viewer invite instead of the shared link
+  $('watchline').hidden = !!S.me.accounts;
+  if (!S.me.accounts) {
+    $('joincmd').textContent = `npx -y github:flyingf15h/huddle join ${await invite()}`;
+    $('invnote').innerHTML = 'Anyone with the invite can join and see the project. For access you can take back, set up accounts in <button class="link" data-goto-settings>Team &amp; settings</button>.';
+    return;
+  }
+  $('joincmd').textContent = 'Making an invite…';
+  for (const b of document.querySelectorAll('[data-irole]')) b.classList.toggle('on', b.dataset.irole === inviteRole);
+  $('invroleText').textContent = ROLE_DESC[inviteRole];
+  try {
+    const r = await api('member-invite', { role: inviteRole });
+    $('joincmd').textContent = `npx -y github:flyingf15h/huddle join ${r.code}`;
+    $('invnote').textContent = `Works once, for one person, until ${new Date(r.invite.expires).toLocaleDateString()}. You can take it back in Team & settings.`;
+  } catch (e) { $('joincmd').textContent = ''; $('invnote').textContent = "Couldn't make an invite: " + e.message; }
+}
+$('btn-invite').onclick = async () => { $('dlg-invite').showModal(); await fillInvite(); };
+for (const b of document.querySelectorAll('[data-irole]')) b.onclick = () => { inviteRole = b.dataset.irole; fillInvite(); };
+document.addEventListener('click', (e) => { if (e.target.closest('[data-goto-settings]')) { $('dlg-invite').close(); S.stab = 'team'; showView('settings'); } });
 const copy = (text, btn, label) => navigator.clipboard.writeText(text).then(() => { btn.textContent = 'Copied'; setTimeout(() => { btn.textContent = label; }, 1500); });
 $('copyjoin').onclick = () => copy($('joincmd').textContent, $('copyjoin'), 'Copy');
 $('copydash').onclick = async () => copy(`${location.origin}/#invite=${await invite()}`, $('copydash'), 'copy dashboard link');
@@ -2205,6 +2312,20 @@ function showLogin(msg) {
   setHash(); $('app').hidden = true; $('login').hidden = false; $('lname').value = auth.name; $('lerr').textContent = msg || '';
   $('lback').hidden = !backTarget();
   $('linvite').focus();
+  githubLogin().catch(() => {});
+}
+// signed in with GitHub: the projects that account is on, one click each
+async function githubLogin() {
+  const me = await fetch('/auth/me').then(r => r.json());
+  $('lgh').hidden = !me.github;
+  if (!me.github) return;
+  $('lghbtn').hidden = !!me.user;
+  if (!me.user) return;
+  const r = await fetch('/api/me/projects').then(x => x.json()).catch(() => ({ projects: [] }));
+  $('lghprojects').innerHTML = `<p class="small muted" style="margin:0">Signed in as <b>${esc(me.user.login)}</b> · <a href="/auth/logout">Sign out</a></p>` +
+    ((r.projects || []).map(p => `<button data-ghproj="${esc(p.project)}" data-ghname="${esc(p.name)}">${esc(p.project.replace(/-[0-9a-f]{6,8}$/, ''))} <span class="muted">as ${esc(p.name)}, ${esc(ROLE_TEXT[p.role] || p.role)}</span></button>`).join('')
+      || '<p class="small muted" style="margin:0">No projects are linked to this GitHub account yet. Open one with its invite, then link GitHub in Team &amp; settings.</p>');
+  for (const b of document.querySelectorAll('[data-ghproj]')) b.onclick = () => { auth = { ...auth, project: b.dataset.ghproj, token: 'github', name: b.dataset.ghname }; start(); };
 }
 // Back (or Escape) returns to the project you came from, or any other project this browser has opened
 function backTarget() {
@@ -2233,6 +2354,218 @@ $('lgo').onclick = async () => {
   start();
 };
 
+// ---------- who I am here: my role, and whether the project has accounts ----------
+S.me = { role: 'member' };
+S.problems = [];
+const isOwner = () => S.me.role === 'owner';
+async function loadMe() {
+  S.me = await api('whoami').catch(() => ({ role: 'member' }));
+  // a personal token speaks as its own person: the dashboard uses that name
+  if (S.me.name && S.me.name !== auth.name) { auth.name = S.me.name; store.set('huddle.name', auth.name); showMe(); }
+}
+const ROLE_TEXT = { owner: 'Owner', member: 'Member', viewer: 'Viewer' };
+const ROLE_DESC = { member: 'Can send requests and edit through their agent.', viewer: 'Can watch everything, change nothing.' };
+
+// ---------- Health: is everyone's huddle working ----------
+function renderHealth() {
+  const el = $('healthview');
+  const people = new Map();
+  for (const a of Object.values(S.agents)) {
+    if (a.kind === 'human' || a.clone) continue;
+    const p = people.get(a.name) || { name: a.name, online: false, runner: null, build: null, lastSeen: 0, tool: toolOf(a.name) };
+    p.online = p.online || a.online;
+    if (a.runner && a.online) p.runner = a.runner;
+    if (a.build && (!p.build || a.build.at > p.build.at)) p.build = a.build;
+    p.lastSeen = Math.max(p.lastSeen, a.lastSeen || 0);
+    people.set(a.name, p);
+  }
+  const list = [...people.values()].sort((x, y) => (y.online - x.online) || x.name.localeCompare(y.name));
+  const newest = Math.max(0, ...list.map(p => (p.build && p.build.at) || 0));
+  const tasks = S.board ? S.board.tasks : [];
+  const day = Date.now() - 86400000;
+  const runs = tasks.flatMap(t => (t.runs || []).map(r => ({ ...r, task: t }))).filter(r => r.at > day).sort((a, b) => b.at - a.at);
+  const finals = runs.filter(r => r.outcome !== 'retrying');
+  const good = finals.filter(r => r.outcome === 'ok').length;
+  const problems = (S.problems || []).filter(x => x.at > day).sort((a, b) => b.at - a.at);
+  const stuck = tasks.filter(t => t.status === 'blocked');
+  const runnerWord = (r) => r === 'full' ? '<span class="pill ok">Active</span>' : r === 'requests' ? '<span class="pill acc">Requests only</span>' : r === 'off' ? '<span class="pill">Off</span>' : '<span class="pill">Not running</span>';
+  el.innerHTML = `
+    <p class="small muted" style="margin:0 0 8px">Last 24 hours</p>
+    <div class="tiles">
+      <div class="tile"><div class="k">Online now</div><div class="v">${list.filter(p => p.online).length}<span class="muted" style="font-size:14px;font-weight:500"> of ${list.length}</span></div></div>
+      <div class="tile"><div class="k">Runs that finished</div><div class="v">${finals.length ? `${Math.round(100 * good / finals.length)}%` : '—'}</div><div class="small muted">${finals.length ? `${good} of ${finals.length} finished cleanly` : 'none yet'}</div></div>
+      <div class="tile"><div class="k">Retries</div><div class="v">${runs.filter(r => r.outcome === 'retrying').length}</div></div>
+      <div class="tile"><div class="k">Problems</div><div class="v" style="${problems.length ? 'color:var(--bad)' : ''}">${problems.length}</div></div>
+      <div class="tile"><div class="k">Stuck tasks</div><div class="v" style="${stuck.length ? 'color:var(--warn)' : ''}">${stuck.length}</div></div>
+    </div>
+    <div class="panel"><h3>Problems</h3><p class="pdesc">Crashes and failures reported by teammates' computers: background runs that crashed, hooks that failed, notifications that didn't arrive.</p>
+      <div class="plist">${problems.length ? problems.slice(0, 30).map(x => `<div class="problem"><div class="pm"><span class="pill bad">${esc(x.kind)}</span><b>${esc(x.name)}</b><span class="grow">${esc(x.message)}</span><span class="small muted">${esc(ago(x.at))}</span></div>${x.detail ? `<details><summary class="small muted" style="cursor:pointer;margin-top:4px">Details</summary><pre>${esc(x.detail)}</pre></details>` : ''}</div>`).join('')
+        : '<div class="srow"><span class="pill ok">All clear</span><span class="muted">Nothing went wrong in the last 24 hours.</span></div>'}</div></div>
+    <div class="panel"><h3>Everyone's huddle</h3><p class="pdesc">Which agent each person uses, whether their background runner is on, and whether their huddle is up to date.</p>
+      <div class="plist">${list.map(p => {
+        const old = p.build && newest && p.build.at < newest - 60000;
+        const u = (S.usage || {})[p.name];
+        return `<div class="srow">${avatar(p.name, true)}<span class="grow"><b>${esc(p.name)}</b><span class="sub">${esc(p.tool === 'Codex' ? 'Codex' : 'Claude Code')} · ${p.online ? 'online' : 'last seen ' + esc(ago(p.lastSeen))}${u && typeof u.five === 'number' ? ` · ${100 - u.five}% of the 5-hour window left` : ''}</span></span>
+          ${p.online ? runnerWord(p.runner) : '<span class="pill">Away</span>'}
+          ${!p.build ? '<span class="pill warn" title="This huddle doesn\'t report its version; it may miss features">Version unknown</span>' : old ? `<span class="pill warn" title="Ask ${esc(p.name)} to run huddle update">Needs update</span>` : '<span class="pill ok">Up to date</span>'}</div>`;
+      }).join('') || '<div class="srow muted">Nobody has opened an agent in this project yet.</div>'}</div></div>
+    <div class="panel"><h3>Recent background runs</h3><p class="pdesc">Each attempt of each request and task. A crashed run is tried again up to three times.</p>
+      <div class="plist">${runs.length ? runs.slice(0, 25).map(r => `<div class="srow"><span class="pill ${r.outcome === 'ok' ? 'ok' : r.outcome === 'retrying' ? 'warn' : r.outcome === 'limit' ? 'acc' : 'bad'}">${esc({ ok: 'Finished', retrying: 'Retried', crashed: 'Crashed', failed: 'Failed', limit: 'Usage limit', waiting: 'Waiting' }[r.outcome] || r.outcome)}</span>
+          <span class="grow">${esc(bestTitle(r.task.title, r.task.detail).title)}<span class="sub">${esc(r.by)}'s ${r.agent === 'codex' ? 'Codex' : 'Claude'} · attempt ${r.attempt}${r.ms ? ' · ' + fmtDur(r.ms) : ''}${r.error ? ' · ' + esc(r.error.slice(0, 140)) : ''}</span></span><span class="small muted">${esc(ago(r.at))}</span></div>`).join('')
+        : '<div class="srow muted">No background runs in the last 24 hours.</div>'}</div></div>
+    <p class="small muted">Server status for everyone: <a href="/status" target="_blank" rel="noopener">${esc(location.host)}/status</a></p>`;
+}
+function renderHealthBadge() {
+  const n = (S.problems || []).filter(x => x.at > Date.now() - 86400000 && x.at > (Number(store.get('huddle.healthSeen.' + auth.project)) || 0)).length;
+  $('healthBadge').hidden = !n;
+  $('healthBadge').textContent = n;
+  if (S.view === 'health') { store.set('huddle.healthSeen.' + auth.project, String(Date.now())); $('healthBadge').hidden = true; }
+}
+
+// ---------- Team & settings ----------
+S.stab = 'team';
+const STABS = [['team', 'Team & access'], ['rules', 'Rules'], ['notify', 'Notifications'], ['audit', 'Audit log']];
+async function renderSettings() {
+  const el = $('settingsview');
+  const tabs = `<div class="seg ptabs" role="tablist">${STABS.map(([k, l]) => `<button data-stab="${k}" class="${S.stab === k ? 'on' : ''}" role="tab">${l}</button>`).join('')}</div>`;
+  el.innerHTML = tabs + '<div id="setMsg" class="small" role="alert" style="margin:-6px 0 10px"></div><div id="stabbody"><p class="muted">Loading…</p></div>';
+  const body = $('stabbody');
+  try {
+    if (S.stab === 'team') body.innerHTML = await teamTab();
+    if (S.stab === 'rules') body.innerHTML = rulesTab();
+    if (S.stab === 'notify') body.innerHTML = notifyTab();
+    if (S.stab === 'audit') body.innerHTML = await auditTab();
+  } catch (e) { body.innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+  wireSettings();
+}
+const toggle = (key, on, disabled) => `<button class="toggle" role="switch" aria-checked="${!!on}" data-toggle="${key}" ${disabled ? 'disabled' : ''}></button>`;
+const ownerOnly = () => isOwner() ? '' : '<p class="readonly-note">Only the project owner can change these.</p>';
+
+async function teamTab() {
+  await loadMe();
+  const gh = await fetch('/auth/me').then(r => r.json()).catch(() => ({ github: false }));
+  if (!S.me.accounts) {
+    return `<div class="panel"><h3>Personal access</h3><p class="pdesc">Right now everyone joins with one shared invite, and anyone who has it is in. Set up accounts to give each person their own access with a role (owner, member or viewer) that you can change or take back at any time.</p>
+      <div class="pbody"><button class="primary" data-act="setup">Set up accounts</button> <span class="small muted" style="margin-left:8px">You become the owner. Everyone else keeps working until you switch the shared invite off.</span></div></div>`;
+  }
+  const [{ members }, inv] = await Promise.all([api('members'), isOwner() ? api('invites') : Promise.resolve({ invites: [] })]);
+  const ghLine = !gh.github ? '' : gh.user
+    ? (members.find(m => m.name === S.me.name && m.github) ? `<span class="pill ok">GitHub ${esc(gh.user.login)} linked</span>` : `<button data-act="link-github">Link GitHub account ${esc(gh.user.login)}</button>`)
+    : `<a class="ghbtn" style="display:inline-flex" href="/auth/github/login?next=${encodeURIComponent('/#p=' + auth.project + '&gh=link')}">Sign in with GitHub</a>`;
+  return `<div class="panel"><h3>People</h3><p class="pdesc">Removing someone stops their access at once, including any agent sessions they have open.</p>
+    <div class="plist">${members.map(m => `<div class="srow">${avatar(m.name, true)}<span class="grow"><b>${esc(m.name)}</b>${m.name === S.me.name ? ' <span class="muted">(you)</span>' : ''}<span class="sub">${m.github ? 'GitHub ' + esc(m.github) + ' · ' : ''}${m.lastSeen ? 'active ' + esc(ago(m.lastSeen)) : 'not seen yet'}</span></span>
+      ${isOwner() ? `<select data-role="${esc(m.name)}" aria-label="Role for ${esc(m.name)}">${['owner', 'member', 'viewer'].map(r => `<option value="${r}" ${m.role === r ? 'selected' : ''}>${ROLE_TEXT[r]}</option>`).join('')}</select>
+        ${m.name !== S.me.name ? `<button class="ghost" data-remove="${esc(m.name)}">Remove</button>` : ''}` : `<span class="pill">${ROLE_TEXT[m.role]}</span>`}</div>`).join('')}</div></div>
+    ${isOwner() ? `<div class="panel"><h3>Open invites</h3><p class="pdesc">Each personal invite works for one person (unless you made it for more) and expires after a week.</p>
+      <div class="plist">${inv.invites.length ? inv.invites.map(i => `<div class="srow"><span class="pill">${ROLE_TEXT[i.role]}</span><span class="grow">${i.maxUses - i.uses} use${i.maxUses - i.uses === 1 ? '' : 's'} left<span class="sub">made by ${esc(i.by)} ${esc(ago(i.at))} · expires ${esc(new Date(i.expires).toLocaleDateString())}</span></span><button class="ghost" data-revoke="${esc(i.id)}">Take back</button></div>`).join('')
+        : '<div class="srow muted">No open invites. Make one with Invite people.</div>'}</div></div>
+    <div class="panel"><h3>Access</h3>
+      <div class="switchrow" style="border-top:0"><span class="grow"><b>The shared invite still works</b><span>Turn this off once everyone has their own access. Then only personal invites work.</span></span>${toggle('sharedToken', S.me.sharedToken)}</div>
+      <div class="switchrow"><span class="grow"><b>Members can invite people</b><span>Members can invite other members and viewers. Only owners can invite owners.</span></span>${toggle('membersCanInvite', S.me.membersCanInvite)}</div></div>` : ''}
+    ${gh.github ? `<div class="panel"><h3>Sign in with GitHub</h3><p class="pdesc">Link your GitHub account to open this project from any browser without an invite link.</p><div class="pbody">${ghLine}</div></div>` : ''}`;
+}
+
+function rulesTab() {
+  const ps = S.projectSettings || {};
+  const pol = ps.policy || {};
+  const ro = isOwner() ? '' : 'disabled';
+  const sharing = ps.maxSharing || 'full';
+  return `<div class="panel"><h3>Commands</h3><p class="pdesc">One command per line, matched from the start (<code>npm test</code> also covers <code>npm test -- --watch</code>; end with <code>*</code> for any subcommand).</p>
+      <div class="pbody fieldset">
+        <div><label for="polAllow">Always allowed in background runs</label><textarea id="polAllow" ${ro} placeholder="npm test&#10;npm run build">${esc((pol.allow || []).join('\n'))}</textarea><div class="hintline">Background agents run these without asking anyone.</div></div>
+        <div><label for="polDeny">Never allowed, for anyone's agent</label><textarea id="polDeny" ${ro} placeholder="git push&#10;npx wrangler deploy">${esc((pol.deny || []).join('\n'))}</textarea><div class="hintline">Refused in every teammate's own sessions too, and can't be approved.</div></div>
+      </div></div>
+    <div class="panel"><h3>Privacy</h3>
+      <div class="pbody fieldset">
+        <div><label for="polPrivate">Private files</label><textarea id="polPrivate" ${ro}>${esc((ps.privatePaths || ['.env', '.env.*', '**/.env', '**/.env.*', '.dev.vars', '*.pem', '*.key', 'secrets/']).join('\n'))}</textarea><div class="hintline">Never locked, live-shared or shown in Code. A trailing <code>/</code> is a folder; <code>**/</code> matches any depth.</div></div>
+        <div><label>Most a session may share</label><div class="seg sm" role="group" aria-label="Most a session may share">${[['full', 'Everything'], ['tools', 'Steps only'], ['off', 'Nothing']].map(([k, l]) => `<button data-sharing="${k}" class="${sharing === k ? 'on' : ''}" ${ro}>${l}</button>`).join('')}</div>
+          <div class="hintline">Everything: prompts, replies and steps. Steps only: which tools ran, no prompts or replies. Each person can share less than this, never more. API keys and passwords are hidden either way.</div></div>
+      </div></div>
+    <div class="panel"><h3>Finished background work</h3>
+      <div class="pbody fieldset">
+        <div><div class="seg sm" role="group" aria-label="Delivery">${[['merge', "Merge into the person's branch"], ['pr', 'Open a GitHub pull request']].map(([k, l]) => `<button data-delivery="${k}" class="${(ps.delivery || 'merge') === k ? 'on' : ''}" ${ro}>${l}</button>`).join('')}</div>
+          <div class="hintline">Pull requests need the <code>gh</code> CLI, signed in, on each computer that runs background work. The review and test results go in the description.</div></div>
+        <div><label for="polTest">Test command</label><input type="text" id="polTest" ${ro} placeholder="Guessed from the project (npm test, pytest, …)" value="${esc(ps.testCommand || '')}"><div class="hintline">Runs before background work lands. Failing work stays on its branch.</div></div>
+      </div></div>
+    ${ownerOnly()}${isOwner() ? '<div class="pactions"><span class="small muted" id="rulesMsg"></span><button class="primary" data-act="save-rules">Save rules</button></div>' : ''}`;
+}
+
+const NOTIFY_LABEL = { approval: 'Needs approval', stuck: 'Task stuck', done: 'Request done', failed: 'Something failed', member: 'Someone joined' };
+function notifyTab() {
+  const list = (S.projectSettings || {}).notify || [];
+  return `<div class="panel"><h3>Channels</h3><p class="pdesc">Posts to Slack, Discord or any webhook when something needs a person. The address is kept on the server and never shown to the team.</p>
+    <div class="plist">${list.length ? list.map(n => `<div class="srow"><span class="pill acc">${esc({ slack: 'Slack', discord: 'Discord', generic: 'Webhook' }[n.kind] || n.kind)}</span><span class="grow">${esc(n.label)}<span class="sub">${n.events.map(e => esc(NOTIFY_LABEL[e] || e)).join(' · ')}</span></span>${isOwner() ? `<button class="ghost" data-unnotify="${esc(n.id)}">Remove</button>` : ''}</div>`).join('')
+      : '<div class="srow muted">No channels yet.</div>'}</div>
+    ${list.length && isOwner() ? '<div class="pactions"><span class="small muted" id="notifyTestMsg"></span><button data-act="notify-test">Send a test</button></div>' : ''}</div>
+    ${isOwner() ? `<div class="panel"><h3>Add a channel</h3><div class="pbody fieldset">
+      <div><label for="nUrl">Webhook URL</label><input type="url" id="nUrl" placeholder="https://hooks.slack.com/services/…"><div class="hintline">Slack: an incoming webhook. Discord: Server settings → Integrations → Webhooks. Anything else gets JSON.</div></div>
+      <div><label>Send when</label><div class="checks">${Object.entries(NOTIFY_LABEL).map(([k, l]) => `<label><input type="checkbox" data-nev="${k}" ${k !== 'done' ? 'checked' : ''}>${l}</label>`).join('')}</div></div>
+    </div><div class="pactions"><span class="small muted" id="notifyMsg"></span><button class="primary" data-act="notify-add">Add channel</button></div></div>` : ownerOnly()}`;
+}
+
+S.auditFilter = 'all';
+async function auditTab() {
+  if (S.me.role === 'viewer') return '<p class="muted">Viewers cannot see the audit log.</p>';
+  const { audit } = await api('audit?limit=300');
+  const group = (e) => e.action === 'command' ? 'commands' : ['owner', 'invite', 'invite-revoke', 'join', 'remove', 'role', 'github'].includes(e.action) ? 'access' : 'changes';
+  const rows = audit.filter(e => S.auditFilter === 'all' || group(e) === S.auditFilter).reverse();
+  return `<div class="seg sm" style="margin-bottom:12px">${[['all', 'Everything'], ['commands', 'Background commands'], ['access', 'Access'], ['changes', 'Settings and approvals']].map(([k, l]) => `<button data-afilter="${k}" class="${S.auditFilter === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+    <div class="panel" style="overflow-x:auto"><table class="audit"><tbody>${rows.length ? rows.map(e => `<tr><td title="${esc(new Date(e.at).toLocaleString())}">${esc(new Date(e.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }))}</td><td>${esc(e.by)}</td><td>${e.action === 'command' ? `ran <code>${esc(e.detail)}</code>${e.agent ? ` <span class="muted">(${esc(e.agent)})</span>` : ''}` : esc(e.detail)}</td></tr>`).join('')
+      : '<tr><td colspan="3" class="muted" style="text-align:center;padding:24px">Nothing here yet.</td></tr>'}</tbody></table></div>`;
+}
+
+function wireSettings() {
+  const el = $('settingsview');
+  const msg = (id, t, bad) => { const m = $(id); if (m) { m.textContent = t; m.style.color = bad ? 'var(--bad)' : ''; } };
+  const run = async (fn, id) => { try { await fn(); } catch (e) { msg(id || 'setMsg', "Couldn't save: " + e.message, true); } };
+  el.onclick = async (e) => {
+    const t = e.target.closest('button, [data-act]');
+    if (!t) return;
+    if (t.dataset.stab) { S.stab = t.dataset.stab; return renderSettings(); }
+    if (t.dataset.afilter) { S.auditFilter = t.dataset.afilter; return renderSettings(); }
+    if (t.dataset.sharing) { for (const b of el.querySelectorAll('[data-sharing]')) b.classList.toggle('on', b === t); return; }
+    if (t.dataset.delivery) { for (const b of el.querySelectorAll('[data-delivery]')) b.classList.toggle('on', b === t); return; }
+    if (t.dataset.toggle) {
+      const on = t.getAttribute('aria-checked') !== 'true';
+      if (t.dataset.toggle === 'sharedToken' && !on && !confirm('Switch the shared invite off? Anyone still using it (including their agents) loses access until they join with a personal invite.')) return;
+      t.setAttribute('aria-checked', String(on));
+      return run(async () => { await api('project-setting', { [t.dataset.toggle]: on }); await loadMe(); });
+    }
+    if (t.dataset.revoke) return run(async () => { await api('invite-revoke', { id: t.dataset.revoke }); renderSettings(); });
+    if (t.dataset.remove) {
+      if (!confirm(`Remove ${t.dataset.remove} from the project? Their access stops right away.`)) return;
+      return run(async () => { await api('member-remove', { name: t.dataset.remove }); renderSettings(); });
+    }
+    if (t.dataset.unnotify) return run(async () => { const r = await api('notify-set', { remove: t.dataset.unnotify }); S.projectSettings.notify = r.notify; renderSettings(); });
+    const act = t.dataset.act;
+    if (act === 'setup') return run(async () => {
+      const r = await api('setup-owner', {});
+      // from now on this browser uses the owner's own token
+      auth.token = r.token; known[auth.project] = r.token; store.set('huddle.projects', JSON.stringify(known));
+      await loadMe(); renderSettings();
+    });
+    if (act === 'link-github') return run(async () => { await api('link-github', {}); renderSettings(); });
+    if (act === 'save-rules') return run(async () => {
+      const lines = (id) => $(id).value.split('\n').map(x => x.trim()).filter(Boolean);
+      const sharing = (el.querySelector('[data-sharing].on') || {}).dataset;
+      const delivery = (el.querySelector('[data-delivery].on') || {}).dataset;
+      await api('policy', { allow: lines('polAllow'), deny: lines('polDeny'), privatePaths: lines('polPrivate'), maxSharing: sharing ? sharing.sharing : 'full' });
+      await api('project-setting', { delivery: delivery ? delivery.delivery : 'merge', testCommand: $('polTest').value.trim() });
+      msg('rulesMsg', 'Saved. Everyone\'s agents pick the rules up on their next prompt.');
+    }, 'rulesMsg');
+    if (act === 'notify-add') return run(async () => {
+      const events = [...el.querySelectorAll('[data-nev]')].filter(x => x.checked).map(x => x.dataset.nev);
+      const r = await api('notify-set', { url: $('nUrl').value.trim(), events });
+      S.projectSettings.notify = r.notify; renderSettings();
+    }, 'notifyMsg');
+    if (act === 'notify-test') return run(async () => { const r = await api('notify-test', {}); msg('notifyTestMsg', `Sent to ${r.sent} channel${r.sent === 1 ? '' : 's'}.`); }, 'notifyTestMsg');
+  };
+  el.onchange = (e) => {
+    const sel = e.target.closest('[data-role]');
+    if (sel) run(async () => { await api('member-role', { name: sel.dataset.role, role: sel.value }); renderSettings(); });
+  };
+}
+
 // ---------- live events ----------
 function applySnapshot(s) {
   S.agents = {}; S.locks = {}; S.files = {};
@@ -2244,6 +2577,9 @@ function applySnapshot(s) {
   S.usage = s.usage || {};
   S.approvals = s.approvals || [];
   S.projectSettings = s.projectSettings || {};
+  S.problems = s.problems || [];
+  renderHealthBadge();
+  if (S.view === 'health') renderHealth();
   // (after the first snapshot, so waiting approvals count)
   if (!S.caughtUp) { S.caughtUp = true; catchUp(); }
   showMe(); renderTeam(); renderSide();
@@ -2256,10 +2592,10 @@ function noteForMe(ev) {
     return { title: `${ev.message.fromName}${ev.message.to ? ' → you' : ' → everyone'}`, body: ev.message.text };
   }
   if (ev.type === 'approval' && ev.approval.status === 'waiting' && ev.approval.owner === myName()) {
-    return { title: 'Your Claude needs your OK', body: ev.approval.command };
+    return { title: `Your ${myTool()} needs your OK`, body: ev.approval.command };
   }
   if (ev.type === 'board' && ev.action === 'goal' && ev.goal && ev.goal.to === me && ev.goal.byName !== me) {
-    return { title: `Request from ${ev.goal.byName} for your Claude`, body: ev.goal.text };
+    return { title: `Request from ${ev.goal.byName} for your ${myTool()}`, body: ev.goal.text };
   }
   return null;
 }
@@ -2346,11 +2682,17 @@ function onEvent(ev) {
     case 'usage': S.usage = { ...(S.usage || {}), [ev.name]: ev.usage }; break;
     case 'approval': S.approvals = [...(S.approvals || []).filter(x => x.id !== ev.approval.id), ev.approval].filter(x => x.status === 'waiting'); break;
     case 'project-setting': S.projectSettings = ev.settings || {}; break;
+    case 'problem': S.problems = [...(S.problems || []), ev.problem].slice(-100); renderHealthBadge(); if (S.view === 'health') renderHealth(); break;
+    case 'members':
+      if (ev.removed && ev.removed === myName()) { showLogin('You were removed from this project. Ask the owner for a new invite.'); return; }
+      loadMe().then(() => { if (S.view === 'settings' && S.stab === 'team') renderSettings(); }).catch(() => {});
+      break;
     case 'stats': statsChanged(); break;
     case 'merge': location.reload(); return;
     case 'forget': if (!ev.name) { location.reload(); return; } for (const [id, x] of Object.entries(S.agents)) if (x.name === ev.name) delete S.agents[id]; break;
   }
-  if (!['leave', 'status', 'usage', 'approval', 'project-setting'].includes(ev.type)) addEntries(fromEvent(ev));
+  if (!['leave', 'status', 'usage', 'approval', 'project-setting', 'problem', 'members'].includes(ev.type)) addEntries(fromEvent(ev));
+  if (S.view === 'health' && ['board', 'join', 'leave', 'usage', 'setting'].includes(ev.type)) renderHealth();
   renderTeam(); renderSide();
 }
 let wsWorks = null;
@@ -2422,8 +2764,11 @@ async function start() {
   if (auth.name) store.set('huddle.name', auth.name);
   setHash();
   $('login').hidden = true; $('app').hidden = false;
+  await loadMe();
   showMe();
   loadNotes();
+  // back from signing in with GitHub to link it
+  if (/[#&]gh=link/.test(location.hash) || params.get('gh') === 'link') { api('link-github', {}).catch(() => {}); S.stab = 'team'; setTimeout(() => showView('settings'), 0); }
   // history: messages, Claude activity and goals, merged by time
   const [msgs, act, board, hand] = await Promise.all([api('messages?limit=200'), api('activity?limit=500'), api('board'),
     api('handoffs?limit=30').catch(() => ({ handoffs: [] }))])

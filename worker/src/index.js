@@ -4,9 +4,23 @@
 // creating a project stores nothing until someone actually uses it.
 import { DurableObject } from 'cloudflare:workers';
 import core from '../../src/core.js';
+import gh from '../../src/github-auth.js';
+import statusPageMod from '../../src/status-page.js';
 import dashboard from '../../src/dashboard.html';
 
-const { Project, routes, waitOn, httpError, now } = core;
+const { Project, dispatch, authorize, takeOutbox, waitOn, httpError, now } = core;
+const { statusPage } = statusPageMod;
+const ghCfg = (env) => ({ clientId: env.GITHUB_CLIENT_ID, clientSecret: env.GITHUB_CLIENT_SECRET, secret: env.HUDDLE_SECRET });
+// the plain { status, headers, body } answers from github-auth.js as Responses (set-cookie may be a list)
+function reply(r) {
+  const h = new Headers();
+  for (const [k, v] of Object.entries(r.headers || {})) for (const x of [].concat(v)) h.append(k, x);
+  return new Response(r.body || null, { status: r.status, headers: h });
+}
+// a small index instance: which projects a short invite or a GitHub login opens
+const index = (env, key) => env.PROJECTS.get(env.PROJECTS.idFromName(key));
+async function indexGet(env, key) { return (await index(env, key).fetch(new Request('https://index/', { headers: { 'x-huddle-index': key } }))).json(); }
+async function indexPut(env, key, value) { await index(env, key).fetch(new Request('https://index/', { method: 'PUT', headers: { 'x-huddle-index': key }, body: JSON.stringify(value) })); }
 
 // tighter than the self-hosted defaults: the free plan has 5 GB for everyone
 const LIMITS = { fileBytes: 1024 * 1024, files: 500, projectBytes: 10 * 1024 * 1024, sharedBytes: 1536 * 1024, gitBytes: 25 * 1024 * 1024 };
@@ -46,6 +60,31 @@ export default {
         return new Response(dashboard, { headers: { 'content-type': 'text/html; charset=utf-8' } });
       }
       if (url.pathname === '/health') return json({ ok: true, open: true });
+      if (url.pathname === '/status') {
+        // a real round trip through a Durable Object, timed
+        const t0 = Date.now();
+        let doCheck;
+        try { await indexGet(env, 'status:probe'); doCheck = { name: 'Project storage (Durable Objects)', ok: true, ms: Date.now() - t0 }; }
+        catch (e) { doCheck = { name: 'Project storage (Durable Objects)', ok: false, error: e.message }; }
+        return new Response(statusPage({ server: url.host, version: env.HUDDLE_VERSION || null, github: gh.configured(ghCfg(env)),
+          checks: [{ name: 'API', ok: true }, doCheck] }), { headers: { 'content-type': 'text/html; charset=utf-8' } });
+      }
+      if (url.pathname === '/auth/github/login') return reply(await gh.login(ghCfg(env), url.origin, url.searchParams.get('next') || '/'));
+      if (url.pathname === '/auth/github/callback') return reply(await gh.callback(ghCfg(env), url.origin, url, request.headers.get('cookie')));
+      if (url.pathname === '/auth/logout') return reply(gh.logout(url.origin));
+      if (url.pathname === '/auth/me') return json({ github: gh.configured(ghCfg(env)), user: await gh.session(ghCfg(env), request.headers.get('cookie')) });
+      if (url.pathname === '/api/me/projects') {
+        const who = await gh.session(ghCfg(env), request.headers.get('cookie'));
+        if (!who) throw httpError(401, 'sign in with GitHub first');
+        const list = (await indexGet(env, 'user:' + who.login.toLowerCase())).projects || [];
+        const out = [];
+        for (const name of list) {
+          const headers = new Headers({ 'x-huddle-project': name, 'x-huddle-cred': JSON.stringify({ kind: 'github', github: who.login }) });
+          const r = await env.PROJECTS.get(env.PROJECTS.idFromName(name)).fetch(new Request(`https://do/api/p/${name}/whoami`, { headers }));
+          if (r.ok) { const w = await r.json(); out.push({ project: name, name: w.name, role: w.role }); }
+        }
+        return json({ user: who, projects: out });
+      }
       if (url.pathname === '/api/new' && request.method === 'POST') {
         const body = await request.json().catch(() => ({}));
         const slug = String(body.name || 'project').toLowerCase().replace(/[^a-z0-9.-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'project';
@@ -56,26 +95,38 @@ export default {
       // a short invite: which project it opens, with that project's token
       const short = url.pathname.match(/^\/api\/invite\/([\w-]{12})$/);
       if (short && request.method === 'GET') {
-        const idx = env.PROJECTS.get(env.PROJECTS.idFromName('invite:' + short[1]));
-        const r = await (await idx.fetch(new Request('https://index/', { headers: { 'x-huddle-index': short[1] } }))).json();
+        const r = await indexGet(env, 'invite:' + short[1]);
         if (!r.project) throw httpError(404, 'no such invite');
+        if (r.personal) return json({ server: url.origin, project: r.project, personal: true });
         return json({ server: url.origin, project: r.project, token: await projectToken(env, r.project) });
       }
       const m = url.pathname.match(/^\/api\/p\/([\w.-]{1,64})\/([\w-]+)$/);
       if (!m) return json({ error: 'not found' }, 404);
       const name = m[1];
       const tok = givenToken(request, url);
-      if (!timingSafeEqual(tok, await projectToken(env, name))) throw httpError(401, 'bad token or no such project');
+      // what the caller holds: the project's shared token (checked here), a personal token (hm_…, checked by
+      // the project), a GitHub session, or nothing (only good for turning a personal invite into a token)
+      const who = await gh.session(ghCfg(env), request.headers.get('cookie'));
+      const github = who ? who.login : undefined;
+      const cred = timingSafeEqual(tok, await projectToken(env, name)) ? { kind: 'project', github }
+        : tok.startsWith('hm_') ? { kind: 'member', token: tok, github }
+        : who ? { kind: 'github', github } : { kind: 'none' };
+      if (cred.kind === 'none' && m[2] !== 'redeem') throw httpError(401, 'bad token or no such project');
       const stub = env.PROJECTS.get(env.PROJECTS.idFromName(name));
       const headers = new Headers(request.headers);
       headers.set('x-huddle-project', name);
+      headers.set('x-huddle-cred', JSON.stringify(cred));
+      headers.set('x-huddle-origin', url.origin);
       headers.delete('x-huddle-index');
       const res = await stub.fetch(new Request(request, { headers }));
       // remember what a project's short invite stands for (written each time it's asked for, so it can't go missing)
-      if (m[2] === 'invite-code' && res.ok) {
-        const { code } = await res.clone().json();
-        const idx = env.PROJECTS.get(env.PROJECTS.idFromName('invite:' + code));
-        await idx.fetch(new Request('https://index/', { method: 'PUT', headers: { 'x-huddle-index': code }, body: JSON.stringify({ project: name }) }));
+      if (m[2] === 'invite-code' && res.ok) await indexPut(env, 'invite:' + (await res.clone().json()).code, { project: name });
+      if (m[2] === 'member-invite' && res.ok) await indexPut(env, 'invite:' + (await res.clone().json()).inviteCode, { project: name, personal: true });
+      if (m[2] === 'link-github' && res.ok) {
+        const { linked } = await res.clone().json();
+        const key = 'user:' + linked.toLowerCase();
+        const cur = (await indexGet(env, key)).projects || [];
+        await indexPut(env, key, { projects: [...new Set([...cur, name])] });
       }
       return res;
     } catch (e) {
@@ -106,10 +157,15 @@ export class HuddleProject extends DurableObject {
       p.messages = (await s.get('msgs')) || [];
       p.shared = (await s.get('shared')) || p.shared;
       p.activity = (await s.get('activity')) || [];
+      p.audit = (await s.get('audit')) || meta.audit || [];
+      p.problems = (await s.get('problems')) || meta.problems || [];
     }
     p.limits = { ...LIMITS };
     p.isConnected = (id) => this.ctx.getWebSockets(id).length > 0;
-    p.waiters.add((ev) => this.broadcast(ev));
+    p.waiters.add((ev) => {
+      if (ev.type === 'members' && ev.removed) for (const ws of this.ctx.getWebSockets('member:' + ev.removed)) { try { ws.close(4001, 'removed from the project'); } catch {} }
+      this.broadcast(ev);
+    });
     this.p = p;
     this.saved = { seq: p.seq, reads: this.reads(), msgSeq: lastSeq(p.messages) };
     return p;
@@ -126,14 +182,18 @@ export class HuddleProject extends DurableObject {
   async save() {
     const p = this.p;
     const reads = this.reads();
-    if (p.seq === this.saved.seq && reads === this.saved.reads && !p.changedFiles.size) return;
+    if (p.seq === this.saved.seq && reads === this.saved.reads && !p.changedFiles.size && !p.auditChanged && !p.problemsChanged) return;
     const meta = JSON.parse(JSON.stringify(p));
     delete meta.events;
     delete meta.messages;
     delete meta.shared;
     delete meta.activity;
+    delete meta.audit;
+    delete meta.problems;
     for (const f of Object.values(meta.files)) delete f.content;
     const puts = { meta };
+    if (p.auditChanged) { puts.audit = p.audit; p.auditChanged = false; }
+    if (p.problemsChanged) { puts.problems = p.problems; p.problemsChanged = false; }
     if (p.sharedChanged) { puts.shared = p.shared; p.sharedChanged = false; }
     if (p.activityChanged) {
       let act = p.activity;
@@ -170,13 +230,14 @@ export class HuddleProject extends DurableObject {
     }
     p.sweep();
     await this.save();
+    this.flushOutbox(p);
     if (Object.keys(p.locks).length) await this.ctx.storage.setAlarm(now() + SWEEP_MS);
   }
 
   async fetch(request) {
     // an instance named "invite:<code>" only remembers which project a short invite opens
-    const index = request.headers.get('x-huddle-index');
-    if (index) {
+    const idxKey = request.headers.get('x-huddle-index');
+    if (idxKey) {
       if (request.method === 'PUT') { await this.ctx.storage.put('invite', await request.json()); return json({ ok: true }); }
       return json((await this.ctx.storage.get('invite')) || {});
     }
@@ -186,9 +247,10 @@ export class HuddleProject extends DurableObject {
     try {
       const p = await this.load(name);
       p.sweep();
-      if (ep === 'ws') return this.connect(request, url, p);
-      const route = routes[`${request.method} ${ep}`];
-      if (!route) return json({ error: 'no such endpoint' }, 404);
+      let cred = { kind: 'none' };
+      try { cred = JSON.parse(request.headers.get('x-huddle-cred') || '{"kind":"none"}'); } catch {}
+      if (request.headers.get('x-huddle-origin')) p.origin = request.headers.get('x-huddle-origin');
+      if (ep === 'ws') return this.connect(request, url, p, authorize(p, cred));
       let body = {};
       if (request.method === 'POST') {
         const text = await request.text();
@@ -200,22 +262,35 @@ export class HuddleProject extends DurableObject {
         waitFor: (pred, ms) => waitOn(p, pred, Math.min(ms, 60 * 1000)),
         blobs: { put: (k, v) => store.put('blob:' + k, v), get: async (k) => (await store.get('blob:' + k)) ?? null, del: (k) => store.delete('blob:' + k) },
       };
-      const out = await route(p, body, url.searchParams, ctx);
+      const out = await dispatch(p, request.method, ep, body, url.searchParams, ctx, cred);
       await this.save();
+      this.flushOutbox(p);
       return json(out);
     } catch (e) {
       return json({ error: e.message }, e.code >= 400 && e.code < 600 ? e.code : 500);
     }
   }
 
-  async connect(request, url, p) {
+  // notifications the last request queued, sent after it's been answered
+  flushOutbox(p) {
+    const out = takeOutbox(p);
+    if (!out.length) return;
+    this.ctx.waitUntil(Promise.all(out.map(o => fetch(o.url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(o.body) })
+      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); })
+      .catch(e => { (p.problems = p.problems || []).push({ id: Math.random().toString(16).slice(2, 10), at: now(), name: 'huddle', kind: 'notify', message: `a notification could not be delivered: ${e.message}`, detail: '' }); p.problemsChanged = true; }))));
+  }
+
+  async connect(request, url, p, auth) {
     if (request.headers.get('upgrade') !== 'websocket') throw httpError(426, 'expected a websocket');
     let agent = null;
     try { agent = JSON.parse(url.searchParams.get('agent') || 'null'); } catch {}
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
-    this.ctx.acceptWebSocket(server, agent && agent.id ? [agent.id] : []);
-    server.serializeAttachment({ agent: agent && agent.id ? agent.id : null });
+    // tagged with the person's name too, so removing them from the project closes their connections
+    const tags = [...(agent && agent.id ? [agent.id] : []), ...(auth && auth.name ? ['member:' + auth.name] : [])];
+    this.ctx.acceptWebSocket(server, tags);
+    server.serializeAttachment({ agent: agent && agent.id ? agent.id : null, member: auth && auth.name || null });
+    if (auth && auth.name && agent) agent.name = auth.name;
     if (agent && agent.id) p.touch(agent); // counts as online for as long as the socket is open
     const since = Number(url.searchParams.get('since') || 0);
     server.send(JSON.stringify({ type: 'snapshot', ...p.snapshot() }));

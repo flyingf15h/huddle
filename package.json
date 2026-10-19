@@ -1,11 +1,11 @@
 {
   "name": "huddle",
   "version": "0.1.0",
-  "description": "Let Claude Code agents on different machines and subscriptions work on one project: file locks, live view, chat.",
+  "description": "Let Claude Code and Codex agents on different machines and subscriptions work on one project: file locks, live view, chat, accounts and controls.",
   "bin": { "huddle": "src/cli.js" },
   "files": ["src"],
   "engines": { "node": ">=18" },
-  "scripts": { "test": "node test/e2e.js && node test/git-board.js" },
+  "scripts": { "test": "node test/e2e.js && node test/git-board.js && node test/accounts.js && node test/codex.js" },
   "license": "MIT",
   "repository": "github:flyingf15h/huddle"
 }

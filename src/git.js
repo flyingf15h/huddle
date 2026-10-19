@@ -114,6 +114,12 @@ async function publish(client, root, { branch } = {}) {
   } finally { fs.rmSync(file, { force: true }); }
 }
 
+function privatePath(root, fp) {
+  let ps = {};
+  try { ps = JSON.parse(fs.readFileSync(path.join(root, '.huddle', 'project-settings.json'), 'utf8')); } catch {}
+  return require('./policy').isPrivatePath(ps, fp);
+}
+
 // A readable copy of the branch's text files for the dashboard's Code view.
 // Binary and very large files are listed as skipped instead.
 const SNAP_FILE_MAX = 256 * 1024, SNAP_TOTAL_MAX = 4 * 1024 * 1024, SNAP_PART = 800 * 1024;
@@ -126,6 +132,7 @@ async function uploadSnapshot(client, root, branch, sha) {
     const m = /^\d+ (\w+) ([0-9a-f]+)\s+(-|\d+)\t([\s\S]*)$/.exec(rec);
     if (!m || m[1] !== 'blob') continue;
     const [, , obj, size, fp] = m;
+    if (privatePath(root, fp)) continue; // the project's private files never show in the Code view
     if (Number(size) > SNAP_FILE_MAX || total + Number(size) > SNAP_TOTAL_MAX) { skipped.push(fp); continue; }
     const buf = spawnSync('git', ['cat-file', 'blob', obj], { cwd: root, maxBuffer: SNAP_FILE_MAX * 2 }).stdout;
     if (!buf || buf.includes(0)) { skipped.push(fp); continue; }

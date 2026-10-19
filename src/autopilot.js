@@ -29,6 +29,10 @@ const CLI = path.join(__dirname, 'cli.js');
 const board = require('./board');
 const { needsAPerson } = require('./core');
 const gitx = require('./git');
+const policy = require('./policy');
+const codex = require('./codex');
+const APP_DIR = path.join(__dirname, '..');
+const q = (s) => process.platform === 'win32' ? `"${s}"` : `'${String(s).replace(/'/g, `'\\''`)}'`;
 
 const MODES = ['off', 'requests', 'full'];
 const DEFAULT_MODE = 'full';
@@ -70,7 +74,7 @@ function sessionBusy(root) {
 }
 
 function replyPrompt(m, me, aiName, from) {
-  return `You are ${selfName(me, aiName)}, one of a team of Claude agents working on this project through huddle.
+  return `You are ${selfName(me, aiName)}, one of a team of AI coding agents working on this project through huddle.
 ${me} isn't at the keyboard right now, so you are answering in the background. ${from} sent you this message:
 
 ${m.text}
@@ -82,7 +86,7 @@ Your final message is sent back to ${from} as your reply, so make it short and s
 }
 
 // "Pip, tszfei's Claude" once the person has named it
-function selfName(me, aiName) { return aiName ? `${aiName}, ${me}'s Claude` : `${me}'s Claude`; }
+function selfName(me, aiName, tool = 'Claude') { return aiName ? `${aiName}, ${me}'s ${tool}` : `${me}'s ${tool}`; }
 
 // "tszfei (31% of the 5-hour window used)" for the planner, so it can see who has room
 function teamLine(team, usage = {}) {
@@ -101,10 +105,10 @@ You won the right to plan it. Online agents: ${teamLine(team, usage)}.
 3. Send the team a two-line summary with huddle_send.
 Do not implement anything in this run; your own tasks come next.`;
 }
-function taskPrompt(t, b, me, canRun, aiName) {
+function taskPrompt(t, b, me, canRun, aiName, tool = 'Claude') {
   const goal = b.goals.find(g => g.id === t.goalId);
   const others = b.tasks.filter(x => x.goalId === t.goalId && x.id !== t.id).map(x => `- ${x.title} (${x.owner || 'unassigned'}, ${x.status})`);
-  return `You are ${selfName(me, aiName)}, working with a team of Claude agents through huddle.
+  return `You are ${selfName(me, aiName, tool)}, working with a team of AI coding agents (Claude Code and Codex) through huddle.
 Your task [${t.id}]: ${t.title}
 ${t.detail ? '\n' + t.detail + '\n' : ''}${goal ? `\nIt is part of the team goal from ${goal.byName}: ${goal.text}\n${goal.plan ? 'Plan: ' + goal.plan + '\n' : ''}` : ''}${others.length ? '\nOther tasks in this goal:\n' + others.join('\n') + '\n' : ''}
 First, call huddle_update_task with task_id "${t.id}" and a title of 2 to 6 plain words naming the outcome (like "Fix pin-to-pin guide labels"), unless the current one already reads that way. Someone who never saw the chat should understand it: sentence case, no names, colons, ids, commit hashes or parentheses.
@@ -220,7 +224,9 @@ function makeClone(cfg, id) {
 // (it never touches files they have uncommitted changes in). Returns where the work ended up.
 function commitClone(c, title) {
   if (gitx.dirty(c.dir).length || gitx.git(c.dir, ['status', '--porcelain']).out) {
-    gitx.git(c.dir, ['add', '-A', '--', '.', ':!node_modules', ':!.venv', ':!venv']);
+    // (huddle's own Codex setup in the worktree is never part of the work)
+    const ownCodex = gitx.git(c.dir, ['ls-files', '--', '.codex']).out.trim() ? [':!.codex/rules/huddle.rules'] : [':!.codex'];
+    gitx.git(c.dir, ['add', '-A', '--', '.', ':!node_modules', ':!.venv', ':!venv', ...ownCodex]);
     gitx.git(c.dir, ['commit', '-q', '-m', title.slice(0, 72)]);
   }
   return Number(gitx.git(c.dir, ['rev-list', '--count', `${c.base}..HEAD`]).out) || 0;
@@ -238,6 +244,39 @@ function landClone(cfg, c, title, { merge = true } = {}) {
   gitx.git(cfg.root, ['worktree', 'remove', '--force', c.dir]);
   if (landed !== 'branch') gitx.git(cfg.root, ['branch', '-D', c.branch]);
   return { landed, count };
+}
+
+// Finished work as a GitHub pull request instead of a merge (the project's "delivery: pr"): the
+// worktree's branch is pushed as huddle/<task>-<title> and opened against the person's branch (or
+// the repository's default one), with the request, who asked and what checked it in the description.
+function slug(t) { return String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'work'; }
+function openPr(cfg, c, t, checks, me) {
+  const { spawnSync } = require('child_process');
+  const gh = (args, cwd) => spawnSync('gh', args, { cwd, encoding: 'utf8', timeout: 120000 });
+  if (gh(['--version']).status !== 0) return { error: 'the gh CLI is not installed on ' + me + "'s computer" };
+  if (!gitx.git(cfg.root, ['remote', 'get-url', 'origin']).ok) return { error: 'this repository has no origin remote' };
+  const head = `huddle/${t.id}-${slug(t.title)}`;
+  const push = gitx.git(cfg.root, ['push', '-q', 'origin', `${c.branch}:refs/heads/${head}`]);
+  if (!push.ok) return { error: 'git push failed: ' + (push.err || push.out || '').trim().slice(0, 300) };
+  const onOrigin = (b) => b && gitx.git(cfg.root, ['ls-remote', '--exit-code', '--heads', 'origin', b]).ok;
+  const dflt = gitx.git(cfg.root, ['symbolic-ref', '--short', '-q', 'refs/remotes/origin/HEAD']).out.trim().replace(/^origin\//, '');
+  const base = onOrigin(c.person) ? c.person : dflt || 'main';
+  const ck = checks || {};
+  const body = [`**${t.title}**`, '', t.detail && t.detail.trim() !== t.title ? t.detail.slice(0, 3000) : '', '',
+    `Asked by ${t.by}${t.direct ? ` (sent to ${me}'s agent)` : ''} · done by ${me}'s ${cfg.agent === 'codex' ? 'Codex' : 'Claude'} in the background with [huddle](https://github.com/flyingf15h/huddle) · task \`${t.id}\``,
+    '', '| Check | Result |', '| --- | --- |',
+    `| Review | ${ck.review === 'ok' ? 'No problems found' : ck.review === 'fixed' ? 'Problems found and fixed' : ck.review ? ck.review : 'Skipped'} |`,
+    `| Tests | ${ck.tests === 'passed' ? `Pass (\`${ck.testCommand}\`)` : ck.tests === 'failed' ? `**Fail** (\`${ck.testCommand}\`)` : ck.tests === 'already failing' ? 'Were already failing before this change' : 'No test command'} |`].join('\n');
+  const r = gh(['pr', 'create', '--head', head, '--base', base, '--title', t.title.slice(0, 200), '--body', body], cfg.root);
+  if (r.status !== 0) return { error: 'gh pr create failed: ' + (r.stderr || r.stdout || '').trim().slice(0, 300) };
+  const url = (r.stdout.match(/https:\/\/\S+\/pull\/\d+/) || [r.stdout.trim()])[0];
+  gitx.git(cfg.root, ['worktree', 'remove', '--force', c.dir]);
+  gitx.git(cfg.root, ['branch', '-D', c.branch]);
+  return { url, head, base };
+}
+function prState(cfg, url) {
+  const r = require('child_process').spawnSync('gh', ['pr', 'view', url, '--json', 'state'], { cwd: cfg.root, encoding: 'utf8', timeout: 30000 });
+  try { return JSON.parse(r.stdout).state.toLowerCase(); } catch { return null; }
 }
 
 // one runner per folder: a pid file in .huddle/
@@ -271,6 +310,8 @@ async function getMode(client) {
 // log: status lines; out: Claude's own output (null to discard).
 function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
   let me = cfg.name;
+  const tool = cfg.agent === 'codex' ? 'codex' : 'claude';
+  const toolName = tool === 'codex' ? 'Codex' : 'Claude';
   // auto, like the person's own sessions: Claude Code's safety check approves what's safe and refuses what's
   // risky. Accounts without auto mode fall back to acceptEdits (edits plus the allowed commands).
   let permission = flags['permission-mode'] || cfg.autopilotPermissionMode || 'auto';
@@ -286,17 +327,51 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
 
   // model: e.g. 'sonnet' for reviews and test fixes; allow: extra tools for this run; readOnly: no edits
   // shown: what the team sees as this run's prompt (the request itself), instead of the long instructions
-  const runOnce = (prompt, { cwd = cfg.root, session, mcpRoot, model, allow = [], readOnly = false, shown = '' } = {}) => new Promise((resolve) => {
+  const pol = () => projectSettings.policy || { allow: [], deny: [] };
+  // Codex: `codex exec` in its sandbox (edits in the worktree, no network), with the person's approvals,
+  // the project's allow list and its never-allowed list as a rules file in the worktree
+  const runCodex = (prompt, { cwd = cfg.root, session, mcpRoot, model, allow = [], readOnly = false, shown = '' } = {}) => new Promise((resolve) => {
+    const lastFile = codex.tmpFile('last.txt');
+    // (a project that keeps .codex/ in git gets nothing written there: it would end up in the commit)
+    if (cwd !== cfg.root && !gitx.git(cwd, ['ls-files', '--', '.codex']).out.trim()) {
+      try {
+        codex.install(cwd, APP_DIR, cwd, (ev) => `${q(process.execPath)} ${q(path.join(APP_DIR, 'src', 'cli.js'))} hook ${ev} --agent codex #huddle-hook`, 'huddle-hook');
+        fs.mkdirSync(path.join(cwd, '.codex', 'rules'), { recursive: true });
+        const allowed = [...(pol().allow || []), ...extraAllow.map(a => a.replace(/^Bash\((.*?)(:\*)?\)$/, '$1')), ...allow.map(a => a.replace(/^Bash\((.*?)(:\*)?\)$/, '$1'))];
+        fs.writeFileSync(path.join(cwd, '.codex', 'rules', 'huddle.rules'), codex.rulesFile(allowed, pol().deny || []));
+      } catch (e) { log('could not set up Codex in the worktree: ' + e.message); }
+    }
+    const common = gitx.git(cwd, ['rev-parse', '--git-common-dir']);
+    const gitDir = common.ok ? path.resolve(cwd, common.out.trim()) : null;
+    const args = codex.execArgs({ dir: cwd, readOnly, model: model && model !== 'sonnet' ? model : (flags.model || cfg.autopilotModel || null), gitDir, lastFile, mcpRoot, cli: CLI });
+    args.push(prompt);
+    const env = { ...process.env, HUDDLE_AUTOPILOT: '1', HUDDLE_AGENT: 'codex', HUDDLE_SHOWN: String(shown).slice(0, 4000), ...(session ? { HUDDLE_SESSION: session } : {}), ...(mcpRoot ? { HUDDLE_ROOT: mcpRoot } : {}) };
+    const child = spawn('codex', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env, shell: process.platform === 'win32' });
+    let text = '', err = '';
+    child.stdout.on('data', d => { text += d; if (out) out(String(d)); });
+    child.stderr.on('data', d => { err += d; if (out) out(String(d)); });
+    child.on('error', e => { resolve({ code: 127, out: text, err: 'could not start codex: ' + e.message, missing: e.code === 'ENOENT' }); });
+    child.on('close', code => {
+      // the final message is what goes back to whoever asked
+      let last = '';
+      try { last = fs.readFileSync(lastFile, 'utf8'); fs.rmSync(lastFile, { force: true }); } catch {}
+      resolve({ code, out: last.trim() ? last : text, err, log: text });
+    });
+  });
+  const runOnce = (prompt, opts = {}) => tool === 'codex' ? runCodex(prompt, opts) : new Promise((resolve) => {
+    const { cwd = cfg.root, session, mcpRoot, model, allow = [], readOnly = false, shown = '' } = opts;
     // in its own worktree (on its own branch) a Claude can also bring in and rearrange history freely:
     // nothing reaches the person's branch until it has been reviewed, tested and merged by huddle
     const own = cwd !== cfg.root ? ['fetch', 'merge', 'cherry-pick', 'rebase', 'pull', 'restore', 'checkout', 'switch', 'stash', 'reset', 'branch'].map(g => `Bash(git ${g}:*)`) : [];
-    const allowed = ['mcp__huddle', 'Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git log:*)', 'Bash(git show:*)', 'Bash(git add:*)', 'Bash(git commit:*)', ...own, ...extraAllow, ...allow];
+    const allowed = ['mcp__huddle', 'Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git log:*)', 'Bash(git show:*)', 'Bash(git add:*)', 'Bash(git commit:*)', ...own, ...extraAllow, ...allow,
+      ...(pol().allow || []).map(r => `Bash(${r.replace(/\s*\*$/, '')}:*)`)];
     const args = ['-p', prompt, '--permission-mode', permission];
     // a worktree isn't the folder the huddle MCP server (or the person's other folder-level servers) were
     // registered for, so hand them over directly
     if (mcpRoot) args.push('--mcp-config', JSON.stringify({ mcpServers: { ...(mcpRoot !== cfg.root ? folderMcpServers(cfg.root) : {}), huddle: { type: 'stdio', command: process.execPath, args: [CLI, 'mcp'], env: { HUDDLE_ROOT: mcpRoot } } } }));
     if (model || flags.model || cfg.autopilotModel) args.push('--model', model || flags.model || cfg.autopilotModel);
-    if (readOnly) args.push('--disallowedTools', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit');
+    const never = (pol().deny || []).map(r => `Bash(${r.replace(/\s*\*$/, '')}:*)`);
+    if (readOnly || never.length) args.push('--disallowedTools', ...(readOnly ? ['Edit', 'Write', 'MultiEdit', 'NotebookEdit'] : []), ...never);
     args.push('--allowedTools', ...allowed);
     // (the session's MCP server runs with HUDDLE_ROOT set to the person's folder; a clone has its own)
     const env = { ...process.env, HUDDLE_AUTOPILOT: '1', HUDDLE_SHOWN: String(shown).slice(0, 4000), ...(session ? { HUDDLE_SESSION: session } : {}), ...(mcpRoot ? { HUDDLE_ROOT: mcpRoot } : {}) };
@@ -304,20 +379,26 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     let text = '', err = '';
     child.stdout.on('data', d => { text += d; if (out) out(String(d)); });
     child.stderr.on('data', d => { err += d; if (out) out(String(d)); });
-    child.on('error', e => { log('could not start claude: ' + e.message); resolve({ code: 1, out: text, err }); });
+    child.on('error', e => { log('could not start claude: ' + e.message); resolve({ code: 127, out: text, err: 'could not start claude: ' + e.message, missing: e.code === 'ENOENT' }); });
     child.on('close', code => resolve({ code, out: text, err }));
   });
   // each run is its own Claude Code session, started for this one job and ended when it's done (claude -p exits)
   const runClaude = async (prompt, opts) => {
     const res = await runOnce(prompt, opts);
-    if (res.code !== 0 && permission === 'auto' && /auto mode|permission.mode/i.test(res.err + res.out)) {
+    if (res.missing) await reportProblem('missing', `${toolName} isn't installed or isn't on PATH on ${me}'s computer, so background work can't run there`, res.err);
+    if (tool === 'claude' && res.code !== 0 && permission === 'auto' && /auto mode|permission.mode/i.test(res.err + res.out)) {
       log('auto mode is not available for this account; background Claudes use acceptEdits instead');
       permission = 'acceptEdits';
       return runOnce(prompt, opts);
     }
     return res;
   };
-  const canRun = () => permission === 'bypassPermissions' ? 'you may run any command'
+  // a failure the team should see on the Health page (and in notifications)
+  async function reportProblem(kind, message, detail, taskId) {
+    await client.post('problem', { kind, message, detail: String(detail || '').slice(-1500), taskId }).catch(() => {});
+  }
+  const canRun = () => tool === 'codex' ? `Codex's sandbox: you can edit files in this worktree and run local commands (tests, builds, git), without network access. Anything outside that is refused${(pol().allow || []).length ? `, except what the project always allows: ${pol().allow.join(', ')}` : ''}`
+    : permission === 'bypassPermissions' ? 'you may run any command'
     : permission === 'auto' ? `the same as in ${me}'s own sessions: Claude Code's auto mode lets safe commands through and refuses risky ones (deploys, publishing, deleting things outside this folder)`
     : `only git (status, diff, log, add, commit)${extraAllow.length ? ', ' + extraAllow.join(', ') : ''} and whatever the project's .claude/settings.json allows`;
 
@@ -326,7 +407,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     const st = await client.get('state').catch(() => null);
     if (st && adoptName(cfg, st.aliases)) { log(`now called ${cfg.name}`); me = cfg.name; }
     if (st) { usage = (st.usage || {})[me] || null; projectSettings = st.projectSettings || {}; }
-    await client.post('hello', { runner: mode }).catch(() => {});
+    await client.post('hello', { runner: mode, tool }).catch(() => {});
     return mode;
   }
 
@@ -447,20 +528,46 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
       return later(t.id);
     }
     await who.post('status', { status: `${t.direct ? `request from ${t.by}` : 'task'}: ${t.title.slice(0, 80)}` }).catch(() => {});
-    const res = await runClaude(taskPrompt(t, b, me, canRun(), await myAiName(client).catch(() => null)),
-      { cwd: c ? c.dir : cfg.root, session: key, mcpRoot: c ? c.dir : null, allow: (t.allow || []).map(x => `Bash(${x})`), shown: t.detail && t.detail.trim() ? t.detail : t.title });
+    // a run that crashes (the agent exits with an error that isn't the usage limit) is tried again, up to
+    // three times, a little later each time; every attempt is kept on the task so retries aren't silent
+    const started = Date.now();
+    const lastLine = (r) => String((r.err || '').trim() || r.out || '').trim().split('\n').pop().slice(0, 400);
+    let res, attempt = 0;
+    for (;;) {
+      attempt++;
+      res = await runClaude(taskPrompt(t, b, me, canRun(), await myAiName(client).catch(() => null), toolName),
+        { cwd: c ? c.dir : cfg.root, session: key + (attempt > 1 ? '-' + attempt : ''), mcpRoot: c ? c.dir : null, allow: (t.allow || []).map(x => `Bash(${x})`), shown: t.detail && t.detail.trim() ? t.detail : t.title });
+      const crashed = res.code !== 0 && !LIMIT.test(res.out + res.err) && !res.missing;
+      const already = crashed && ((await client.get('board').catch(() => ({ tasks: [] }))).tasks.find(x => x.id === t.id) || {}).status;
+      if (!crashed || attempt >= 3 || already === 'done') break;
+      await client.post('task-update', { id: t.id, run: { attempt, outcome: 'retrying', ms: Date.now() - started, error: lastLine(res), agent: tool } }).catch(() => {});
+      log(`${t.id}: ${toolName} exited with an error (attempt ${attempt}); trying again`);
+      await new Promise(r => setTimeout(r, Number(process.env.HUDDLE_RETRY_MS || 0) || (attempt === 1 ? 20000 : 60000)));
+    }
+    const outcome = res.missing ? 'crashed' : res.code !== 0 && LIMIT.test(res.out + res.err) ? 'limit' : res.code !== 0 ? 'crashed' : 'ok';
+    await client.post('task-update', { id: t.id, run: { attempt, outcome, ms: Date.now() - started, error: outcome === 'ok' ? '' : lastLine(res), agent: tool } }).catch(() => {});
+    if (outcome === 'crashed' && !res.missing) await reportProblem('crash', `${toolName} crashed ${attempt} time${attempt === 1 ? '' : 's'} on "${t.title}"`, (res.err || '') + '\n' + (res.log || res.out || ''), t.id);
     // out of usage: give it back so someone with room takes it
-    if (res.code !== 0 && LIMIT.test(res.out)) {
-      log(`${t.id}: hit the Claude usage limit, handing it on`);
+    if (res.code !== 0 && LIMIT.test(res.out + res.err)) {
+      log(`${t.id}: hit the ${toolName} usage limit, handing it on`);
       if (c) landClone(cfg, c, t.title, { merge: false });
-      await client.post('task-update', { id: t.id, status: 'todo', limitHit: true, note: `${me}'s Claude hit its usage limit partway${c ? `; its work so far is on ${c.branch}` : ''}.` }).catch(() => {});
+      await client.post('task-update', { id: t.id, status: 'todo', limitHit: true, note: `${me}'s ${toolName} hit its usage limit partway${c ? `; its work so far is on ${c.branch}` : ''}.` }).catch(() => {});
       await who.post('unlock', { all: true }).catch(() => {});
       await who.post('bye', {}).catch(() => {});
       return later(t.id);
     }
     let where = '', checks = null;
+    let pr = null;
     if (c) {
       if (commitClone(c, t.title)) checks = await check(t, c).catch(e => { log('checks: ' + e.message); return null; });
+      // the project wants pull requests: the work goes up as one instead of merging here
+      if (projectSettings.delivery === 'pr' && gitx.git(c.dir, ['rev-list', '--count', `${c.base}..HEAD`]).out.trim() !== '0') {
+        pr = openPr(cfg, c, t, checks, me);
+        if (pr.url) { where = `pull request ${pr.url}`; log(`opened ${pr.url}`); checks = { ...(checks || {}), pr: pr.url, prState: 'open', merged: false }; }
+        else { log('pull request: ' + pr.error); await reportProblem('pr', `couldn't open a pull request for "${t.title}": ${pr.error}`, '', t.id); pr = null; }
+      }
+    }
+    if (c && !pr) {
       const l = landClone(cfg, c, t.title, { merge: !checks || checks.tests !== 'failed' });
       if (l.landed === 'merged') { where = `merged into ${me}'s ${c.person}`; log(`merged ${c.branch} into ${c.person}`); }
       if (l.landed === 'branch') {
@@ -489,7 +596,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
       // person (and so does a safe one that was already allowed and is asked for again, so nothing loops).
       // A task its Claude already marked done isn't reopened: those approvals just expire.
       const state = ((await client.get('board').catch(() => ({ tasks: [] }))).tasks.find(x => x.id === t.id) || {}).status;
-      const safe = state === 'done' ? [] : made.filter(x => !needsAPerson(x.command) && !(t.allow || []).includes(x.command));
+      const safe = state === 'done' ? [] : made.filter(x => x.id && (!needsAPerson(x.command) || policy.allowedBy(pol(), x.command)) && !(t.allow || []).includes(x.command));
       if (safe.length) {
         await client.post('approve', { ids: safe.map(x => x.id), allow: true }).then(() => { rerun = true; }).catch(e => log('auto-approve: ' + e.message));
         if (rerun) log(`allowed ${safe.length} safe command${safe.length === 1 ? '' : 's'}; running "${t.title.slice(0, 50)}" again`);
@@ -510,6 +617,17 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     log(`${t.id} ${now ? now.status : 'gone'}`);
   }
 
+  let prCheckAt = 0;
+  async function checkPrs() {
+    if (Date.now() - prCheckAt < 10 * 60 * 1000) return;
+    prCheckAt = Date.now();
+    const b = await client.get('board').catch(() => null);
+    for (const t of (b ? b.tasks : []).filter(x => x.owner === me && x.checks && x.checks.pr && x.checks.prState === 'open')) {
+      const st = prState(cfg, t.checks.pr);
+      if (st && st !== 'open') await client.post('task-update', { id: t.id, checks: { prState: st, merged: st === 'merged' } }).catch(() => {});
+    }
+  }
+
   function start(id, what, job) {
     running.set(id, what);
     job().catch(e => log('autopilot: ' + e.message)).finally(() => { running.delete(id); work(); });
@@ -518,6 +636,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
   // hand out work until `max` Claudes are busy; each finished one makes room for the next
   async function work() {
     if (stopped) return;
+    checkPrs().catch(() => {});
     if (pumping) { again = true; return; }
     pumping = true;
     try {

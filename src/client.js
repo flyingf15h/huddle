@@ -40,7 +40,7 @@ function loadConfig(start) {
   };
 }
 
-// The Claude Code process this hook / MCP server belongs to. Hooks and the MCP
+// The Claude Code (or Codex) process this hook / MCP server belongs to. Hooks and the MCP
 // server are both descendants of it, so they agree on identity. CLAUDE_PID is
 // only a fallback: an MCP server inherits it from whatever launched Claude, so
 // it's wrong when Claude was started from inside another Claude session.
@@ -61,7 +61,7 @@ function claudePid() {
         ppid = Number(m[1]); comm = path.basename(m[2]);
       }
     } catch { break; }
-    if (comm === 'claude') return String(pid);
+    if (comm === 'claude' || /^codex/.test(comm)) return String(pid); // Claude Code or Codex
     pid = ppid;
   }
   return process.env.CLAUDE_PID || String(process.ppid);

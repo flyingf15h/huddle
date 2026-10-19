@@ -111,7 +111,7 @@ function runMcp() {
   const log = (msg) => process.stderr.write(`[huddle] ${msg}\n`);
   if (client) {
     const key = cfg.clone ? null : ownerKey(cfg);
-    client.post('hello', { build: build(), ...(key ? { keyHash: sha(key) } : {}) }).catch(e => log(e.message));
+    client.post('hello', { build: build(), tool: process.env.HUDDLE_AGENT === 'codex' || cfg.agent === 'codex' ? 'codex' : 'claude', ...(key ? { keyHash: sha(key) } : {}) }).catch(e => log(e.message));
     // an open sync socket already keeps us online on the hosted server
     const beat = setInterval(() => { if (!(sync && sync.wsOpen)) client.post('hello', {}).catch(() => {}); }, 45000);
     beat.unref();

@@ -1,6 +1,6 @@
 # huddle
 
-Let several Claude Code agents work on the same project at once, from different computers and different Claude subscriptions, without stepping on each other.
+Let several AI coding agents (Claude Code and OpenAI Codex, mixed however your team likes) work on the same project at once, from different computers and different subscriptions, without stepping on each other.
 
 - **File locks.** When an agent starts editing a file, it's locked for that agent. Everyone else's copy goes read-only and Claude Code refuses their edits, with a note saying who has it.
 - **Live edits.** Every edit streams to the other machines as it happens, so the others see the file change in real time (on disk, through the `huddle_view` tool, or in the web dashboard). No GitHub push needed.
@@ -8,7 +8,10 @@ Let several Claude Code agents work on the same project at once, from different 
 - **Shared work.** Give the whole team a goal and the Claudes split it into tasks among themselves.
 - **Dashboard.** A web page with a card per person saying what they and their Claude are doing, a timeline of everything happening, the code on everyone's branches (with live edits), the project brief and memory, task progress, and a box to message the Claudes.
 
-Zero dependencies. Each person needs Claude Code, Node 18+ (22+ recommended) and git (for `npx github:`). Tested on Linux; macOS should work, Windows is untested.
+- **Accounts and controls.** Personal invites with roles you can change or take back, rules every agent follows (commands that are always fine, commands that are never allowed, files that never leave anyone's machine), secrets hidden from everything shared, and an audit log.
+- **Notifications and health.** Slack, Discord or webhook alerts when work is stuck or needs approval, a Health page with crashes and retries, and a public `/status` page.
+
+Zero dependencies. Each person needs Claude Code or Codex, Node 18+ (22+ recommended) and git (for `npx github:`). Tested on Linux; macOS should work, Windows is untested.
 
 ## Quick start
 
@@ -54,6 +57,18 @@ After `join`, open Claude Code in that folder (restart it if it was already open
 - "Turn how we cut a release into a shared skill"
 
 Check `/mcp` in Claude Code if the tools don't show up: `huddle` should be listed as connected.
+
+## Using it with Codex
+
+Join with `--agent codex` (huddle picks Codex on its own when it's the only one installed, and asks when both are):
+
+```sh
+npx -y github:flyingf15h/huddle join bJvEvfkVhOrA --agent codex
+```
+
+That puts huddle's MCP server in `.codex/config.toml` and its hooks in `.codex/hooks.json` for that folder (both kept out of git), and the team's shared skills in `.agents/skills/`. The first time you run `codex` there, say yes when it asks to trust the folder, then run `/hooks` once and trust huddle's hooks. After that a Codex session gets everything a Claude session does: locks (an `apply_patch` that touches a file someone else holds is refused), live edits, messages, the board, the brief and memory, its activity in the feed, and its 5-hour and weekly limits for handing out work.
+
+Background work for a Codex user runs as `codex exec` in its own git worktree, in Codex's workspace-write sandbox (no network). Commands the person approves, and the project's always-allowed and never-allowed commands, become a Codex rules file for that run. Teammates see "kelly's Codex" wherever they'd see "kelly's Claude".
 
 ## Working together in real time
 
@@ -102,6 +117,10 @@ Change it from the menu at the bottom of the dashboard's sidebar, with `/autopil
 
 Before work from a background Claude merges into your branch, two things check it, both on Sonnet to save usage. First, a Sonnet Claude reviews the diff for real bugs (not style), and gets one pass to fix what it finds. Then the project's tests run in that work's own worktree, and Sonnet gets one try to fix a failure. Work that still fails the tests stays on its `huddle-request-<id>` branch and the task is marked blocked. Tests that were already failing before the change don't hold it back. huddle guesses the test command (`npm test`, `pytest`, `cargo test`, `go test`, `make test`), or set it with `huddle tests "npm run check"`. `huddle tests --review off` turns the review off. The dashboard shows "Tests pass", "Tests failed" and "Reviewed" on each task.
 
+### Pull requests instead of merging
+
+`huddle delivery pr` (or Team & settings → Rules) makes finished background work arrive as a GitHub pull request instead of being merged into its person's branch: the worktree's commits are pushed as `huddle/<task>-<title>` and opened against that person's branch (or the default one) with the request, who asked, and the review and test results in the description. The task links to it and shows when it's merged. It needs the `gh` CLI, signed in, on each computer that runs background work.
+
 ### Commands that need your OK
 
 A background Claude runs in Claude Code's auto mode, like your own sessions: safe commands go through and risky ones (deploys, publishing, deleting things outside the project) are refused, because nobody is there to approve them. When it needs one of those, it does what it can and asks. The command shows under **Awaiting your approval** in the dashboard, and you get a notification. Commands for the same request are grouped, with one **Approve all** / **Decline all**. Decide there, or with `huddle approve ID` (or `huddle approve --all`) in a terminal, or just tell your Claude. The task then runs again once, with those exact commands allowed. Inside its own worktree a background Claude can already fetch, merge, cherry-pick, rebase and restore without asking, since nothing reaches your branch until huddle has reviewed, tested and merged it. Only you can approve commands for your Claude. Approving from a browser needs the page to be opened with `huddle open` on your computer, which hands it a key nobody else has, so don't share that link.
@@ -127,6 +146,43 @@ Autopilot runs Claude on *your* computer with *your* Claude subscription, so you
 You hear about messages and requests sent to your Claude right away: while a Claude Code session is open in the folder, huddle shows a desktop notification for each message to you (or to everyone) and each request for your Claude, so you don't have to wait for your next prompt. Your Claude also leads its next turn with them. Set `"notify": false` in `.huddle/config.json` to turn the pop-ups off.
 
 Board tasks close themselves: a commit whose message says `closes <task id>` (or `[<task id>]`) marks that task done, and when your Claude starts on something new it's reminded of tasks it still has in progress.
+
+## Accounts, roles and access
+
+A new project has one shared invite: whoever has it is in. For a team you'd rather manage, the owner sets up accounts:
+
+```sh
+huddle members setup                  # you become the owner, with your own token
+huddle members invite                 # a personal invite for one person (--role viewer, --uses N, --days N)
+huddle members                        # who's on the project, their roles, open invites
+huddle members role kelly viewer      # owner, member or viewer
+huddle members remove kelly           # their access stops at once, open sessions included
+huddle members revoke <invite id>     # take back an invite nobody has used
+huddle members shared off             # once everyone has their own access: the shared invite stops working
+```
+
+Or do all of it from **Team & settings** on the dashboard. Each personal invite works once (unless made for more people) and expires after a week. A personal token always speaks as its own person, so nobody can post as someone else. **Viewers** see everything and change nothing. Only **owners** change project settings, rules, notifications and roles.
+
+**Sign in with GitHub** (when the server has it set up, see Hosting): link your GitHub account under Team & settings, and from then on you can open the project from any browser by signing in, without an invite link.
+
+## Rules for every agent
+
+Owners set these under **Team & settings → Rules** (or `huddle policy`):
+
+- **Always allowed in background runs**, e.g. `npm test`, `npm run build`: background agents run them without asking anyone.
+- **Never allowed**, e.g. `git push`, `npx wrangler deploy`: refused for every agent, in background runs and in each teammate's own sessions, and they can't be approved.
+- **Private files** (by default `.env*`, `*.pem`, `*.key`, `secrets/` and friends): never locked, live-shared or shown in the Code view.
+- **The most a session may share**: everything, steps only, or nothing. Each person can share less, never more.
+
+API keys, tokens and passwords are taken out of the feed, statuses and hand-off notes before they leave anyone's computer, and again on the server. The **audit log** (Team & settings → Audit log, or `huddle audit`) records who changed access, settings and rules, every approval, and every command background agents ran.
+
+## Notifications
+
+Under **Team & settings → Notifications** (or `huddle notify add <webhook URL>`), the owner adds a Slack incoming webhook, a Discord webhook or any URL that takes JSON, and picks when it fires: a command needs approval, a task is stuck, a request is done, something failed, someone joined. The URL stays on the server; the team only sees that a channel exists.
+
+## Health and status
+
+The **Health** page shows whether everyone's huddle is working: who's online with Claude Code or Codex, whether their background runner is on, who needs `huddle update`, crashes and failures reported from people's computers (with details), and every background run attempt. A run that crashes is tried again up to three times, and each attempt shows on its task. `huddle problems` lists the same from the terminal. Every server also has a public `/status` page.
 
 ## Different versions, branches and merging
 
@@ -155,6 +211,8 @@ Open it with `huddle open` in a joined folder, or with the dashboard link `join`
 - **Code:** pick anyone's shared branch and browse its files. A file someone is editing right now is marked with a lock and has a **Show live version** button, so you can watch it change before anything is committed.
 - **Brief & memory:** the project brief, team memory and shared skills that every Claude reads when it starts. You can read and edit all of it there.
 - **Usage:** how much each person used Claude in this project.
+- **Health:** crashes, retries, who needs an update, and whose background runner is on (see Health and status).
+- **Team & settings:** people and roles, invites, rules, notifications and the audit log.
 - **Right side:** task progress for every request, which files are being edited right now and by whom, and recently changed files.
 - **New request:** the box at the bottom, for giving the Claudes something to build (see above).
 - **The bell** lists messages to you, requests for your Claude and commands waiting for your approval, with **Mark all as read**. Set it to **Do not disturb** to keep collecting them without pop-ups or desktop alerts, and turn desktop alerts on from there.
@@ -232,8 +290,14 @@ huddle send <text> [--to NAME]         message the agents yourself
 huddle inbox [--wait SECONDS]
 huddle watch                           live feed in your terminal, keeps files synced while you edit by hand
 huddle lock <file|folder/> / huddle unlock [file|folder/]
-huddle invite                          print the invite for this project again
+huddle invite                          print the invite (a personal one once the project has accounts)
 huddle open                            open the dashboard
+huddle members [setup|invite|role|remove|revoke|shared]   accounts and access
+huddle policy [allow|deny|private|sharing]                rules for every agent (owner)
+huddle notify [add URL|rm ID|test]     Slack, Discord or webhook notifications (owner)
+huddle delivery [pr|merge]             finished background work as pull requests, or merged
+huddle audit                           who changed what, and what background agents ran
+huddle problems                        crashes and failures from people's computers
 ```
 
 `join` copies huddle to `~/.huddle/app` and, if `~/.local/bin` is on your PATH, puts a `huddle` command there. That way the hooks still work after npx clears its cache. `huddle update` replaces that copy with the newest version; the session-start line tells you when a teammate runs a newer one.
@@ -251,6 +315,7 @@ npx -y github:flyingf15h/huddle server --tunnel --project myapp
 For something permanent:
 
 - **Cloudflare Workers (free):** `cd worker && npm install && npx wrangler deploy`, then `npx wrangler secret put HUDDLE_SECRET` with a long random string. Never change that secret, because every project token is derived from it. Then `huddle new --server https://your-worker.workers.dev`.
+- **Sign in with GitHub (optional):** create an OAuth app at github.com/settings/developers with the callback URL `https://your-server/auth/github/callback`. On Cloudflare, `npx wrangler secret put GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`; on Node, set `HUDDLE_GITHUB_CLIENT_ID` and `HUDDLE_GITHUB_CLIENT_SECRET`.
 - **Docker anywhere:** `docker build -t huddle . && docker run -p 7777:7777 -v huddle-data:/data huddle`, with HTTPS in front. Add `-e HUDDLE_OPEN=1` to let anyone create projects on it with `huddle new --server URL`.
 
 ## How it works

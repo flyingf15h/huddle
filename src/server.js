@@ -6,8 +6,10 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const { Project, routes, waitOn, sha, now, httpError, sameSecret,
+const { Project, routes, dispatch, takeOutbox, waitOn, sha, now, httpError, sameSecret,
   MAX_FILE_BYTES, OPEN_IDLE_MS, OPEN_MAX_PROJECTS, OPEN_CREATES_PER_HOUR } = require('./core');
+const gh = require('./github-auth');
+const { statusPage } = require('./status-page');
 
 function createServer(opts = {}) {
   const dataDir = opts.dataDir || path.join(process.cwd(), 'huddle-data');
@@ -68,6 +70,7 @@ function createServer(opts = {}) {
   const sweeper = setInterval(() => {
     for (const p of projects.values()) {
       p.sweep();
+      sendOutbox(p);
       if (open && p.tokenHash && now() - p.lastActive > OPEN_IDLE_MS) {
         projects.delete(p.name);
         fs.rmSync(projectFile(p.name), { force: true });
@@ -112,12 +115,33 @@ function createServer(opts = {}) {
     };
   }
 
-  function sse(p, since, req, res) {
+  // GitHub sign-in (HUDDLE_GITHUB_CLIENT_ID / HUDDLE_GITHUB_CLIENT_SECRET) and which projects each login is in
+  const ghCfg = { clientId: opts.githubClientId || process.env.HUDDLE_GITHUB_CLIENT_ID, clientSecret: opts.githubClientSecret || process.env.HUDDLE_GITHUB_CLIENT_SECRET, secret: token };
+  const usersFile = path.join(dataDir, 'users.json');
+  let users = {};
+  try { users = JSON.parse(fs.readFileSync(usersFile, 'utf8')); } catch {}
+  const saveUsers = () => { try { fs.writeFileSync(usersFile, JSON.stringify(users), { mode: 0o600 }); } catch {} };
+  const started = now();
+
+  // notifications a route queued: posted after the answer, never holding it up
+  function sendOutbox(p) {
+    for (const o of takeOutbox(p)) {
+      fetch(o.url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(o.body), signal: AbortSignal.timeout(10000) })
+        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); })
+        .catch(e => { p.problems = p.problems || []; p.problems.push({ id: sha(String(Math.random())).slice(0, 8), at: now(), name: 'huddle', kind: 'notify', message: `a notification could not be delivered: ${e.message}`, detail: '' }); p.dirty = true; });
+    }
+  }
+
+  function sse(p, since, req, res, auth) {
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache',
       connection: 'keep-alive', 'x-accel-buffering': 'no' });
     res.write(`event: snapshot\ndata: ${JSON.stringify(p.snapshot())}\n\n`);
     for (const ev of p.eventsSince(since) || []) res.write(`data: ${JSON.stringify(ev)}\n\n`);
-    const w = (ev) => res.write(`data: ${JSON.stringify(ev)}\n\n`);
+    const w = (ev) => {
+      // someone the owner removed stops receiving the project at once
+      if (ev.type === 'members' && ev.removed && auth && auth.name === ev.removed) { res.end(); p.waiters.delete(w); return; }
+      res.write(`data: ${JSON.stringify(ev)}\n\n`);
+    };
     p.waiters.add(w);
     const ping = setInterval(() => res.write(': ping\n\n'), 25000);
     req.on('close', () => { p.waiters.delete(w); clearInterval(ping); });
@@ -136,11 +160,36 @@ function createServer(opts = {}) {
         return res.end(dashboard);
       }
       if (url.pathname === '/health') return send(200, { ok: true, open });
+      if (url.pathname === '/status') {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        return res.end(statusPage({ ok: true, server: 'self-hosted', since: started, projects: projects.size, github: gh.configured(ghCfg) }));
+      }
+      const origin = `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}`;
+      const reply = (r) => { res.writeHead(r.status, r.headers); res.end(r.body); };
+      if (url.pathname === '/auth/github/login') return reply(await gh.login(ghCfg, origin, url.searchParams.get('next') || '/'));
+      if (url.pathname === '/auth/github/callback') return reply(await gh.callback(ghCfg, origin, url, req.headers.cookie));
+      if (url.pathname === '/auth/logout') return reply(gh.logout(origin));
+      if (url.pathname === '/auth/me') {
+        const who = await gh.session(ghCfg, req.headers.cookie);
+        return send(200, { github: gh.configured(ghCfg), user: who });
+      }
+      if (url.pathname === '/api/me/projects') {
+        const who = await gh.session(ghCfg, req.headers.cookie);
+        if (!who) throw httpError(401, 'sign in with GitHub first');
+        const out = [];
+        for (const name of users[who.login.toLowerCase()] || []) {
+          const p = projects.get(name);
+          const m = p && Object.entries(p.members || {}).find(([, x]) => x.github && x.github.toLowerCase() === who.login.toLowerCase());
+          if (m) out.push({ project: name, name: m[0], role: m[1].role });
+        }
+        return send(200, { user: who, projects: out });
+      }
       const short = url.pathname.match(/^\/api\/invite\/([\w-]{12})$/);
       if (short && req.method === 'GET') {
         const inv = invites[short[1]];
         if (!inv) throw httpError(404, 'no such invite');
-        return send(200, { server: `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}`, project: inv.project, token: inv.token });
+        if (inv.personal) return send(200, { server: origin, project: inv.project, personal: true });
+        return send(200, { server: origin, project: inv.project, token: inv.token });
       }
       if (url.pathname === '/api/new' && req.method === 'POST') {
         const body = await readBody(req);
@@ -155,19 +204,33 @@ function createServer(opts = {}) {
       if (!m) return send(404, { error: 'not found' });
       const admin = isAdmin(req, url);
       const p = project(decodeURIComponent(m[1]), admin);
-      if (!admin && !(p.tokenHash && sameSecret(sha(given(req, url) + ':' + p.name), p.tokenHash))) throw httpError(401, 'bad token or no such project');
+      // what the caller holds: the server's own token or the project's shared one, a personal token
+      // (hm_…), a GitHub session cookie, or nothing (only good for turning a personal invite into a token)
+      const tok = given(req, url);
+      const who = await gh.session(ghCfg, req.headers.cookie);
+      const cred = admin || (p.tokenHash && sameSecret(sha(tok + ':' + p.name), p.tokenHash)) ? { kind: 'project', github: who && who.login }
+        : tok.startsWith('hm_') ? { kind: 'member', token: tok, github: who && who.login }
+        : who ? { kind: 'github', github: who.login } : { kind: 'none' };
+      if (cred.kind === 'none' && m[2] !== 'redeem') throw httpError(401, 'bad token or no such project');
+      p.origin = origin;
       if (m[2] === 'events' && (req.headers.accept || '').includes('text/event-stream')) {
-        return sse(p, Number(url.searchParams.get('since') || 0), req, res);
+        const auth = require('./core').authorize(p, cred);
+        return sse(p, Number(url.searchParams.get('since') || 0), req, res, auth);
       }
-      const route = routes[`${req.method} ${m[2]}`];
-      if (!route) return send(404, { error: 'no such endpoint' });
       let body = {};
       if (req.method === 'POST') body = await readBody(req);
       const ctx = { waitFor: (pred, ms) => waitOn(p, pred, ms, (abort) => req.on('close', abort)), blobs: blobStore(p.name) };
-      const out = await route(p, body, url.searchParams, ctx);
+      const out = await dispatch(p, req.method, m[2], body, url.searchParams, ctx, cred);
       // what a short invite stands for: the project and the token of whoever asked for it
-      if (m[2] === 'invite-code') saveInvite(out.code, { project: p.name, token: given(req, url) });
+      if (m[2] === 'invite-code') saveInvite(out.code, { project: p.name, token: tok });
+      if (m[2] === 'member-invite' && out.inviteCode) saveInvite(out.inviteCode, { project: p.name, personal: true });
+      if (m[2] === 'link-github' && out.linked) {
+        const k = out.linked.toLowerCase();
+        users[k] = [...new Set([...(users[k] || []), p.name])];
+        saveUsers();
+      }
       send(200, out);
+      sendOutbox(p);
     } catch (e) {
       send(e.code && e.code >= 400 && e.code < 600 ? e.code : 500, { error: e.message });
     }

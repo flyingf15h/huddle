@@ -55,23 +55,35 @@ function writeShared(root, shared, log = () => {}) {
   const manifestFile = path.join(dir, 'skills.json');
   let manifest = [];
   try { manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8')); } catch {}
-  const skillsRoot = path.join(root, '.claude', 'skills');
+  // Claude Code reads .claude/skills; Codex reads .agents/skills
+  const homes = skillHomes(root);
   const keep = [];
   for (const sk of shared.skills) {
-    const skDir = path.join(skillsRoot, sk.name);
-    if (fs.existsSync(skDir) && !manifest.includes(sk.name)) {
-      log(`shared skill "${sk.name}" not installed: .claude/skills/${sk.name} already exists and isn't from huddle`);
+    const clash = homes.find(h => fs.existsSync(path.join(root, h, sk.name)) && !manifest.includes(sk.name));
+    if (clash) {
+      log(`shared skill "${sk.name}" not installed: ${h2(clash)}/${sk.name} already exists and isn't from huddle`);
       continue;
     }
-    fs.mkdirSync(skDir, { recursive: true });
-    writeIfChanged(path.join(skDir, 'SKILL.md'), sk.body);
-    excludeFromGit(root, `.claude/skills/${sk.name}/`);
+    for (const h of homes) {
+      const skDir = path.join(root, h, sk.name);
+      fs.mkdirSync(skDir, { recursive: true });
+      writeIfChanged(path.join(skDir, 'SKILL.md'), sk.body);
+      excludeFromGit(root, `${h2(h)}/${sk.name}/`);
+    }
     keep.push(sk.name);
   }
   for (const name of manifest) {
-    if (!keep.includes(name)) fs.rmSync(path.join(skillsRoot, name), { recursive: true, force: true });
+    if (!keep.includes(name)) for (const h of homes) fs.rmSync(path.join(root, h, name), { recursive: true, force: true });
   }
   fs.writeFileSync(manifestFile, JSON.stringify(keep));
+}
+
+const h2 = (h) => h.split(path.sep).join('/');
+// where this folder's agent looks for skills: Codex when the person joined with it (config "agent")
+function skillHomes(root) {
+  let agent = 'claude';
+  try { agent = JSON.parse(fs.readFileSync(path.join(root, CONFIG_DIR, 'config.json'), 'utf8')).agent || 'claude'; } catch {}
+  return agent === 'codex' ? [path.join('.agents', 'skills')] : [path.join('.claude', 'skills')];
 }
 
 function writeIfChanged(file, text) {

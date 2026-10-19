@@ -3,6 +3,7 @@
 'use strict';
 const path = require('path');
 const crypto = require('crypto');
+const { redact, cleanRules, isPrivatePath, deniedBy } = require('./policy');
 
 const ONLINE_MS = 2 * 60 * 1000;          // agent counts as online if seen this recently
 const LOCK_STALE_MS = 5 * 60 * 1000;      // locks of agents unseen this long are dropped
@@ -48,8 +49,9 @@ function fileKey(branch, fp) { return branch ? `${branch}::${fp}` : fp; }
 
 // "Pip (tszfei's Claude)", or just "tszfei's Claude" when the person hasn't named it
 function aiLabel(settings, person) {
-  const n = ((settings || {})[person] || {}).aiName;
-  return n ? `${n} (${person}'s Claude)` : `${person}'s Claude`;
+  const s = (settings || {})[person] || {};
+  const tool = s.tool === 'codex' ? 'Codex' : 'Claude';
+  return s.aiName ? `${s.aiName} (${person}'s ${tool})` : `${person}'s ${tool}`;
 }
 // lets people address someone's Claude by the name they gave it: "Pip" -> "tszfei"
 function personFor(p, name) {
@@ -171,6 +173,11 @@ class Project {
     this.teamVersion = 0; // bumped by TEAM_EVENTS
     this.worklog = [];    // [{name, status, at}]: what each Claude said it started on
     this.handoffs = [];   // [{name, ai, text, files, commits, at}]: where a session left off, for whoever comes next
+    this.members = {};    // name -> {role, tokenHash, at, by, github}: personal accounts, once the owner sets them up
+    this.invites = {};    // id -> {codeHash, role, by, at, expires, uses, maxUses, revoked}: personal invites
+    this.audit = [];      // [{at, by, action, detail}]: who changed what, and what background Claudes ran
+    this.problems = [];   // [{at, name, kind, message, detail}]: crashes and failures from people's machines
+    this.secretHooks = []; // notification webhooks; their URLs never leave the server
     this.waiters = new Set();
     if (saved) Object.assign(this, saved);
     this.waiters = new Set();
@@ -183,7 +190,7 @@ class Project {
     this.limits = { ...DEFAULT_LIMITS };
   }
   toJSON() {
-    const { waiters, dirty, changedFiles, sharedChanged, activityChanged, boardChanged, isConnected, limits, ...rest } = this;
+    const { waiters, dirty, changedFiles, sharedChanged, activityChanged, boardChanged, isConnected, limits, outbox, auditChanged, problemsChanged, ...rest } = this;
     return rest;
   }
   // events after `since`, or null if they've been dropped and the client must resync
@@ -223,7 +230,7 @@ class Project {
   }
   publicAgent(a) {
     return { id: a.id, name: a.name, host: a.host, checkout: a.checkout, kind: a.kind, branch: a.branch || null, runner: a.runner || null,
-      status: a.status, statusAuto: !!a.statusAuto, statusAt: a.statusAt || null, lastSeen: a.lastSeen, joined: a.joined || null, online: this.online(a), build: a.build || null, clone: a.clone || null };
+      status: a.status, statusAuto: !!a.statusAuto, tool: a.tool || null, statusAt: a.statusAt || null, lastSeen: a.lastSeen, joined: a.joined || null, online: this.online(a), build: a.build || null, clone: a.clone || null };
   }
   fileMeta(f) {
     return { path: f.path, branch: f.branch || null, hash: f.hash, by: f.by, byName: f.byName, at: f.at,
@@ -242,6 +249,9 @@ class Project {
       approvals: this.liveApprovals(),
       projectSettings: this.projectSettings || {},
       teamVersion: this.teamVersion || 0,
+      members: Object.entries(this.members || {}).map(([name, m]) => ({ name, role: m.role, github: m.github || null })),
+      accounts: Object.values(this.members || {}).some(m => m.role === 'owner'),
+      problems: (this.problems || []).slice(-20),
     };
   }
   touch(agent) {
@@ -339,6 +349,12 @@ const routes = {
     if (b.clone !== undefined) a.clone = b.clone ? String(b.clone).slice(0, 200) : null;
     if (b.status !== undefined && a.clone) a.statusAt = now();
     if (b.runner !== undefined) a.runner = ['off', 'requests', 'full'].includes(b.runner) ? b.runner : null;
+    // Claude Code or Codex: remembered per person too, so the team knows whose is whose while they're away
+    if (b.tool !== undefined && !a.clone && a.kind !== 'human') {
+      a.tool = b.tool === 'codex' ? 'codex' : 'claude';
+      p.settings = p.settings || {};
+      if ((p.settings[a.name] || {}).tool !== a.tool) { p.settings[a.name] = { ...(p.settings[a.name] || {}), tool: a.tool }; p.emit('setting', { name: a.name, settings: p.settings[a.name] }); }
+    }
     if (b.status !== undefined) a.status = String(b.status).slice(0, 300);
     // the person's own huddle (not a dashboard tab) says which approve key is theirs
     if (b.keyHash && a.kind !== 'human' && !a.clone) { p.keys = p.keys || {}; p.keys[a.name] = String(b.keyHash).slice(0, 64); }
@@ -378,7 +394,7 @@ const routes = {
   // where a session left off, for the team and the next session: one note per session, newest wins
   'POST handoff': (p, b) => {
     const a = p.touch(b.agent);
-    const text = String(b.text || '').trim().slice(0, 2000);
+    const text = redact(String(b.text || '').trim().slice(0, 2000));
     if (!text) throw httpError(400, 'say where you left off');
     const h = { id: crypto.randomBytes(4).toString('hex'), name: a.name, agent: a.id, text, branch: a.branch || null,
       files: (Array.isArray(b.files) ? b.files : []).slice(0, 20).map(x => String(x).slice(0, 200)),
@@ -445,7 +461,7 @@ const routes = {
     if (!into) throw httpError(400, 'a name is required');
     const from = a.name;
     if (into === from) return { ok: true, name: into };
-    const taken = [...Object.values(p.agents).map(x => x.name), ...Object.keys(p.settings || {}), ...Object.keys(p.stats || {})];
+    const taken = [...Object.values(p.agents).map(x => x.name), ...Object.keys(p.settings || {}), ...Object.keys(p.stats || {}), ...Object.keys(p.members || {})];
     if (taken.some(n => n !== from && n.toLowerCase() === into.toLowerCase())) throw httpError(409, `someone on the team is already called ${into}`);
     mergePerson(p, from, into);
     p.dirty = true;
@@ -490,7 +506,7 @@ const routes = {
   },
   'POST status': (p, b) => {
     const a = p.touch(b.agent);
-    const status = String(b.status || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+    const status = redact(String(b.status || '').replace(/\s+/g, ' ').trim().slice(0, 300));
     if (status === a.status) return { ok: true };
     // only replace the status the caller saw (a late summary never overwrites a newer status)
     if (b.ifStatus !== undefined && a.status !== b.ifStatus) return { ok: false, status: a.status };
@@ -562,6 +578,7 @@ const routes = {
   'POST content': (p, b) => {
     const a = p.touch(b.agent);
     const fp = normPath(b.path);
+    if (isPrivatePath(p.projectSettings, fp)) throw httpError(403, `${fp} is private in this project, so it isn't shared`);
     if (typeof b.content !== 'string') throw httpError(400, 'content must be a string');
     if (Buffer.byteLength(b.content) > p.limits.fileBytes) throw httpError(413, 'file too large to share');
     const branch = b.branch || null;
@@ -688,7 +705,7 @@ const routes = {
     if (!branch || !/^[0-9a-f]{40}$/.test(b.sha || '')) throw httpError(400, 'branch and sha required');
     const n = Number(b.n), i = Number(b.i);
     if (!(n >= 1 && n <= 32 && i >= 0 && i < n)) throw httpError(400, 'bad part index');
-    const files = (Array.isArray(b.files) ? b.files : []).map(f => ({ path: normPath(f.path), content: String(f.content || '') }));
+    const files = (Array.isArray(b.files) ? b.files : []).map(f => ({ path: normPath(f.path), content: String(f.content || '') })).filter(f => !isPrivatePath(p.projectSettings, f.path));
     const data = JSON.stringify(files);
     if (data.length > SNAP_PART + 4096) throw httpError(413, 'snapshot part too large');
     const key = `${a.name}/${branch}`;
@@ -737,6 +754,18 @@ const routes = {
     p.projectSettings = p.projectSettings || {};
     if (b.testCommand !== undefined) p.projectSettings.testCommand = String(b.testCommand || '').trim().slice(0, 300) || null;
     if (b.review !== undefined) p.projectSettings.review = b.review !== false;
+    // false: only personal invites work; the shared token everyone first joined with stops working
+    if (b.sharedToken !== undefined) {
+      if (b.sharedToken === false && !hasOwner(p)) throw httpError(409, 'set up accounts before switching the shared invite off');
+      p.projectSettings.sharedToken = b.sharedToken !== false;
+    }
+    if (b.membersCanInvite !== undefined) p.projectSettings.membersCanInvite = b.membersCanInvite !== false;
+    // how finished background work arrives: merged into the person's branch, or as a GitHub pull request
+    if (b.delivery !== undefined) p.projectSettings.delivery = b.delivery === 'pr' ? 'pr' : 'merge';
+    const said = { testCommand: (v) => v ? `test command: ${v}` : 'test command: guessed', review: (v) => `review before merging: ${v === false ? 'off' : 'on'}`,
+      sharedToken: (v) => v === false ? 'switched the shared invite off' : 'switched the shared invite on', membersCanInvite: (v) => `members can invite: ${v === false ? 'no' : 'yes'}`,
+      delivery: (v) => v === 'pr' ? 'finished work opens a pull request' : "finished work merges into its person's branch" };
+    audit(p, a.name, 'settings', Object.keys(b).filter(k => said[k]).map(k => said[k](b[k])).join('; '));
     p.emit('project-setting', { settings: p.projectSettings, byName: a.name });
     return { ok: true, settings: p.projectSettings };
   },
@@ -748,12 +777,14 @@ const routes = {
     const made = [];
     for (const c of (Array.isArray(b.commands) ? b.commands : []).slice(0, 5)) {
       const command = String(c.command || '').trim().slice(0, 500);
+      if (command && deniedBy((p.projectSettings || {}).policy, command)) { made.push({ command, status: 'denied', why: 'never allowed in this project' }); continue; }
       if (!command || p.approvals.some(x => x.status === 'waiting' && x.owner === a.name && x.command === command && x.taskId === b.taskId)) continue;
       const x = { id: crypto.randomBytes(4).toString('hex'), taskId: t ? t.id : null, title: t ? t.title : '', owner: a.name,
         command, why: String(c.why || '').slice(0, 300), status: 'waiting', at: now() };
       p.approvals.push(x);
       made.push(x);
       p.emit('approval', { approval: x });
+      notify(p, 'approval', `${a.name}'s Claude needs ${a.name}'s OK to run \`${command.slice(0, 120)}\`${x.title ? ` for "${x.title}"` : ''}`);
     }
     if (p.approvals.length > 100) p.approvals.splice(0, p.approvals.length - 100);
     p.dirty = true;
@@ -782,7 +813,10 @@ const routes = {
     const touched = new Map();
     for (const x of list) {
       if (x.status !== 'waiting') continue;
+      const rule = b.allow !== false && deniedBy((p.projectSettings || {}).policy, x.command);
+      if (rule) throw httpError(403, `\`${x.command}\` is never allowed in this project (rule: ${rule})`);
       x.status = b.allow === false ? 'denied' : 'approved';
+      audit(p, a.name, 'approve', `${x.status === 'approved' ? 'allowed' : 'refused'} \`${x.command}\`${x.title ? ` for "${x.title}"` : ''}`);
       x.by = a.name; x.decidedAt = now();
       const t = p.board.tasks.find(y => y.id === x.taskId);
       if (t) {
@@ -831,6 +865,7 @@ const routes = {
     }
     if (!Object.keys(change).length) throw httpError(400, 'nothing to change: give autopilot or aiName');
     p.settings[a.name] = { ...(p.settings[a.name] || {}), ...change, at: now() };
+    if (change.autopilot) audit(p, a.name, 'mode', `background work: ${change.autopilot}`);
     p.emit('setting', { name: a.name, settings: p.settings[a.name] });
     return { ok: true, settings: p.settings[a.name] };
   },
@@ -912,11 +947,21 @@ const routes = {
     const a = p.touch(b.agent);
     const t = p.board.tasks.find(x => x.id === b.id);
     if (!t) throw httpError(404, 'no such task');
+    const was = t.status;
     if (b.status) {
       if (!['todo', 'doing', 'done', 'blocked'].includes(b.status)) throw httpError(400, 'status must be todo, doing, done or blocked');
       t.status = b.status;
     }
     if (b.owner !== undefined) t.owner = b.owner || null;
+    // each background attempt: how it ended, so retries and crashes are visible instead of silent
+    if (b.run && typeof b.run === 'object') {
+      const r = b.run;
+      t.runs = [...(t.runs || []), { at: now(), by: a.name, attempt: Math.max(1, Math.min(Number(r.attempt) || 1, 20)),
+        outcome: ['ok', 'failed', 'crashed', 'limit', 'retrying', 'waiting'].includes(r.outcome) ? r.outcome : 'failed',
+        ms: Math.max(0, Number(r.ms) || 0), error: redact(String(r.error || '').slice(0, 600)), agent: r.agent === 'codex' ? 'codex' : 'claude' }].slice(-10);
+    }
+    if (b.status === 'blocked' && was !== 'blocked') notify(p, 'stuck', `Stuck: "${t.title}" (${t.owner || 'unassigned'})${b.note ? ': ' + redact(String(b.note)).slice(0, 200) : ''}`);
+    if (a.kind === 'human' && b.status && b.status !== was) audit(p, a.name, 'task', `${b.status === 'done' ? 'marked done' : b.status === 'todo' ? 'asked to run again' : 'set to ' + b.status}: ${t.title}`);
     // its Claude names it properly: a few plain words for the outcome (a request to one Claude names its goal too)
     if (b.title && String(b.title).trim()) {
       t.title = String(b.title).replace(/\s+/g, ' ').trim().slice(0, 80);
@@ -935,13 +980,16 @@ const routes = {
 
   'POST activity': (p, b) => {
     const a = p.touch(b.agent);
-    const items = (Array.isArray(b.items) ? b.items : []).slice(0, 50).map(it => ({
+    const cap = (p.projectSettings || {}).maxSharing || 'full';
+    const items = (Array.isArray(b.items) ? b.items : []).slice(0, 50).filter(it => cap === 'full' || (cap === 'tools' && (it.kind === 'tool' || it.kind === 'end'))).map(it => ({
       kind: ['prompt', 'text', 'tool', 'end'].includes(it.kind) ? it.kind : 'text',
-      text: String(it.text || '').slice(0, ACTIVITY_TEXT),
+      text: redact(String(it.text || '').slice(0, ACTIVITY_TEXT)),
       tool: it.tool ? String(it.tool).slice(0, 80) : undefined,
       bg: a.clone ? true : undefined,   // from a background Claude doing a request, not the person's own session
       at: now(), agent: a.id, name: a.name,
     })).filter(it => it.text || it.kind === 'end');
+    // what background Claudes ran is kept apart from the feed, so it can't be scrolled away or turned off
+    for (const it of items) if (it.bg && it.kind === 'tool' && /^(Bash|exec_command|shell)$/i.test(it.tool || '')) audit(p, a.name, 'command', it.text.replace(/^\w+:\s*/, ''), { bg: true, agent: a.clone ? String(a.clone).slice(0, 80) : null });
     if (!items.length) return { ok: true };
     p.activity.push(...items);
     if (p.activity.length > MAX_ACTIVITY) p.activity.splice(0, p.activity.length - MAX_ACTIVITY);
@@ -1134,6 +1182,8 @@ function mergePerson(p, from, into) {
   if (p.settings && p.settings[from]) { p.settings[into] = p.settings[into] || p.settings[from]; delete p.settings[from]; }
   if (p.stats && p.stats[from]) { p.stats[into] = addStats(p.stats[into] || newStats(), p.stats[from]); delete p.stats[from]; }
   if (p.keys && p.keys[from]) { p.keys[into] = p.keys[into] || p.keys[from]; delete p.keys[from]; }
+  // an account follows its person's new name (their token keeps working)
+  if (p.members && p.members[from] && !p.members[into]) { p.members[into] = p.members[from]; delete p.members[from]; }
   p.activityChanged = p.sharedChanged = true;
   p.board.version++;
   p.emit('merge', { from, into });
@@ -1189,7 +1239,10 @@ function assignByUsage(p, tasks, planner, exclude) {
 
 function goalDone(p, t) {
   const g = p.board.goals.find(x => x.id === t.goalId);
-  if (g && p.board.tasks.filter(x => x.goalId === g.id).every(x => x.status === 'done')) g.status = 'done';
+  if (g && g.status !== 'done' && p.board.tasks.filter(x => x.goalId === g.id).every(x => x.status === 'done')) {
+    g.status = 'done';
+    notify(p, 'done', `Done: ${g.title || requestTitle(g.text)} (asked by ${g.byName})`);
+  }
 }
 
 function boardChanged(p, action, info, a) {
@@ -1219,6 +1272,282 @@ function diffSummary(a, b) {
   return { added: y.length - i - j, removed, firstAdded: added.slice(0, 6).join('\n').slice(0, 600) };
 }
 
+// ---------- accounts: who may do what ----------
+// A project starts with one shared token (the invite everyone joined with). Its first owner sets up
+// accounts: everyone then gets a token of their own from a personal invite, with a role, that the
+// owner can take back at any time. Until then whoever holds the shared token can do everything, as
+// before; afterwards the shared token is a member (or switched off by the owner).
+const ROLES = ['owner', 'member', 'viewer'];
+const MAX_AUDIT = 500;
+const MAX_PROBLEMS = 100;
+const OWNER_ROUTES = new Set(['POST member-role', 'POST member-remove', 'POST invite-revoke', 'GET invites', 'POST project-setting',
+  'POST notify-set', 'POST notify-test', 'POST policy', 'POST merge-person', 'POST tidy', 'POST forget-agent']);
+// a viewer reads everything (dashboard, feed, code) and changes nothing
+const VIEWER_POSTS = new Set(['hello', 'inbox', 'link-github', 'redeem']);
+const hasOwner = (p) => Object.values(p.members || {}).some(m => m.role === 'owner');
+const newMemberToken = () => 'hm_' + crypto.randomBytes(24).toString('base64url');
+
+// who's asking, from what the server checked: { kind: 'admin' | 'project' | 'member' | 'github' | 'none', token, github }
+function authorize(p, cred = {}) {
+  const ps = p.projectSettings || {};
+  if (cred.kind === 'admin') return { role: 'owner', name: null, via: 'admin' };
+  if (cred.kind === 'member' || cred.kind === 'github') {
+    const h = cred.kind === 'member' ? sha('member:' + cred.token) : null;
+    const hit = Object.entries(p.members || {}).find(([, m]) => (h && m.tokenHash === h) || (!h && cred.github && m.github && m.github.toLowerCase() === String(cred.github).toLowerCase()));
+    if (!hit) throw httpError(401, cred.kind === 'member' ? 'this invite was taken back or is no longer valid; ask the project owner for a new one' : 'your GitHub account is not on this project');
+    const [name, m] = hit;
+    if (now() - (m.lastSeen || 0) > 60 * 1000) { m.lastSeen = now(); p.dirty = true; }
+    return { role: m.role, name, via: cred.kind, github: cred.github || m.github || null };
+  }
+  if (cred.kind === 'project') {
+    if (ps.sharedToken === false) throw httpError(401, 'this project only takes personal invites now; ask the owner for one');
+    return { role: hasOwner(p) ? 'member' : 'owner', name: null, via: 'project', github: cred.github || null };
+  }
+  return { role: 'none', name: null, via: 'none' };
+}
+
+// every route goes through here, on both servers: the caller's role decides what they may do, and a
+// personal token always speaks as its own person, whatever name the request carries
+async function dispatch(p, method, ep, body, q, ctx, cred) {
+  const key = `${method} ${ep}`;
+  const route = routes[key];
+  if (!route) throw httpError(404, 'no such endpoint');
+  const auth = authorize(p, cred);
+  if (auth.role === 'none' && key !== 'POST redeem') throw httpError(401, 'bad token or no such project');
+  if (auth.role === 'viewer' && method !== 'GET' && !VIEWER_POSTS.has(ep)) throw httpError(403, 'you can view this project but not change it');
+  if (auth.role === 'viewer' && key === 'GET audit') throw httpError(403, 'viewers cannot see the audit log');
+  if (auth.role !== 'owner' && OWNER_ROUTES.has(key)) throw httpError(403, 'only the project owner can do that');
+  // once there are accounts, the shared invite only goes to owners; everyone else makes personal ones
+  if (key === 'POST invite-code' && hasOwner(p) && auth.role !== 'owner') throw httpError(403, 'this project uses personal invites: huddle members invite, or Invite people on the dashboard');
+  if (auth.name && body && body.agent && typeof body.agent === 'object') {
+    // and only as its own sessions: an id that belongs to someone else's session gets one of its own
+    const id = String(body.agent.id || '');
+    const held = p.agents[id];
+    body.agent = { ...body.agent, name: auth.name, ...(held && held.name !== auth.name ? { id: `${auth.name}#${sha('as:' + id).slice(0, 6)}` } : {}) };
+  }
+  ctx.auth = auth;
+  return route(p, body, q, ctx);
+}
+
+function audit(p, by, action, detail, extra) {
+  p.audit = p.audit || [];
+  const e = { at: now(), by: by || 'someone', action, detail: String(detail || '').slice(0, 500), ...(extra || {}) };
+  p.audit.push(e);
+  if (p.audit.length > MAX_AUDIT) p.audit.splice(0, p.audit.length - MAX_AUDIT);
+  p.auditChanged = true;
+  p.dirty = true;
+  return e;
+}
+
+function publicMembers(p) {
+  return Object.entries(p.members || {}).map(([name, m]) => ({ name, role: m.role, at: m.at, by: m.by, github: m.github || null, lastSeen: m.lastSeen || null }));
+}
+function inviteCodeFor(p) {
+  let code;
+  do code = shortInviteCode(); while (Object.values(p.invites || {}).some(i => i.codeHash === sha('invite:' + code)));
+  return code;
+}
+function liveInvites(p) {
+  return Object.values(p.invites || {}).filter(i => !i.revoked && i.expires > now() && i.uses < i.maxUses);
+}
+
+// ---------- notifications: Slack, Discord or any webhook ----------
+// The URLs are secrets (anyone with one can post to the channel), so they live apart from the
+// settings everyone can read; the team only sees which kinds are set up and for what.
+const NOTIFY_EVENTS = ['approval', 'stuck', 'done', 'failed', 'member'];
+function notify(p, event, text) {
+  const hooks = (p.secretHooks || []).filter(h => !h.events || h.events.includes(event));
+  if (!hooks.length) return;
+  const link = p.origin ? `${p.origin}/#p=${encodeURIComponent(p.name)}` : '';
+  const title = p.name.replace(/-[0-9a-f]{6,8}$/, '');
+  for (const h of hooks) {
+    const line = `[${title}] ${text}${link ? `\n${link}` : ''}`;
+    const body = h.kind === 'slack' ? { text: line } : h.kind === 'discord' ? { content: line.slice(0, 1900), username: 'huddle' }
+      : { event, project: p.name, text, link, at: now() };
+    p.outbox = p.outbox || [];
+    p.outbox.push({ url: h.url, body, hook: h.id });
+    if (p.outbox.length > 50) p.outbox.shift();
+  }
+}
+// what the server should send now (it posts them after answering)
+function takeOutbox(p) { const o = p.outbox || []; p.outbox = []; return o; }
+function hookLabel(url) {
+  try { const u = new URL(url); return `${u.host}/…${url.slice(-4)}`; } catch { return 'webhook'; }
+}
+function kindOf(url) { return /hooks\.slack\.com/.test(url) ? 'slack' : /discord(app)?\.com\/api\/webhooks/.test(url) ? 'discord' : 'generic'; }
+
+function problem(p, a, kind, message, extra = {}) {
+  p.problems = p.problems || [];
+  const x = { id: crypto.randomBytes(4).toString('hex'), at: now(), name: a ? a.name : 'huddle', kind: String(kind || 'error').slice(0, 40),
+    message: redact(String(message || '').slice(0, 500)), detail: redact(String(extra.detail || '').slice(-2000)), taskId: extra.taskId || null };
+  p.problems.push(x);
+  if (p.problems.length > MAX_PROBLEMS) p.problems.splice(0, p.problems.length - MAX_PROBLEMS);
+  p.problemsChanged = true;
+  p.emit('problem', { problem: x });
+  notify(p, 'failed', `${x.name}: ${x.message}`);
+  return x;
+}
+
+Object.assign(routes, {
+  'GET whoami': (p, b, q, ctx) => {
+    const auth = ctx.auth || {};
+    return { name: auth.name, role: auth.role, via: auth.via, github: auth.github || null, accounts: hasOwner(p),
+      sharedToken: (p.projectSettings || {}).sharedToken !== false, membersCanInvite: (p.projectSettings || {}).membersCanInvite !== false };
+  },
+  // the first owner: whoever holds the shared token sets up accounts and gets a token of their own
+  'POST setup-owner': (p, b, q, ctx) => {
+    if (hasOwner(p)) throw httpError(409, 'this project already has an owner');
+    const a = p.touch(b.agent);
+    if (a.transient) throw httpError(400, 'pick a name first');
+    const token = newMemberToken();
+    p.members = p.members || {};
+    p.members[a.name] = { role: 'owner', tokenHash: sha('member:' + token), at: now(), by: a.name, github: ctx.auth && ctx.auth.github || null };
+    audit(p, a.name, 'owner', `${a.name} set up accounts and became the owner`);
+    p.emit('members', { members: publicMembers(p) });
+    return { ok: true, token, name: a.name, role: 'owner' };
+  },
+  'GET members': (p) => ({ members: publicMembers(p), invites: [] }),
+  'GET invites': (p) => ({ invites: liveInvites(p).map(({ codeHash, ...i }) => i) }),
+  // a personal invite: one person (or `uses` people), one role, for `days` days
+  'POST member-invite': (p, b, q, ctx) => {
+    const a = p.touch(b.agent);
+    const auth = ctx.auth || {};
+    if (!hasOwner(p)) throw httpError(409, 'set up accounts first (the owner runs `huddle members setup`, or uses Team & access on the dashboard)');
+    const role = ROLES.includes(b.role) ? b.role : 'member';
+    if (auth.role !== 'owner' && (role === 'owner' || (p.projectSettings || {}).membersCanInvite === false)) throw httpError(403, 'only the project owner can invite people');
+    const code = inviteCodeFor(p);
+    const inv = { id: crypto.randomBytes(4).toString('hex'), codeHash: sha('invite:' + code), role, by: a.name, at: now(),
+      expires: now() + Math.min(Math.max(Number(b.days) || 7, 1), 30) * 86400000, uses: 0, maxUses: Math.min(Math.max(Number(b.uses) || 1, 1), 50),
+      note: String(b.note || '').slice(0, 80) };
+    p.invites = p.invites || {};
+    p.invites[inv.id] = inv;
+    for (const [id, i] of Object.entries(p.invites)) if (i.expires < now() - 7 * 86400000) delete p.invites[id];
+    audit(p, a.name, 'invite', `invited ${inv.maxUses === 1 ? 'one person' : inv.maxUses + ' people'} as ${role}${inv.note ? ` (${inv.note})` : ''}`);
+    p.dirty = true;
+    return { ok: true, code, invite: { id: inv.id, role, expires: inv.expires, maxUses: inv.maxUses }, inviteCode: code };
+  },
+  'POST invite-revoke': (p, b) => {
+    const a = p.touch(b.agent);
+    const inv = (p.invites || {})[b.id];
+    if (!inv) throw httpError(404, 'no such invite');
+    inv.revoked = true;
+    audit(p, a.name, 'invite-revoke', `took back an invite (${inv.role}, made by ${inv.by})`);
+    return { ok: true };
+  },
+  // a personal invite becomes the person's own token
+  'POST redeem': (p, b) => {
+    const code = String(b.code || '').trim();
+    const inv = Object.values(p.invites || {}).find(i => i.codeHash === sha('invite:' + code));
+    if (!inv || inv.revoked) throw httpError(404, 'that invite was taken back or never existed');
+    if (inv.expires < now()) throw httpError(410, 'that invite has expired; ask for a new one');
+    if (inv.uses >= inv.maxUses) throw httpError(410, 'that invite has been used already; ask for a new one');
+    const name = String(b.name || '').trim().replace(/[#\s]+/g, '-').slice(0, 40);
+    if (!name) throw httpError(400, 'what should the team call you?');
+    p.members = p.members || {};
+    const taken = Object.keys(p.members).find(n => n.toLowerCase() === name.toLowerCase());
+    if (taken) throw httpError(409, `"${taken}" is already on this project; pick another name`);
+    const token = newMemberToken();
+    p.members[name] = { role: inv.role, tokenHash: sha('member:' + token), at: now(), by: inv.by };
+    inv.uses++;
+    audit(p, name, 'join', `joined as ${inv.role} with ${inv.by}'s invite`);
+    notify(p, 'member', `${name} joined as ${inv.role}`);
+    p.emit('members', { members: publicMembers(p) });
+    return { ok: true, token, name, role: inv.role, project: p.name };
+  },
+  'POST member-role': (p, b) => {
+    const a = p.touch(b.agent);
+    const m = (p.members || {})[b.name];
+    if (!m) throw httpError(404, 'no such member');
+    if (!ROLES.includes(b.role)) throw httpError(400, 'role must be owner, member or viewer');
+    if (m.role === 'owner' && b.role !== 'owner' && Object.values(p.members).filter(x => x.role === 'owner').length < 2) throw httpError(409, 'a project needs at least one owner');
+    audit(p, a.name, 'role', `${b.name}: ${m.role} → ${b.role}`);
+    m.role = b.role;
+    p.emit('members', { members: publicMembers(p) });
+    return { ok: true, members: publicMembers(p) };
+  },
+  // their token stops working at once; their locks go, their open sessions are disconnected
+  'POST member-remove': (p, b) => {
+    const a = p.touch(b.agent);
+    const m = (p.members || {})[b.name];
+    if (!m) throw httpError(404, 'no such member');
+    if (m.role === 'owner' && Object.values(p.members).filter(x => x.role === 'owner').length < 2) throw httpError(409, "you can't remove the last owner");
+    delete p.members[b.name];
+    for (const [k, l] of Object.entries(p.locks)) if (l.holderName === b.name) { delete p.locks[k]; p.emit('unlock', { path: l.path, holder: l.holder, holderName: l.holderName, reason: 'removed from the project' }); }
+    audit(p, a.name, 'remove', `removed ${b.name} (${m.role})`);
+    p.emit('members', { members: publicMembers(p), removed: b.name });
+    return { ok: true };
+  },
+  // a person signed in with GitHub on the dashboard can open the project with that from then on
+  'POST link-github': (p, b, q, ctx) => {
+    const auth = ctx.auth || {};
+    if (!auth.github) throw httpError(400, 'sign in with GitHub first');
+    if (!auth.name || !(p.members || {})[auth.name]) throw httpError(409, 'link GitHub from your own invite (set up accounts first)');
+    p.members[auth.name].github = auth.github;
+    audit(p, auth.name, 'github', `linked GitHub account ${auth.github}`);
+    p.emit('members', { members: publicMembers(p) });
+    return { ok: true, linked: auth.github, name: auth.name, role: p.members[auth.name].role };
+  },
+  'GET audit': (p, b, q) => {
+    const limit = Math.min(Number(q.get('limit')) || 200, MAX_AUDIT);
+    return { audit: (p.audit || []).slice(-limit) };
+  },
+  // a project's rules for every Claude: commands always fine to run in the background, commands
+  // never allowed (not even with someone's OK), files that stay private, how much of a session may be shared
+  'POST policy': (p, b) => {
+    const a = p.touch(b.agent);
+    const ps = p.projectSettings = p.projectSettings || {};
+    const was = JSON.stringify({ policy: ps.policy, privatePaths: ps.privatePaths, maxSharing: ps.maxSharing });
+    if (b.allow !== undefined || b.deny !== undefined) ps.policy = { allow: cleanRules(b.allow !== undefined ? b.allow : (ps.policy || {}).allow), deny: cleanRules(b.deny !== undefined ? b.deny : (ps.policy || {}).deny) };
+    if (b.privatePaths !== undefined) ps.privatePaths = b.privatePaths === null ? undefined : cleanRules(b.privatePaths);
+    if (b.maxSharing !== undefined) ps.maxSharing = ['full', 'tools', 'off'].includes(b.maxSharing) ? b.maxSharing : 'full';
+    const changed = JSON.stringify({ policy: ps.policy, privatePaths: ps.privatePaths, maxSharing: ps.maxSharing });
+    if (changed !== was) {
+      const pol = ps.policy || {};
+      audit(p, a.name, 'policy', `set the project rules. Always allowed: ${(pol.allow || []).join(', ') || 'nothing extra'}. Never allowed: ${(pol.deny || []).join(', ') || 'nothing'}. ` +
+        `Private files: ${(ps.privatePaths || ['the defaults']).join(', ')}. Sessions share at most: ${{ full: 'everything', tools: 'steps only', off: 'nothing' }[ps.maxSharing || 'full']}.`);
+    }
+    p.emit('project-setting', { settings: ps, byName: a.name });
+    return { ok: true, settings: ps };
+  },
+  'POST notify-set': (p, b) => {
+    const a = p.touch(b.agent);
+    p.secretHooks = p.secretHooks || [];
+    if (b.remove) {
+      p.secretHooks = p.secretHooks.filter(h => h.id !== b.remove);
+      audit(p, a.name, 'notify', 'removed a notification channel');
+    } else {
+      const url = String(b.url || '').trim();
+      if (!/^https:\/\/[^\s]+$/.test(url) && !/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(url)) throw httpError(400, 'give the https:// webhook URL from Slack, Discord or your own service');
+      const events = (Array.isArray(b.events) ? b.events : NOTIFY_EVENTS).filter(e => NOTIFY_EVENTS.includes(e));
+      const h = { id: crypto.randomBytes(4).toString('hex'), kind: b.kind && ['slack', 'discord', 'generic'].includes(b.kind) ? b.kind : kindOf(url), url, events, by: a.name, at: now() };
+      p.secretHooks.push(h);
+      if (p.secretHooks.length > 10) p.secretHooks.shift();
+      audit(p, a.name, 'notify', `added a ${h.kind} notification channel for ${events.join(', ')}`);
+    }
+    const ps = p.projectSettings = p.projectSettings || {};
+    ps.notify = p.secretHooks.map(h => ({ id: h.id, kind: h.kind, events: h.events, label: hookLabel(h.url), by: h.by }));
+    p.emit('project-setting', { settings: ps, byName: a.name });
+    return { ok: true, notify: ps.notify };
+  },
+  'POST notify-test': (p, b) => {
+    const a = p.touch(b.agent);
+    if (!(p.secretHooks || []).length) throw httpError(409, 'add a channel first');
+    const before = (p.outbox || []).length;
+    for (const h of p.secretHooks) {
+      const body = h.kind === 'slack' ? { text: `huddle test from ${a.name}: notifications work.` } : h.kind === 'discord' ? { content: `huddle test from ${a.name}: notifications work.`, username: 'huddle' } : { event: 'test', project: p.name, text: 'notifications work', at: now() };
+      (p.outbox = p.outbox || []).push({ url: h.url, body, hook: h.id });
+    }
+    return { ok: true, sent: (p.outbox || []).length - before };
+  },
+  // something went wrong on someone's machine: a background run crashed, a hook failed, a tool is missing
+  'POST problem': (p, b) => {
+    const a = p.touch(b.agent);
+    const x = problem(p, a, b.kind, b.message, { detail: b.detail, taskId: b.taskId });
+    return { ok: true, problem: x };
+  },
+  'GET problems': (p, b, q) => ({ problems: (p.problems || []).slice(-Math.min(Number(q.get('limit')) || 50, MAX_PROBLEMS)) }),
+});
+
 function waitOn(p, pred, timeoutMs, onAbort) {
   return new Promise(resolve => {
     const done = (v) => { clearTimeout(timer); p.waiters.delete(w); resolve(v); };
@@ -1229,5 +1558,5 @@ function waitOn(p, pred, timeoutMs, onAbort) {
   });
 }
 
-module.exports = { needsAPerson, requestTitle, SHORT_INVITE, handOn, assignByUsage, Project, routes, waitOn, parseFrontmatter, fileKey, GIT_CHUNK, sha, now, httpError, sameSecret, normPath, aiLabel, taskIdsIn, blockingLock,
+module.exports = { dispatch, authorize, takeOutbox, notify, audit, hasOwner, NOTIFY_EVENTS, ROLES, needsAPerson, requestTitle, SHORT_INVITE, handOn, assignByUsage, Project, routes, waitOn, parseFrontmatter, fileKey, GIT_CHUNK, sha, now, httpError, sameSecret, normPath, aiLabel, taskIdsIn, blockingLock,
   ONLINE_MS, MAX_FILE_BYTES, OPEN_IDLE_MS, OPEN_MAX_PROJECTS, OPEN_CREATES_PER_HOUR };

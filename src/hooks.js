@@ -9,8 +9,13 @@ const shared = require('./shared');
 const gitx = require('./git');
 const board = require('./board');
 const { requestTitle } = require('./core');
+const policy = require('./policy');
+const codex = require('./codex');
 
-const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
+// Claude Code edits with these; Codex edits with apply_patch (one patch can touch several files)
+const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'apply_patch']);
+// which coding agent ran this hook: set by the hook command (--agent codex) or the MCP server's env
+const agentKind = () => (process.env.HUDDLE_AGENT === 'codex' ? 'codex' : 'claude');
 const INBOX_EVERY_MS = 10 * 1000;
 
 function withNotice(text, obj) { return { ...(obj || {}), systemMessage: text }; }
@@ -24,12 +29,36 @@ function deny(reason) {
 // this machine: no lock, no live copy sent to the team.
 function private_(root, rel) {
   if (/(^|\/)\.env(\.|$)|(^|\/)\.dev\.vars$|\.(pem|key)$/.test(rel)) return true;
+  if (policy.isPrivatePath(cachedSettings(root), rel)) return true;
   return gitx.isRepo(root) && gitx.git(root, ['check-ignore', '-q', '--', rel]).ok;
 }
 
-function targetOf(input) {
+// the project's rules (commands, private files, sharing cap), kept on disk from the last time this
+// folder heard from the server, so the checks before each command don't need the network
+function cachedSettings(root) {
+  try { return JSON.parse(fs.readFileSync(path.join(root, CONFIG_DIR, 'project-settings.json'), 'utf8')); } catch { return {}; }
+}
+function cacheSettings(root, s) {
+  if (!s || !s.projectSettings) return;
+  try { fs.writeFileSync(path.join(root, CONFIG_DIR, 'project-settings.json'), JSON.stringify(s.projectSettings)); } catch {}
+}
+// how much of a session goes to the team: the person's choice, capped by the project's
+function sharingLevel(cfg) {
+  const order = ['off', 'tools', 'full'];
+  const mine = cfg.shareActivity || 'full', cap = cachedSettings(cfg.root).maxSharing || 'full';
+  return order[Math.min(order.indexOf(mine) < 0 ? 2 : order.indexOf(mine), order.indexOf(cap) < 0 ? 2 : order.indexOf(cap))];
+}
+const clean = (items) => items.map(it => ({ ...it, text: policy.redact(it.text) }));
+
+// the files an edit tool call writes, as absolute paths
+function targetsOf(input) {
   const ti = input.tool_input || {};
-  return ti.file_path || ti.notebook_path || null;
+  if (input.tool_name === 'apply_patch') {
+    const base = input.cwd || process.cwd();
+    return codex.patchFiles(ti.command || ti.patch || ti.input || '').map(f => path.resolve(base, f));
+  }
+  const f = ti.file_path || ti.notebook_path;
+  return f ? [f] : [];
 }
 
 // small per-session scratch file so we don't hit the server for mail on every tool call
@@ -67,6 +96,7 @@ async function turn(client, st, body) {
 function digest(client, cfg, st, r) {
   const me = client.agent;
   const d = { mail: '', team: '', news: [] };
+  if (r.state) cacheSettings(cfg.root, r.state);
   if (r.messages.length) d.mail = `New huddle messages from other agents (reply with the huddle_send tool if useful):\n${formatMessages(r.messages, me)}`;
   if (r.state && st.data.team) d.team = teamDelta(r.state, me, st);
   if (r.shared) {
@@ -177,9 +207,10 @@ async function autoPublish(client, cfg, st) {
 }
 
 // One line saying what a tool call does, e.g. "Bash: npm test" or "Edit: src/app.js".
-function toolSummary(name, input = {}) {
+function toolSummary(name, input = {}, cwd) {
   const short = name.replace(/^mcp__huddle__/, '').replace(/^mcp__/, '');
-  const root = process.env.CLAUDE_PROJECT_DIR || '';
+  const root = process.env.CLAUDE_PROJECT_DIR || cwd || '';
+  if (name === 'apply_patch') return `Edit: ${codex.patchFiles(input.command || input.patch || '').join(', ')}`.slice(0, 300);
   const rel = (f) => (root && f && f.startsWith(root + path.sep) ? f.slice(root.length + 1) : f);
   const detail = input.command || rel(input.file_path || input.notebook_path) || input.pattern || input.url ||
     input.query || input.description || input.text || input.path || input.prompt || '';
@@ -204,6 +235,15 @@ function newActivity(input, st, level) {
   if (end < 0) return [];
   st.data.offset += Buffer.byteLength(text.slice(0, end + 1));
   const items = [];
+  // Codex: only its messages come from the transcript; its tool calls are shared by the PostToolUse hook
+  if (agentKind() === 'codex') {
+    if (level !== 'full') return [];
+    for (const t of codex.assistantTexts(codex.rolloutLines(text.slice(0, end)))) {
+      if (st.data.sentReply && t === st.data.sentReply) { delete st.data.sentReply; continue; }
+      items.push({ kind: 'text', text: t });
+    }
+    return items;
+  }
   for (const line of text.slice(0, end).split('\n')) {
     let d;
     try { d = JSON.parse(line); } catch { continue; }
@@ -237,6 +277,12 @@ function newUsage(input, st) {
   const end = text.lastIndexOf('\n');
   if (end < 0) return {};
   st.data.usageOffset += Buffer.byteLength(text.slice(0, end + 1));
+  if (agentKind() === 'codex') {
+    const u = codex.usageOf(codex.rolloutLines(text.slice(0, end)), st.data.codexModel);
+    st.data.codexModel = u.model;
+    if (u.limits) st.data.codexLimits = codex.usageReport(u.limits);
+    return u.totals;
+  }
   const byId = new Map();
   for (const line of text.slice(0, end).split('\n')) {
     let d;
@@ -269,6 +315,7 @@ async function shareStats(input, client, cfg, st) {
   const conversation = !!st.data.newConversation;
   delete st.data.newConversation;
   st.save();
+  if (st.data.codexLimits) { await client.post('usage', st.data.codexLimits).catch(() => {}); delete st.data.codexLimits; st.save(); }
   if (!started && !Object.keys(usage).length) return;
   await client.post('stats', { conversation, turns: started ? 1 : 0, activeMs, usage, request: process.env.HUDDLE_AUTOPILOT === '1' });
 }
@@ -279,27 +326,29 @@ const PRIVATE_PROMPT = /^\s*(private\s*:|#private\b|\(private\))/i;
 
 // what the transcript gained since we last looked, ready to share (nothing for a private turn)
 function pendingActivity(input, cfg, st) {
-  if (cfg.shareActivity === 'off') return [];
-  const items = newActivity(input, st, cfg.shareActivity);
+  const level = sharingLevel(cfg);
+  if (level === 'off') return [];
+  const items = newActivity(input, st, level);
   st.save();
-  return st.data.private ? [] : items; // a private turn: read past it, share nothing
+  return st.data.private ? [] : clean(items); // a private turn: read past it, share nothing
 }
 
 // Claude Code writes the final reply to the transcript only after Stop hooks
 // run, so take it from the hook input instead.
 async function shareStop(input, client, cfg) {
-  if (cfg.shareActivity === 'off') return;
+  const level = sharingLevel(cfg);
+  if (level === 'off') return;
   const st = sessionState(cfg, client.agent);
-  if (st.data.private) { newActivity(input, st, cfg.shareActivity); st.save(); return; }
-  const items = newActivity(input, st, cfg.shareActivity);
+  if (st.data.private) { newActivity(input, st, level); st.save(); return; }
+  const items = newActivity(input, st, level);
   const reply = String(input.last_assistant_message || '').trim();
-  if (reply && cfg.shareActivity === 'full' && !items.some(it => it.kind === 'text' && it.text === reply)) {
+  if (reply && level === 'full' && !items.some(it => it.kind === 'text' && it.text === reply)) {
     items.push({ kind: 'text', text: reply });
     st.data.sentReply = reply;
   }
   items.push({ kind: 'end', text: '' });
   st.save();
-  await client.post('activity', { items });
+  await client.post('activity', { items: clean(items) });
 }
 
 function branchSummary(s, client, cfg) {
@@ -437,9 +486,45 @@ function teamSummary(s, me) {
   return lines.join('\n');
 }
 
+// lock one file before an edit, bringing the local copy up to date if someone changed it
+async function lockOne(client, cfg, file) {
+  const rel = relPath(cfg.root, file);
+  if (!rel || private_(cfg.root, rel)) return null;
+  const abs = path.join(cfg.root, ...rel.split('/'));
+  const local = hashFile(abs);
+  const branch = client.agent.branch;
+  const r = await client.post('lock', { path: rel, branch, baseHash: local, wantContent: true });
+  if (!r.ok) {
+    const l = r.lock;
+    return deny(`${l.dir ? `${rel} is inside ${l.path}, a folder` : rel} locked by ${l.holderName} (since ${ago(l.since)}${l.note ? ', "' + l.note + '"' : ''}). ` +
+      `It is read-only for you until they release it. Options: work on ${l.dir ? 'something outside that folder' : 'a different file'}, ask them via huddle_send, ` +
+      'read their live version with huddle_view, or call huddle_wait to block until it is free.');
+  }
+  try {
+    const st = fs.statSync(abs);
+    if (!(st.mode & 0o200)) fs.chmodSync(abs, st.mode | 0o200); // we hold it now, even if sync hasn't caught up
+  } catch {}
+  if (r.content != null && r.latest && r.latest.hash !== local) {
+    if (local === null || r.latest.known) {
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      fs.writeFileSync(abs, r.content);
+      return deny(`${r.latest.byName} changed ${rel} ${ago(r.latest.at)} and your copy was out of date. ` +
+        'It has been updated on disk to their version and you now hold the lock. Read the file again, then redo your edit.');
+    }
+    return { systemMessage: `huddle: local ${rel} differs from the last shared version (by ${r.latest.byName}); this edit will replace it.` };
+  }
+  if (r.elsewhere && r.elsewhere.length) {
+    return { hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext:
+      `Heads up: ${r.elsewhere.map(e => `${e.holderName} is also editing ${rel} on branch ${e.branch || '(none)'}`).join('; ')}. ` +
+      'You are not blocked because you are on a different branch, but this will conflict when the branches are merged. Consider telling them with huddle_send.' } };
+  }
+  return null;
+}
+
 const handlers = {
   async 'session-start'(input, client, cfg) {
-    const s = await client.post('hello', { build: build(), handoffs: true });
+    const s = await client.post('hello', { build: build(), handoffs: true, tool: agentKind() });
+    cacheSettings(cfg.root, s);
     const sh = await client.get('shared');
     shared.writeShared(cfg.root, sh);
     const here = input.cwd ? path.resolve(input.cwd) : cfg.root;
@@ -473,7 +558,7 @@ const handlers = {
       (newer ? ` · ${newer.name} runs a newer huddle; run \`huddle update\` and restart Claude` : '') +
       (back ? `\n${back}` : '');
     return withNotice(notice, ctx('SessionStart',
-      `You are "${client.agent.name}" in huddle project "${client.cfg.project}", shared with other Claude agents working in the same codebase from other machines.\n` +
+      `You are "${client.agent.name}" in huddle project "${client.cfg.project}", shared with other AI coding agents (Claude Code and Codex) working in the same codebase from other machines.\n` +
       (nameLine(s, client.agent.name) ? nameLine(s, client.agent.name) + '\n' : '') +
       (linked ? `The huddle project is the folder ./${path.relative(here, cfg.root)} (work and run git there). Only files inside it are shared with the team; other folders here are yours alone.\n` : '') +
       'Rules: before you edit a file it is locked for you automatically; files other agents are editing are read-only and edits to them will be refused. ' +
@@ -492,45 +577,28 @@ const handlers = {
   },
 
   async pre(input, client, cfg) {
+    // the project's never-allowed commands hold in everyone's sessions, not only in background runs
+    if (input.tool_name === 'Bash' || input.tool_name === 'exec_command') {
+      const cmd = String((input.tool_input || {}).command || (input.tool_input || {}).cmd || '');
+      const rule = policy.deniedBy((cachedSettings(cfg.root) || {}).policy, Array.isArray(cmd) ? cmd.join(' ') : cmd);
+      return rule ? deny(`This project never allows \`${rule}\` (set by the project owner in huddle). Find another way, or ask your user to run it themselves.`) : null;
+    }
     if (!EDIT_TOOLS.has(input.tool_name)) return null;
-    const rel = relPath(cfg.root, targetOf(input));
-    if (!rel || private_(cfg.root, rel)) return null;
-    const abs = path.join(cfg.root, ...rel.split('/'));
-    const local = hashFile(abs);
-    const branch = client.agent.branch;
-    const r = await client.post('lock', { path: rel, branch, baseHash: local, wantContent: true });
-    if (!r.ok) {
-      const l = r.lock;
-      return deny(`${l.dir ? `${rel} is inside ${l.path}, a folder` : rel} locked by ${l.holderName} (since ${ago(l.since)}${l.note ? ', "' + l.note + '"' : ''}). ` +
-        `It is read-only for you until they release it. Options: work on ${l.dir ? 'something outside that folder' : 'a different file'}, ask them via huddle_send, ` +
-        'read their live version with huddle_view, or call huddle_wait to block until it is free.');
+    // a Codex patch can write several files: each is locked, and one refusal refuses the patch
+    let note = null;
+    for (const file of targetsOf(input)) {
+      const r = await lockOne(client, cfg, file);
+      if (r && r.hookSpecificOutput && r.hookSpecificOutput.permissionDecision === 'deny') return r;
+      note = note || r;
     }
-    try {
-      const st = fs.statSync(abs);
-      if (!(st.mode & 0o200)) fs.chmodSync(abs, st.mode | 0o200); // we hold it now, even if sync hasn't caught up
-    } catch {}
-    if (r.content != null && r.latest && r.latest.hash !== local) {
-      if (local === null || r.latest.known) {
-        fs.mkdirSync(path.dirname(abs), { recursive: true });
-        fs.writeFileSync(abs, r.content);
-        return deny(`${r.latest.byName} changed ${rel} ${ago(r.latest.at)} and your copy was out of date. ` +
-          'It has been updated on disk to their version and you now hold the lock. Read the file again, then redo your edit.');
-      }
-      return { systemMessage: `huddle: local ${rel} differs from the last shared version (by ${r.latest.byName}); this edit will replace it.` };
-    }
-    if (r.elsewhere && r.elsewhere.length) {
-      return { hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext:
-        `Heads up: ${r.elsewhere.map(e => `${e.holderName} is also editing ${rel} on branch ${e.branch || '(none)'}`).join('; ')}. ` +
-        'You are not blocked because you are on a different branch, but this will conflict when the branches are merged. Consider telling them with huddle_send.' } };
-    }
-    return null;
+    return note;
   },
 
   async post(input, client, cfg) {
     const notes = [];
-    const rel = EDIT_TOOLS.has(input.tool_name) ? relPath(cfg.root, targetOf(input)) : null;
     // (a request clone's work reaches the team as a commit when it's done, not as live edits)
-    if (rel && !private_(cfg.root, rel) && !cfg.clone) {
+    const rels = EDIT_TOOLS.has(input.tool_name) && !cfg.clone ? targetsOf(input).map(f => relPath(cfg.root, f)).filter(r => r && !private_(cfg.root, r)) : [];
+    for (const rel of rels) {
       const abs = path.join(cfg.root, ...rel.split('/'));
       try {
         const content = fs.readFileSync(abs, 'utf8');
@@ -539,10 +607,14 @@ const handlers = {
         st.data.edited = [...new Set([...(st.data.edited || []), rel])].slice(-50);
         st.save();
       } catch (e) {
-        if (e.code !== 'ENOENT') notes.push(`huddle could not share ${rel}: ${e.message}`);
+        if (e.code !== 'ENOENT' && e.status !== 403) notes.push(`huddle could not share ${rel}: ${e.message}`);
       }
     }
-    const mail = await inbox(client, cfg, pendingActivity(input, cfg, sessionState(cfg, client.agent)));
+    // Codex's tool calls come from here rather than its transcript
+    const extra = agentKind() === 'codex' && sharingLevel(cfg) !== 'off' && !sessionState(cfg, client.agent).data.private
+      ? [{ kind: 'tool', tool: input.tool_name === 'exec_command' ? 'Bash' : input.tool_name, text: policy.redact(toolSummary(input.tool_name === 'exec_command' ? 'Bash' : input.tool_name, input.tool_input || {}, input.cwd)) }] : [];
+    const pending = pendingActivity(input, cfg, sessionState(cfg, client.agent));
+    const mail = await inbox(client, cfg, [...pending, ...extra]);
     if (mail) notes.push(mail);
     return ctx('PostToolUse', notes.join('\n\n'));
   },
@@ -566,10 +638,10 @@ const handlers = {
       fs.writeFileSync(path.join(cfg.root, CONFIG_DIR, 'seen.json'), JSON.stringify({ at: Date.now() }));
       fs.rmSync(path.join(cfg.root, CONFIG_DIR, 'statusline.json'), { force: true });
     } catch {}
-    const full = (cfg.shareActivity || 'full') === 'full';
+    const full = sharingLevel(cfg) === 'full';
     // a background Claude's prompt is long generated instructions: the team sees the request it's doing instead
     const shownPrompt = process.env.HUDDLE_AUTOPILOT ? String(process.env.HUDDLE_SHOWN || '').trim() : prompt;
-    if (!isPrivate && full && shownPrompt) items.push({ kind: 'prompt', text: shownPrompt });
+    if (!isPrivate && full && shownPrompt) items.push({ kind: 'prompt', text: policy.redact(shownPrompt) });
     // a background request Claude gets its status from the runner, not from its long task prompt
     const auto = !isPrivate && full && !process.env.HUDDLE_AUTOPILOT ? statusFromPrompt(prompt) : null;
     const r = await turn(client, st, { items, status: auto, auto: true, state: true });
@@ -634,11 +706,20 @@ const handlers = {
   },
 };
 
-async function runHook(event) {
+async function runHook(event, flags = {}) {
+  if (flags.agent) process.env.HUDDLE_AGENT = flags.agent;
   let raw = '';
   for await (const c of process.stdin) raw += c;
   let input = {};
   try { input = JSON.parse(raw || '{}'); } catch {}
+  // Codex gives a SessionEnd hook three seconds at most: publishing, the hand-off note and releasing
+  // locks carry on in a process of its own
+  if (event === 'session-end' && agentKind() === 'codex' && !flags.detached) {
+    const child = spawn(process.execPath, [path.join(__dirname, 'cli.js'), 'hook', 'session-end', '--agent', 'codex', '--detached'], { detached: true, stdio: ['pipe', 'ignore', 'ignore'], env: process.env });
+    child.stdin.end(raw);
+    child.unref();
+    return;
+  }
   const cfg = loadConfig(input.cwd || process.cwd());
   if (!cfg) return;
   const h = handlers[event];
@@ -650,7 +731,23 @@ async function runHook(event) {
   } catch (e) {
     if (event === 'pre' && cfg.failClosed) out(deny(`huddle server unavailable, so edits are blocked (failClosed is on): ${e.message}`));
     else out({ systemMessage: `huddle: ${e.message}` });
+    await reportProblem(cfg, event, e).catch(() => {});
   }
 }
 
-module.exports = { runHook, handlers, sha };
+// A hook that fails is reported to the team's Health page (at most once an hour per kind of failure
+// on this machine), unless the server itself is what can't be reached.
+async function reportProblem(cfg, event, e) {
+  if (/can't reach|timed out|HTTP 5\d\d/.test(e.message)) return;
+  const file = path.join(cfg.root, CONFIG_DIR, 'problems-sent.json');
+  let sent = {};
+  try { sent = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
+  const key = event + ':' + e.message.slice(0, 60);
+  if (Date.now() - (sent[key] || 0) < 3600 * 1000) return;
+  sent[key] = Date.now();
+  try { fs.writeFileSync(file, JSON.stringify(sent)); } catch {}
+  const client = new Client(cfg, identity(cfg));
+  await client.post('problem', { kind: 'hook', message: `the ${event} hook failed (${agentKind() === 'codex' ? 'Codex' : 'Claude Code'}): ${e.message}`, detail: String(e.stack || '').slice(0, 1500) });
+}
+
+module.exports = { runHook, handlers, sha, targetsOf, sharingLevel };

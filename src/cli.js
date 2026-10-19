@@ -14,7 +14,7 @@ const PUBLIC_SERVER = process.env.HUDDLE_PUBLIC_SERVER || 'https://huddle.sage-h
 const REPO = process.env.HUDDLE_REPO || 'flyingf15h/huddle';
 const FOLDERS = path.join(path.dirname(INSTALL_DIR), 'folders.json'); // every folder this computer joined, for `huddle update`
 
-const HELP = `huddle — let Claude agents on different machines work on one project together
+const HELP = `huddle: let Claude Code and Codex agents on different machines work on one project together
 
 Start a project (one person, in the project folder):
   huddle new [NAME]             create a project on the public server, join this folder,
@@ -24,8 +24,8 @@ Start a project (one person, in the project folder):
       --open lets anyone create projects on it with \`huddle new --server URL\`.
 
 Everyone (in the project folder):
-  huddle join <invite> [--name YOUR_NAME]
-      Set up this folder: config, Claude Code hooks and the huddle MCP tools.
+  huddle join <invite> [--name YOUR_NAME] [--agent claude|codex]
+      Set up this folder: config, hooks and the huddle MCP tools for Claude Code or Codex.
   huddle leave                  remove huddle from this folder
   huddle update [--from DIR] [--ref REF]
                                 get the newest huddle (from GitHub, or a local checkout) and
@@ -87,6 +87,16 @@ Day to day:
   huddle open                   open the live dashboard in your browser (it can approve
                                 commands for your Claude, so don't share that link)
   huddle approve [ID|--all] [--deny]  commands your background Claudes need your OK for
+  huddle members [setup|invite|role|remove|revoke|shared]
+                                personal invites with roles (owner, member, viewer) that the owner
+                                can change or take back; setup makes you the owner
+  huddle policy [allow|deny|private|sharing] "RULE"
+                                commands always fine or never allowed for every agent, private
+                                files, how much a session may share (owner)
+  huddle notify [add URL|rm ID|test]   Slack, Discord or webhook alerts (owner)
+  huddle delivery pr|merge      finished background work as a GitHub pull request, or merged
+  huddle audit                  who changed what, and every command background agents ran
+  huddle problems               crashes and failures reported from teammates' computers
   huddle tests ["CMD"] [--review on|off]
                                 what checks background work before it merges: the test
                                 command (default: guessed) and a Sonnet review
@@ -134,7 +144,7 @@ async function resolveInvite(text, flags = {}) {
       r = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(r.error || `HTTP ${res.status}`);
     } catch (e) { need(false, `Couldn't look up invite ${short} on ${server}: ${e.message}${link || flags.server ? '' : '\n(If it was made on your own server, add --server URL.)'}`); }
-    return { server: (link && link[1]) || flags.server ? server : r.server || server, token: r.token, project: r.project };
+    return { server: (link && link[1]) || flags.server ? server : r.server || server, token: r.token, project: r.project, ...(r.personal ? { personal: short } : {}) };
   }
   return decodeInvite(text);
 }
@@ -312,12 +322,9 @@ async function cmdUpdate({ flags }) {
     }
   } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
   const folders = joinedFolders();
-  for (const f of folders) {
-    installHooks(f.root, INSTALL_DIR, f.projectRoot);
-    installCommand(f.root);
-  }
+  for (const f of folders) installFor(f.root, INSTALL_DIR, f.projectRoot);
   console.log(`refreshed the hooks in ${folders.length} folder${folders.length === 1 ? '' : 's'}${folders.length ? ':\n  ' + folders.map(f => f.root).join('\n  ') : ''}
-Restart Claude Code in those folders to load the new version.`);
+Restart Claude Code (or Codex) in those folders to load the new version.`);
 }
 
 // A shared .claude/settings.json (committed with the project) so nobody's Claude asks about routine
@@ -384,8 +391,8 @@ function addPermissions(file, want) {
 function q(s) { return process.platform === 'win32' ? `"${s}"` : `'${s.replace(/'/g, `'\\''`)}'`; }
 
 // projectRoot is set when the hooks live in a parent folder linked to a joined project
-function hookCmd(dir, event, projectRoot) {
-  return cliCmd(dir, `hook ${event}`, projectRoot);
+function hookCmd(dir, event, projectRoot, agent) {
+  return cliCmd(dir, `hook ${event}${agent === 'codex' ? ' --agent codex' : ''}`, projectRoot);
 }
 function cliCmd(dir, args, projectRoot) {
   const env = projectRoot ? (process.platform === 'win32' ? '' : `HUDDLE_ROOT=${q(projectRoot)} `) : '';
@@ -422,7 +429,7 @@ function installHooks(root, dir, projectRoot) {
   };
   add('SessionStart', null, 'session-start');
   add('UserPromptSubmit', null, 'prompt');
-  add('PreToolUse', 'Edit|Write|MultiEdit|NotebookEdit', 'pre');
+  add('PreToolUse', 'Edit|Write|MultiEdit|NotebookEdit|Bash', 'pre');
   add('PostToolUse', '*', 'post');
   add('Stop', null, 'stop');
   add('SessionEnd', null, 'session-end');
@@ -457,6 +464,29 @@ function installMcp(root, dir, projectRoot) {
   console.log(`\nCouldn't register the MCP server automatically (${r.error ? r.error.code : (r.stderr || '').trim()}). Run this in ${root}:`);
   console.log(`  claude mcp add-json -s local huddle '${spec}'`);
   return false;
+}
+
+// Codex: its MCP server and hooks in the project's .codex/ folder (read once Codex trusts the folder)
+function installCodex(root, dir, projectRoot) {
+  require('./codex').install(root, dir, projectRoot || root, (ev) => hookCmd(dir, ev, projectRoot, 'codex'), HOOK_MARK);
+  const exclude = path.join(root, '.git', 'info', 'exclude');
+  if (!fs.existsSync(path.join(root, '.git'))) return;
+  let cur = '';
+  try { cur = fs.readFileSync(exclude, 'utf8'); } catch {}
+  // only when the project doesn't keep its own .codex/ files in git
+  const tracked = gitx.git(root, ['ls-files', '--', '.codex']).out.trim();
+  const want = (tracked ? [] : ['.codex/']).filter(l => !cur.split('\n').includes(l));
+  if (want.length) fs.appendFileSync(exclude, (cur && !cur.endsWith('\n') ? '\n' : '') + want.join('\n') + '\n');
+  if (tracked) console.log('  note: .codex/ is in git here; huddle added its hooks and MCP server to it. Don\'t commit those lines (they hold paths on your computer).');
+}
+function folderAgent(root) {
+  try { return JSON.parse(fs.readFileSync(path.join(root, CONFIG_DIR, 'config.json'), 'utf8')).agent || 'claude'; } catch { return 'claude'; }
+}
+// set a folder up for the coding agent it uses
+function installFor(root, dir, projectRoot) {
+  if (folderAgent(projectRoot || root) === 'codex') return installCodex(root, dir, projectRoot);
+  installHooks(root, dir, projectRoot);
+  installCommand(root);
 }
 
 // keep .huddle/ (it holds the token) out of git without touching tracked files
@@ -507,10 +537,20 @@ async function pickName(flags, root) {
 }
 
 // what huddle needs on this computer, said up front instead of failing halfway
-function checkTools() {
-  const has = (cmd) => spawnSync(cmd, ['--version'], { encoding: 'utf8', shell: process.platform === 'win32' }).status === 0;
-  if (!has('claude')) console.log('! Claude Code isn\'t installed here yet. Install it with: npm install -g @anthropic-ai/claude-code');
-  if (!has('git')) console.log('! git isn\'t installed, so code won\'t be shared through huddle (live edits still are).');
+const hasTool = (cmd) => spawnSync(cmd, ['--version'], { encoding: 'utf8', shell: process.platform === 'win32' }).status === 0;
+function checkTools(agent) {
+  if (agent === 'codex' && !hasTool('codex')) console.log('! Codex isn\'t installed here yet. Install it with: npm install -g @openai/codex');
+  if (agent !== 'codex' && !hasTool('claude')) console.log('! Claude Code isn\'t installed here yet. Install it with: npm install -g @anthropic-ai/claude-code');
+  if (!hasTool('git')) console.log('! git isn\'t installed, so code won\'t be shared through huddle (live edits still are).');
+}
+// --agent, what this folder used before, or whichever of Claude Code and Codex is installed (asked when both are)
+async function pickAgent(flags, root) {
+  if (flags.agent) return String(flags.agent).toLowerCase() === 'codex' ? 'codex' : 'claude';
+  if (fs.existsSync(path.join(root, CONFIG_DIR, 'config.json'))) return folderAgent(root);
+  const claude = hasTool('claude'), cdx = hasTool('codex');
+  if (cdx && !claude) return 'codex';
+  if (cdx && claude && process.stdin.isTTY) return (await askUser('Which coding agent will you use here, claude or codex? [claude] ', ['claude', 'codex'], 'claude')) === 'codex' ? 'codex' : 'claude';
+  return 'claude';
 }
 
 async function cmdJoin({ pos, flags }) {
@@ -518,8 +558,19 @@ async function cmdJoin({ pos, flags }) {
   let inv;
   try { inv = await resolveInvite(pos.join(' '), flags); } catch { need(false, 'That invite looks broken. Ask for a fresh one (Invite people on the dashboard, or `huddle invite`).'); }
   const root = path.resolve(flags.dir || process.cwd());
-  checkTools();
-  const name = await pickName(flags, root);
+  const agent = await pickAgent(flags, root);
+  checkTools(agent);
+  let name = await pickName(flags, root);
+  // a personal invite turns into this person's own token (and the name the project knows them by)
+  if (inv.personal) {
+    for (;;) {
+      const res = await fetch(`${inv.server}/api/p/${encodeURIComponent(inv.project)}/redeem`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: inv.personal, name }) }).catch(e => ({ ok: false, status: 0, json: async () => ({ error: e.message }) }));
+      const r = await res.json().catch(() => ({}));
+      if (res.ok) { inv.token = r.token; name = r.name; console.log(`invite accepted: you're ${r.name}, ${r.role === 'viewer' ? 'a viewer (you can watch, not change things)' : 'a ' + r.role} on this project`); break; }
+      if (res.status === 409 && process.stdin.isTTY) { console.log(r.error); name = await pickName({}, path.join(os.tmpdir(), 'none')); continue; }
+      need(false, `Couldn't use that invite: ${r.error || 'HTTP ' + res.status}`);
+    }
+  }
   const cfg = { server: inv.server, token: inv.token, project: inv.project, name, root };
 
   process.stdout.write(`checking ${inv.server} … `);
@@ -536,23 +587,28 @@ async function cmdJoin({ pos, flags }) {
   let prev = {};
   try { prev = JSON.parse(fs.readFileSync(cfgFile, 'utf8')); } catch {}
   if (prev.project && prev.project !== inv.project) prev = {}; // a different project: start clean
-  fs.writeFileSync(cfgFile, JSON.stringify({ ...prev, server: inv.server, token: inv.token, project: inv.project, name }, null, 2) + '\n', { mode: 0o600 });
+  fs.writeFileSync(cfgFile, JSON.stringify({ ...prev, server: inv.server, token: inv.token, project: inv.project, name, agent }, null, 2) + '\n', { mode: 0o600 });
   ignoreLocally(root);
   const dir = selfInstall();
   await recordBuild(dir);
   rememberFolder(root);
-  installHooks(root, dir);
-  installCommand(root);
-  const mcp = installMcp(root, dir);
-  const code = await shortInvite(cfg);
+  installFor(root, dir);
+  const mcp = agent === 'codex' ? true : installMcp(root, dir);
+  // (a personal token opens the dashboard as this person; it's never swapped for the shared invite)
+  const code = inv.token.startsWith('hm_') ? encodeInvite(inv.server, inv.token, inv.project) : await shortInvite(cfg);
   console.log(`
 ✓ joined "${inv.project.replace(/-[0-9a-f]{6,8}$/, '')}" as ${name}${mcp ? '' : ' (the huddle tools need registering by hand, see above)'}
-  Dashboard: ${inv.server}/#invite=${code}`);
-  if (process.stdin.isTTY && !flags.yes && await yes('Let Claude make routine edits, use git and run builds and tests here without asking each time?')) {
+  Dashboard: ${inv.server}/#invite=${code}${inv.token.startsWith('hm_') ? '\n  (that link is yours alone: it opens the project as you)' : ''}`);
+  if (agent !== 'codex' && process.stdin.isTTY && !flags.yes && await yes('Let Claude make routine edits, use git and run builds and tests here without asking each time?')) {
     const n = addPermissions(path.join(root, '.claude', 'settings.local.json'), permissionPreset(root));
     console.log(n ? '  done (in your own .claude/settings.local.json; deploys and anything risky still ask)' : '  already set');
   }
-  console.log(`
+  if (agent === 'codex') console.log(`
+Next: run \`codex\` in this folder. The first time, Codex asks whether to trust the folder (say yes, so it
+loads .codex/), then run /hooks once and trust huddle's hooks. After that Codex is in the huddle.
+Your Codex helps the team while you're away and your session is visible to them;
+change that with huddle autopilot and huddle sharing.`);
+  else console.log(`
 Next: run \`claude\` in this folder. It's in the huddle and already knows who's working on what.
 Your Claude helps the team while you're away and your session is visible to them;
 change that with /autopilot and huddle sharing.${fs.existsSync(path.join(root, 'CLAUDE.md')) ? '\nTo share your CLAUDE.md with the team without committing it: huddle project --set CLAUDE.md' : ''}`);
@@ -974,6 +1030,7 @@ function cmdLeave() {
     fs.writeFileSync(file, JSON.stringify(s, null, 2) + '\n');
   } catch {}
   spawnSync('claude', ['mcp', 'remove', '-s', 'local', 'huddle'], { cwd: cfg.root, stdio: 'ignore' });
+  require('./codex').uninstall(cfg.root, HOOK_MARK);
   fs.rmSync(path.join(cfg.root, CONFIG_DIR), { recursive: true, force: true });
   console.log('left the huddle; hooks and MCP server removed from this folder');
 }
@@ -1201,11 +1258,123 @@ function cmdSharing({ pos }) {
   }[level] + (pos[0] ? '' : '\nchange with: huddle sharing full|tools|off'));
 }
 
-async function cmdInvite() {
+async function cmdInvite({ flags }) {
   const cfg = configured();
+  // with accounts, every invite is a personal one
+  const who = await new Client(cfg, identity(cfg, 'invite')).get('whoami').catch(() => ({}));
+  if (who.accounts) return cmdMembers({ pos: ['invite'], flags });
   const code = await shortInvite(cfg);
   console.log(joinCommand(code, cfg.server));
   console.log(`\ndashboard: ${cfg.server}/#invite=${code}`);
+}
+
+// ---------- accounts, rules, notifications, health ----------
+
+const ROLE_WORD = { owner: 'owner', member: 'member', viewer: 'viewer (watches, changes nothing)' };
+// a personal token replaces the shared one in this folder's config
+function saveToken(cfg, token) {
+  const file = path.join(cfg.root, CONFIG_DIR, 'config.json');
+  const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+  raw.token = token;
+  fs.writeFileSync(file, JSON.stringify(raw, null, 2) + '\n', { mode: 0o600 });
+}
+async function cmdMembers({ pos, flags }) {
+  const c = humanClient('cli');
+  const [sub, ...rest] = pos;
+  if (sub === 'setup') {
+    const r = await c.post('setup-owner', {});
+    saveToken(c.cfg, r.token);
+    return console.log(`You're the owner of this project now, with a token of your own (saved in .huddle/config.json).
+Everyone else keeps working with the shared invite until you switch it off. To move them over:
+  huddle members invite            a personal invite for one person (--role viewer, --uses N, --days N)
+  huddle members shared off        then only personal invites work`);
+  }
+  if (sub === 'invite') {
+    const r = await c.post('member-invite', { role: flags.role || 'member', uses: flags.uses, days: flags.days, note: flags.note });
+    return console.log(`Personal invite for one ${ROLE_WORD[r.invite.role]}${r.invite.maxUses > 1 ? ` (${r.invite.maxUses} uses)` : ''}, good until ${new Date(r.invite.expires).toLocaleDateString()}:
+  ${joinCommand(r.code, c.cfg.server)}
+Take it back with: huddle members revoke ${r.invite.id}`);
+  }
+  if (sub === 'revoke') { await c.post('invite-revoke', { id: rest[0] }); return console.log('invite taken back'); }
+  if (sub === 'remove') { await c.post('member-remove', { name: rest[0] }); return console.log(`${rest[0]} is off the project; their token stopped working.`); }
+  if (sub === 'role') { await c.post('member-role', { name: rest[0], role: rest[1] }); return console.log(`${rest[0]} is now ${rest[1]}`); }
+  if (sub === 'shared') {
+    const on = !/^(off|no|false)$/i.test(rest[0] || '');
+    await c.post('project-setting', { sharedToken: on });
+    return console.log(on ? 'The shared invite works again.' : 'The shared invite no longer works; only personal invites do.');
+  }
+  const who = await c.get('whoami');
+  if (!who.accounts) return console.log('This project has no accounts yet: everyone uses the shared invite.\nSet them up (you become the owner): huddle members setup');
+  const m = await c.get('members');
+  console.log(m.members.map(x => `${x.name.padEnd(18)} ${x.role.padEnd(7)} ${x.github ? 'GitHub ' + x.github : ''}`).join('\n'));
+  if (who.role === 'owner') {
+    const inv = await c.get('invites');
+    if (inv.invites.length) console.log('\nOpen invites:\n' + inv.invites.map(i => `  ${i.id}  ${i.role}, ${i.maxUses - i.uses} left, by ${i.by}, until ${new Date(i.expires).toLocaleDateString()}`).join('\n'));
+    console.log(`\nThe shared invite is ${who.sharedToken ? 'still on (huddle members shared off)' : 'off'}.`);
+  }
+}
+
+async function cmdPolicy({ pos, flags }) {
+  const c = humanClient('cli');
+  const [sub, ...rest] = pos;
+  const st = (await c.get('state')).projectSettings || {};
+  const pol = st.policy || { allow: [], deny: [] };
+  const list = (k) => [...(pol[k] || [])];
+  if (sub === 'allow' || sub === 'deny') {
+    const cur = list(sub);
+    const rule = rest.join(' ').trim();
+    const next = flags.remove ? cur.filter(r => r !== rule) : [...cur, rule];
+    await c.post('policy', { [sub]: next });
+    return console.log(`${flags.remove ? 'removed' : 'added'}: ${rule}`);
+  }
+  if (sub === 'private') {
+    const cur = st.privatePaths || require('./policy').DEFAULT_PRIVATE;
+    const rule = rest.join(' ').trim();
+    await c.post('policy', { privatePaths: flags.remove ? cur.filter(r => r !== rule) : [...cur, rule] });
+    return console.log(`${flags.remove ? 'removed' : 'added'}: ${rule}`);
+  }
+  if (sub === 'sharing') { await c.post('policy', { maxSharing: rest[0] }); return console.log(`sessions share at most: ${rest[0]}`); }
+  console.log(`Always allowed for background work:  ${list('allow').join(', ') || '(nothing extra)'}
+Never allowed, for anyone's Claude or Codex:  ${list('deny').join(', ') || '(nothing)'}
+Private files (never shared):  ${(st.privatePaths || require('./policy').DEFAULT_PRIVATE).join(', ')}
+Most a session may share:  ${st.maxSharing || 'full'}
+
+Change (owner only): huddle policy allow "npm test" · huddle policy deny "git push" · huddle policy private "config/prod/"
+                     huddle policy sharing full|tools|off · add --remove to take a rule out`);
+}
+
+async function cmdNotify({ pos, flags }) {
+  const c = humanClient('cli');
+  const [sub, ...rest] = pos;
+  if (sub === 'add') {
+    const r = await c.post('notify-set', { url: rest[0], events: flags.events ? String(flags.events).split(',') : undefined });
+    return console.log(`added. Channels now:\n${r.notify.map(n => `  ${n.id}  ${n.kind}  ${n.label}  (${n.events.join(', ')})`).join('\n')}\nSend a test: huddle notify test`);
+  }
+  if (sub === 'rm' || sub === 'remove') { await c.post('notify-set', { remove: rest[0] }); return console.log('removed'); }
+  if (sub === 'test') { const r = await c.post('notify-test', {}); return console.log(`sent a test to ${r.sent} channel${r.sent === 1 ? '' : 's'}`); }
+  const st = (await c.get('state')).projectSettings || {};
+  console.log((st.notify || []).map(n => `${n.id}  ${n.kind}  ${n.label}  (${n.events.join(', ')})`).join('\n') || 'No notification channels yet.');
+  console.log('\nAdd one (owner only): huddle notify add <Slack or Discord webhook URL> [--events approval,stuck,done,failed,member]');
+}
+
+async function cmdAudit({ flags }) {
+  const r = await humanClient('cli').get('audit', { limit: flags.limit || 50 });
+  console.log(r.audit.map(e => `${new Date(e.at).toLocaleString().padEnd(22)} ${e.by.padEnd(14)} ${e.bg ? 'ran ' : ''}${e.action === 'command' ? '`' + e.detail + '`' : e.detail}`).join('\n') || 'nothing yet');
+}
+
+async function cmdProblems() {
+  const r = await humanClient('cli').get('problems');
+  console.log(r.problems.map(x => `${new Date(x.at).toLocaleString().padEnd(22)} ${x.name.padEnd(14)} ${x.kind}: ${x.message}`).join('\n') || 'No problems reported.');
+}
+
+async function cmdDelivery({ pos }) {
+  const c = humanClient('cli');
+  if (pos[0]) {
+    await c.post('project-setting', { delivery: pos[0] === 'pr' ? 'pr' : 'merge' });
+    return console.log(pos[0] === 'pr' ? 'Finished background work now arrives as a GitHub pull request (needs the gh CLI, logged in, on each runner\'s computer).' : 'Finished background work merges into its person\'s branch again.');
+  }
+  const st = (await c.get('state')).projectSettings || {};
+  console.log(`Background work arrives ${st.delivery === 'pr' ? 'as GitHub pull requests' : 'merged into its person\'s branch'}. Change: huddle delivery pr|merge`);
 }
 
 function cmdOpen() {
@@ -1228,7 +1397,8 @@ async function main() {
     project: cmdProject, sharing: cmdSharing, 'ai-name': cmdAiName, update: cmdUpdate, permissions: cmdPermissions, tidy: cmdTidy, handoff: cmdHandoff, handoffs: cmdHandoff,
     sync: cmdSync, branches: cmdBranches, branch: cmdBranch, publish: cmdPublish, fetch: cmdFetch, merge: cmdMerge,
     ask: cmdAsk, board: cmdBoard, autopilot: cmdAutopilot, unpublish: cmdUnpublish, forget: cmdForget, 'same-person': cmdSamePerson, link: cmdLink, unlink: cmdUnlink, statusline: cmdStatusline, memory: cmdMemory, memories: cmdMemory, skill: cmdSkill, skills: cmdSkill,
-    hook: () => require('./hooks').runHook(args.pos[0]),
+    hook: () => require('./hooks').runHook(args.pos[0], args.flags),
+    members: cmdMembers, member: cmdMembers, policy: cmdPolicy, notify: cmdNotify, audit: cmdAudit, problems: cmdProblems, delivery: cmdDelivery,
     mcp: () => require('./mcp').runMcp(),
   };
   if (!cmd || cmd === 'help' || cmd === '--help' || cmd === '-h') return console.log(HELP);
