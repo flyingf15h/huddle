@@ -487,6 +487,12 @@ dialog::backdrop { background: var(--shade); backdrop-filter: blur(2px); }
 .cmd { display: flex; gap: 8px; align-items: stretch; margin: 6px 0 14px; }
 .cmd code { flex: 1; padding: 8px 11px; overflow-x: auto; white-space: nowrap; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); }
 ol.steps { padding-left: 20px; } ol.steps li { margin-bottom: 10px; }
+#demobar { display: flex; align-items: center; gap: 10px; padding: 8px 20px; font-size: 13px; background: var(--accent-soft); color: var(--accent-soft-ink); border-bottom: 1px solid var(--line); }
+#demobar .grow { flex: 1; min-width: 0; }
+#demobar button { padding: 3px 10px; font-size: 12.5px; }
+.navtwo { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.navsub { font-size: 11.5px; font-weight: 400; color: var(--faint); white-space: normal; }
+.navlist button.on .navsub { color: inherit; opacity: .75; }
 /* Health and Team & settings */
 .pageview { flex: 1; overflow-y: auto; padding: 16px 20px 32px; }
 .pageview > * { max-width: 980px; }
@@ -650,6 +656,7 @@ dialog { background: var(--glass); backdrop-filter: blur(22px) saturate(1.3); bo
   <input id="lname" placeholder="Your name" autocomplete="name" aria-label="Your name">
   <div class="lrow"><button id="lback" hidden>Back</button><button class="primary" id="lgo">Open project</button></div>
   <div id="lerr" class="err"></div>
+  <button class="ghost" id="ldemo">No invite yet? Try a demo project</button>
   <div id="lgh" hidden>
     <div class="lor"><span>or</span></div>
     <a class="ghbtn" id="lghbtn" href="/auth/github/login"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.05-.49.05-.49.81.06 1.23.83 1.23.83.72 1.23 1.88.88 2.34.67.07-.52.28-.88.51-1.08-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>Sign in with GitHub</a>
@@ -665,7 +672,7 @@ dialog { background: var(--glass); backdrop-filter: blur(22px) saturate(1.3); bo
     <div class="navlist" id="views">
       <button data-view="timeline" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5h16M4 12h16M4 17.5h10"/></svg><span>Activity</span></button>
       <button data-view="code"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 7.5L4 12l4.5 4.5M15.5 7.5L20 12l-4.5 4.5"/></svg><span>Code</span></button>
-      <button data-view="brief"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4.5h10.5L19 8v11.5H5z"/><path d="M8.5 11h7M8.5 14.5h7M8.5 8h4"/></svg><span>Brief &amp; memory</span></button>
+      <button data-view="brief"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4.5h10.5L19 8v11.5H5z"/><path d="M8.5 11h7M8.5 14.5h7M8.5 8h4"/></svg><span class="navtwo"><span>Brief &amp; memory</span><span class="navsub">Shared memory files between your team's agents</span></span></button>
       <button data-view="stats"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19.5V11M10 19.5V5M15 19.5v-6M20 19.5V8.5"/></svg><span>Usage</span></button>
       <button data-view="health"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2.5-6 5 12 2.5-6h4"/></svg><span>Health</span><span class="navbadge" id="healthBadge" hidden></span></button>
       <button data-view="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>Team &amp; settings</span></button>
@@ -678,9 +685,9 @@ dialog { background: var(--glass); backdrop-filter: blur(22px) saturate(1.3); bo
   <header>
     <h1 id="vtitle">Activity</h1>
     <div id="filters" class="seg sm" role="group" aria-label="Show">
-      <button data-f="all" class="on">Everything</button>
-      <button data-f="claude">Agents' work</button>
-      <button data-f="talk">Messages</button>
+      <button data-f="all" class="on" title="Every prompt, step, reply, message and file change">Everything</button>
+      <button data-f="key" title="Requests, prompts, replies, messages and hand-offs, without every tool step and file change">Highlights</button>
+      <button data-f="talk" title="Only messages and requests between people and agents">Messages</button>
     </div>
     <span id="whof" class="small muted"></span>
     <span class="grow"></span>
@@ -690,6 +697,7 @@ dialog { background: var(--glass); backdrop-filter: blur(22px) saturate(1.3); bo
     <button id="btn-help" class="ghost iconbtn" aria-label="How huddle works" title="How huddle works"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.7 9.4a2.4 2.4 0 0 1 4.6.9c0 1.7-2.3 2.1-2.3 3.6"/><circle cx="12" cy="17.2" r=".7" fill="currentColor" stroke="none"/></svg></button>
     <button id="btn-invite">Invite people</button>
   </header>
+  <div id="demobar" role="status" hidden><b>Demo project.</b><span class="grow">maya, dev and sam are simulated teammates (two on Claude Code, one on Codex). Click around: nothing here touches a real codebase.</span><button id="demoLeave">Leave demo</button></div>
   <div id="catchup" role="status" hidden><span class="grow" id="catchupText"></span><button id="catchupX" aria-label="Dismiss">×</button></div>
   <main>
     <section id="left">
@@ -1125,7 +1133,9 @@ function fromEvent(ev) {
 }
 const TURN_KINDS = new Set(['msg', 'prompt', 'reply', 'tool', 'end']);
 const group = { approve: 'tasks', handoff: 'claude', msg: 'talk', prompt: 'claude', reply: 'claude', tool: 'claude', end: 'claude', goal: 'talk', plan: 'claude', task: 'tasks', lock: 'files', unlock: 'files', file: 'files', git: 'files', knowledge: 'talk', join: 'talk' };
-const visible = (e) => (S.filter === 'all' || group[e.kind] === S.filter) && (!S.who || e.who === S.who);
+// Highlights: what was asked and what came of it, without each tool step, lock and file change
+const KEY_KINDS = new Set(['msg', 'goal', 'prompt', 'reply', 'plan', 'handoff', 'task', 'approve']);
+const visible = (e) => (S.filter === 'all' || (S.filter === 'key' ? KEY_KINDS.has(e.kind) : group[e.kind] === S.filter)) && (!S.who || e.who === S.who);
 
 const NOTE_ICON = {
   join: '<path d="M15 19v-1.5a3.5 3.5 0 0 0-3.5-3.5h-4A3.5 3.5 0 0 0 4 17.5V19"/><circle cx="9.5" cy="8" r="3.5"/><path d="M19 8v6M16 11h6"/>',
@@ -1225,7 +1235,7 @@ function appendEntry(e, feed) {
   const sameRun = bot && !ctx && turn && turn.key.startsWith('c:' + e.who + '|') && e.at - turn.at <= 10 * 60 * 1000;
   if (!sameRun && (!turn || turn.key !== key || e.at - turn.at > 10 * 60 * 1000)) {
     const name = bot ? claudeOf(e.who) : e.who;
-    feed.insertAdjacentHTML('beforeend', `<div class="turn${bot ? ' isbot' : ''}${e.kind === 'msg' && ctx === 'messaged you' ? ' toyou' : ''}">${bot ? claudeAv() : avatar(e.who)}<div class="tbody"><div class="thead"><b>${esc(name)}</b>${bot ? '<span class="bottag">Claude</span>' : ''}${ctx ? `<span class="ctx">${esc(ctx)}</span>` : ''}<time title="${esc(fullDate(e.at))}">${clock(e.at)}</time></div><div class="items"></div></div></div>`);
+    feed.insertAdjacentHTML('beforeend', `<div class="turn${bot ? ' isbot' : ''}${e.kind === 'msg' && ctx === 'messaged you' ? ' toyou' : ''}">${bot ? claudeAv() : avatar(e.who)}<div class="tbody"><div class="thead"><b>${esc(name)}</b>${bot ? '<span class="bottag">' + toolOf(e.who) + '</span>' : ''}${ctx ? `<span class="ctx">${esc(ctx)}</span>` : ''}<time title="${esc(fullDate(e.at))}">${clock(e.at)}</time></div><div class="items"></div></div></div>`);
     turn = { el: feed.lastElementChild, key, at: e.at, last: null, ul: null };
   }
   turn.at = e.at;
@@ -1890,22 +1900,31 @@ async function loadStats() {
     .sort((a, b) => b.own - a.own || b.all - a.all);
   const sum = (f) => people.reduce((t, p) => t + f(p), 0);
   const el = $('statsview');
+  // teammates with nothing counted yet, and the likely reason
+  const newest = Math.max(0, ...Object.values(S.agents).map(a => (a.build && a.build.at) || 0));
+  const missing = [...new Set([...Object.values(S.agents).filter(a => a.kind !== 'human' && !a.clone).map(a => a.name), ...Object.keys(S.settings || {})])]
+    .filter(n => !stats[n]).map(n => {
+      const builds = Object.values(S.agents).filter(a => a.name === n && a.build).map(a => a.build.at);
+      const old = !builds.length || Math.max(...builds) < newest - 60000;
+      return { name: n, why: old ? "their huddle is too old to report usage; they need to run huddle update" : "they haven't finished a prompt in this project since usage counting started" };
+    });
+  const missingHtml = missing.length ? `<div class="panel" style="margin-top:16px"><h3>No usage from</h3><div class="plist">${missing.map(m => `<div class="srow">${avatar(m.name, true)}<span class="grow"><b>${esc(m.name)}</b><span class="sub">${esc(m.why)}</span></span></div>`).join('')}</div></div>` : '';
   if (!people.length) {
-    el.innerHTML = '<div class="empty"><h3>No usage data yet</h3><p style="margin:0 auto;max-width:460px">Usage is recorded at the end of each Claude turn by teammates running a current version of huddle.</p></div>';
+    el.innerHTML = '<div class="empty"><h3>No usage data yet</h3><p style="margin:0 auto;max-width:460px">Usage is counted at the end of each prompt by teammates running a current version of huddle.</p></div>' + missingHtml;
     return;
   }
   const topModel = (s) => Object.entries(s.models).sort((a, b) => (b[1].input + b[1].output) - (a[1].input + a[1].output))[0];
   el.innerHTML = `
-    <p class="muted small" style="margin-top:0">Counted by each person's huddle hooks since ${esc(new Date(since).toLocaleDateString())}: numbers only, nothing of what was said. Time with Claude runs from sending a prompt until Claude finishes that turn.</p>
+    <p class="muted small" style="margin-top:0">Counted by each person's huddle hooks since ${esc(new Date(since).toLocaleDateString())}: numbers only, nothing of what was said. Time with agents runs from sending a prompt until the agent (Claude Code or Codex) finishes that turn.</p>
     <div class="tiles">
       <div class="tile"><div class="k">Conversations</div><div class="v">${sum(p => p.s.conversations)}</div></div>
-      <div class="tile"><div class="k">Time with Claude</div><div class="v">${fmtDur(sum(p => p.own))}</div></div>
+      <div class="tile"><div class="k">Time with agents</div><div class="v">${fmtDur(sum(p => p.own))}</div></div>
       <div class="tile"><div class="k">Prompts</div><div class="v">${fmtNum(sum(p => p.s.turns))}</div></div>
       <div class="tile"><div class="k">Tokens processed</div><div class="v">${fmtNum(sum(p => p.all))}</div></div>
       <div class="tile"><div class="k">Requests run for others</div><div class="v">${sum(p => p.s.requests || 0)}</div></div>
     </div>
     <div class="statswrap"><table class="stats">
-      <thead><tr><th>Person</th><th>Conversations</th><th>Time with Claude</th><th>Prompts</th><th>Tokens processed</th><th>Requests for others</th><th>Last ${SPARK_DAYS} days</th></tr></thead>
+      <thead><tr><th>Person</th><th>Conversations</th><th>Time with agents</th><th>Prompts</th><th>Tokens processed</th><th>Requests for others</th><th>Last ${SPARK_DAYS} days</th></tr></thead>
       <tbody>${people.map(({ name, s, own, all }) => {
         const m = topModel(s);
         return `<tr>
@@ -1918,7 +1937,7 @@ async function loadStats() {
           <td>${spark(s.days)}</td>
         </tr>`;
       }).join('')}</tbody>
-    </table></div>`;
+    </table></div>${missingHtml}`;
 }
 let statsTimer = null;
 function statsChanged() {
@@ -2285,7 +2304,10 @@ $('pname').onclick = () => {
   const names = Object.keys(known);
   openMenu($('pname'), `<div class="mh">Switch project</div>
     ${names.map(n => `<button class="mi${n === auth.project ? ' cur' : ''}" role="menuitem" data-proj="${esc(n)}">${avatar(prettyProject(n), true)}<span>${esc(prettyProject(n))}</span>${n === auth.project ? '<span class="check" aria-label="current">✓</span>' : ''}</button>`).join('')}
-    <hr><button class="mi" role="menuitem" data-proj="">Open a project with an invite…</button>`, (m) => {
+    <hr><button class="mi" role="menuitem" data-proj="">Open a project with an invite…</button>
+    <button class="mi" role="menuitem" data-demo>Try a demo project</button>`, (m) => {
+    const d = m.querySelector('[data-demo]');
+    d.onclick = async () => { d.disabled = true; d.textContent = 'Setting up the demo…'; try { await openDemo((t) => { d.textContent = t; }); } catch (e) { d.textContent = "Couldn't make the demo: " + e.message; } };
     for (const b of m.querySelectorAll('[data-proj]')) b.onclick = () => {
       closeMenu();
       const v = b.dataset.proj;
@@ -2341,6 +2363,12 @@ function goBack() {
   location.reload();
 }
 $('lback').onclick = goBack;
+$('ldemo').onclick = async () => {
+  const b = $('ldemo');
+  b.disabled = true;
+  if (!auth.name && $('lname').value.trim()) auth.name = $('lname').value.trim().replace(/\s+/g, '-');
+  try { await openDemo((t) => { b.textContent = t; }); } catch (e) { b.disabled = false; b.textContent = 'Try a demo project'; $('lerr').textContent = "Couldn't make the demo: " + e.message; }
+};
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('login').hidden && !document.querySelector('dialog[open]')) goBack(); });
 $('linvite').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('lgo').click(); });
 $('lgo').onclick = async () => {
@@ -2381,39 +2409,40 @@ function renderHealth() {
   }
   const list = [...people.values()].sort((x, y) => (y.online - x.online) || x.name.localeCompare(y.name));
   const newest = Math.max(0, ...list.map(p => (p.build && p.build.at) || 0));
+  const outdated = (p) => !p.build || p.build.at < newest - 60000;
   const tasks = S.board ? S.board.tasks : [];
   const day = Date.now() - 86400000;
   const runs = tasks.flatMap(t => (t.runs || []).map(r => ({ ...r, task: t }))).filter(r => r.at > day).sort((a, b) => b.at - a.at);
-  const finals = runs.filter(r => r.outcome !== 'retrying');
-  const good = finals.filter(r => r.outcome === 'ok').length;
   const problems = (S.problems || []).filter(x => x.at > day).sort((a, b) => b.at - a.at);
-  const stuck = tasks.filter(t => t.status === 'blocked');
-  const runnerWord = (r) => r === 'full' ? '<span class="pill ok">Active</span>' : r === 'requests' ? '<span class="pill acc">Requests only</span>' : r === 'off' ? '<span class="pill">Off</span>' : '<span class="pill">Not running</span>';
+  const title = (t) => bestTitle(t.title, t.detail).title;
+  const update = '<code>npx -y github:flyingf15h/huddle update</code>';
+  // what needs someone, in plain words, most urgent first
+  const todo = [
+    ...tasks.filter(t => t.status === 'blocked').map(t => ({ sev: 'bad', text: `<b>“${esc(title(t))}”</b> is stuck${t.owner ? ` (${esc(t.owner)})` : ''}: ${esc((stuckReason(t) || 'its agent gave up').replace(/[\s.,;:]+$/, ''))}. Open it in Tasks to run it again or mark it done.` })),
+    ...(S.approvals || []).map(x => ({ sev: 'warn', text: `<b>${esc(x.owner)}'s ${esc(toolOf(x.owner))}</b> is waiting for ${esc(x.owner)} to OK <code>${esc(x.command)}</code>${x.title ? ` for “${esc(x.title)}”` : ''}.` })),
+    ...list.filter(outdated).map(p => ({ sev: 'warn', text: `<b>${esc(p.name)}'s huddle is out of date</b>, so newer features (background work, usage counting) don't run for them. ${esc(p.name)} should run ${update} and restart their agent.` })),
+    ...list.filter(p => p.online && (!p.runner || p.runner === 'off')).map(p => ({ sev: 'info', text: `<b>${esc(p.name)}'s background work is ${p.runner === 'off' ? 'turned off' : 'not running'}</b>, so requests sent to ${esc(p.name)} wait until they handle them.` })),
+    ...(problems.length ? [{ sev: 'bad', text: `<b>${problems.length} error${problems.length === 1 ? ' was' : 's were'} reported</b> from teammates' computers in the last day. Details below.` }] : []),
+  ];
+  const runnerWord = (p) => !p.online ? '<span class="pill">Away</span>' : p.runner === 'full' ? '<span class="pill ok" title="Takes requests and team tasks on its own">On</span>' : p.runner === 'requests' ? '<span class="pill acc" title="Only does what is sent to this person">Requests only</span>' : '<span class="pill warn">Off</span>';
   el.innerHTML = `
-    <p class="small muted" style="margin:0 0 8px">Last 24 hours</p>
-    <div class="tiles">
-      <div class="tile"><div class="k">Online now</div><div class="v">${list.filter(p => p.online).length}<span class="muted" style="font-size:14px;font-weight:500"> of ${list.length}</span></div></div>
-      <div class="tile"><div class="k">Runs that finished</div><div class="v">${finals.length ? `${Math.round(100 * good / finals.length)}%` : '—'}</div><div class="small muted">${finals.length ? `${good} of ${finals.length} finished cleanly` : 'none yet'}</div></div>
-      <div class="tile"><div class="k">Retries</div><div class="v">${runs.filter(r => r.outcome === 'retrying').length}</div></div>
-      <div class="tile"><div class="k">Problems</div><div class="v" style="${problems.length ? 'color:var(--bad)' : ''}">${problems.length}</div></div>
-      <div class="tile"><div class="k">Stuck tasks</div><div class="v" style="${stuck.length ? 'color:var(--warn)' : ''}">${stuck.length}</div></div>
-    </div>
-    <div class="panel"><h3>Problems</h3><p class="pdesc">Crashes and failures reported by teammates' computers: background runs that crashed, hooks that failed, notifications that didn't arrive.</p>
-      <div class="plist">${problems.length ? problems.slice(0, 30).map(x => `<div class="problem"><div class="pm"><span class="pill bad">${esc(x.kind)}</span><b>${esc(x.name)}</b><span class="grow">${esc(x.message)}</span><span class="small muted">${esc(ago(x.at))}</span></div>${x.detail ? `<details><summary class="small muted" style="cursor:pointer;margin-top:4px">Details</summary><pre>${esc(x.detail)}</pre></details>` : ''}</div>`).join('')
-        : '<div class="srow"><span class="pill ok">All clear</span><span class="muted">Nothing went wrong in the last 24 hours.</span></div>'}</div></div>
-    <div class="panel"><h3>Everyone's huddle</h3><p class="pdesc">Which agent each person uses, whether their background runner is on, and whether their huddle is up to date.</p>
-      <div class="plist">${list.map(p => {
-        const old = p.build && newest && p.build.at < newest - 60000;
-        const u = (S.usage || {})[p.name];
-        return `<div class="srow">${avatar(p.name, true)}<span class="grow"><b>${esc(p.name)}</b><span class="sub">${esc(p.tool === 'Codex' ? 'Codex' : 'Claude Code')} · ${p.online ? 'online' : 'last seen ' + esc(ago(p.lastSeen))}${u && typeof u.five === 'number' ? ` · ${100 - u.five}% of the 5-hour window left` : ''}</span></span>
-          ${p.online ? runnerWord(p.runner) : '<span class="pill">Away</span>'}
-          ${!p.build ? '<span class="pill warn" title="This huddle doesn\'t report its version; it may miss features">Version unknown</span>' : old ? `<span class="pill warn" title="Ask ${esc(p.name)} to run huddle update">Needs update</span>` : '<span class="pill ok">Up to date</span>'}</div>`;
-      }).join('') || '<div class="srow muted">Nobody has opened an agent in this project yet.</div>'}</div></div>
-    <div class="panel"><h3>Recent background runs</h3><p class="pdesc">Each attempt of each request and task. A crashed run is tried again up to three times.</p>
-      <div class="plist">${runs.length ? runs.slice(0, 25).map(r => `<div class="srow"><span class="pill ${r.outcome === 'ok' ? 'ok' : r.outcome === 'retrying' ? 'warn' : r.outcome === 'limit' ? 'acc' : 'bad'}">${esc({ ok: 'Finished', retrying: 'Retried', crashed: 'Crashed', failed: 'Failed', limit: 'Usage limit', waiting: 'Waiting' }[r.outcome] || r.outcome)}</span>
-          <span class="grow">${esc(bestTitle(r.task.title, r.task.detail).title)}<span class="sub">${esc(r.by)}'s ${r.agent === 'codex' ? 'Codex' : 'Claude'} · attempt ${r.attempt}${r.ms ? ' · ' + fmtDur(r.ms) : ''}${r.error ? ' · ' + esc(r.error.slice(0, 140)) : ''}</span></span><span class="small muted">${esc(ago(r.at))}</span></div>`).join('')
-        : '<div class="srow muted">No background runs in the last 24 hours.</div>'}</div></div>
-    <p class="small muted">Server status for everyone: <a href="/status" target="_blank" rel="noopener">${esc(location.host)}/status</a></p>`;
+    <p class="muted" style="margin:0 0 14px;max-width:680px">Health checks that huddle works on everyone's computer: their agent is connected, their huddle is up to date, and work their agents do on their own isn't failing.</p>
+    <div class="panel"><div class="srow" style="border-top:0;min-height:56px">${todo.length
+      ? `<span class="pill warn" style="font-size:13px">${todo.length} thing${todo.length === 1 ? ' needs' : 's need'} attention</span>`
+      : '<span class="pill ok" style="font-size:13px">Everything is working</span><span class="muted">Nobody is stuck, everyone is up to date, and nothing failed in the last day.</span>'}</div>
+      ${todo.map(x => `<div class="srow"><span class="dot ${x.sev === 'bad' ? 'blocked' : x.sev === 'warn' ? 'doing' : 'todo'}" aria-hidden="true"></span><span class="grow">${x.text}</span></div>`).join('')}</div>
+    <div class="panel"><h3>Teammates</h3><p class="pdesc"><b>Background work</b>: whether their agent picks up requests and tasks on its own while they're away. <b>huddle</b>: whether their copy is the newest one on the team.</p>
+      <div class="plist">${list.map(p => `<div class="srow">${avatar(p.name, true)}<span class="grow"><b>${esc(p.name)}</b><span class="sub">${esc(p.tool === 'Codex' ? 'Codex' : 'Claude Code')} · ${p.online ? 'online now' : 'last seen ' + esc(ago(p.lastSeen))}</span></span>
+          <span class="small muted hide-sm">Background work</span>${runnerWord(p)}
+          <span class="small muted hide-sm">huddle</span>${outdated(p) ? '<span class="pill warn">Needs update</span>' : '<span class="pill ok">Up to date</span>'}</div>`).join('') || '<div class="srow muted">Nobody has opened an agent in this project yet.</div>'}</div></div>
+    <div class="panel"><h3>Errors in the last day</h3><p class="pdesc">Reported automatically when something breaks on a teammate's computer: an agent crashing, a huddle hook failing, a Slack or Discord alert not arriving.</p>
+      <div class="plist">${problems.length ? problems.slice(0, 30).map(x => `<div class="problem"><div class="pm"><b>${esc(x.name)}</b><span class="grow">${esc(x.message)}</span><span class="small muted">${esc(ago(x.at))}</span></div>${x.detail ? `<details><summary class="small muted" style="cursor:pointer;margin-top:4px">Technical details</summary><pre>${esc(x.detail)}</pre></details>` : ''}</div>`).join('')
+        : '<div class="srow muted">None.</div>'}</div></div>
+    <div class="panel"><h3>Work agents did on their own, last day</h3><p class="pdesc">Requests and tasks that ran in the background. If an agent crashes partway, huddle runs it again, up to three tries.</p>
+      <div class="plist">${runs.length ? runs.slice(0, 25).map(r => `<div class="srow"><span class="pill ${r.outcome === 'ok' ? 'ok' : r.outcome === 'retrying' ? 'warn' : r.outcome === 'limit' ? 'acc' : 'bad'}">${esc({ ok: 'Finished', retrying: 'Crashed, tried again', crashed: 'Crashed', failed: 'Failed', limit: 'Out of usage', waiting: 'Waiting' }[r.outcome] || r.outcome)}</span>
+          <span class="grow">${esc(title(r.task))}<span class="sub">${esc(r.by)}'s ${r.agent === 'codex' ? 'Codex' : 'Claude'}${r.attempt > 1 ? ` · try ${r.attempt}` : ''}${r.ms ? ' · took ' + fmtDur(r.ms) : ''}</span></span><span class="small muted">${esc(ago(r.at))}</span></div>`).join('')
+        : '<div class="srow muted">None in the last day.</div>'}</div></div>
+    <p class="small muted">Is the huddle server itself up? <a href="/status" target="_blank" rel="noopener">${esc(location.host)}/status</a></p>`;
 }
 function renderHealthBadge() {
   const n = (S.problems || []).filter(x => x.at > Date.now() - 86400000 && x.at > (Number(store.get('huddle.healthSeen.' + auth.project)) || 0)).length;
@@ -2566,6 +2595,130 @@ function wireSettings() {
   };
 }
 
+// ---------- the demo project: a made-up team to try huddle with ----------
+// A real project on this server, filled with a simulated team (Claude Code and Codex users) and kept
+// moving while the tab is open, so every page has something to show.
+const DEMO_TEAM = [{ name: 'maya', tool: 'claude', five: 34 }, { name: 'dev', tool: 'codex', five: 71 }, { name: 'sam', tool: 'claude', five: 12 }];
+const demoAgent = (n) => ({ id: `${n}#demo`, name: n, host: 'demo', kind: 'agent' });
+const demoKey = (p) => 'huddle.demo.' + p;
+function demoCall(token, project, ep, body) {
+  return fetch(`/api/p/${encodeURIComponent(project)}/${ep}`, { method: body ? 'POST' : 'GET', headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined })
+    .then(r => r.json().then(j => { if (!r.ok) throw new Error(j.error || r.status); return j; }));
+}
+const DEMO_FILES = {
+  'src/checkout/ApplePayButton.tsx': "import { startSession } from '../api/payments';\n\n// Shown only on devices that support Apple Pay; everyone else keeps the card form.\nexport function ApplePayButton({ total }: { total: number }) {\n  if (!window.ApplePaySession?.canMakePayments()) return null;\n  return <button className=\"apple-pay\" onClick={() => startSession(total)} aria-label=\"Pay with Apple Pay\" />;\n}\n",
+  'src/api/payments.ts': "export async function startSession(totalCents: number) {\n  const res = await fetch('/api/payments/apple-session', { method: 'POST', body: JSON.stringify({ totalCents }) });\n  if (!res.ok) throw new Error('could not start Apple Pay');\n  return (await res.json()).merchantSession;\n}\n",
+  'src/cart.ts': "export type Item = { id: string; priceCents: number; qty: number };\n\nexport const total = (items: Item[]) => items.reduce((sum, i) => sum + i.priceCents * i.qty, 0);\n",
+  'tests/cart.test.ts': "import { total } from '../src/cart';\n\ntest('adds up the cart', () => {\n  expect(total([{ id: 'a', priceCents: 1250, qty: 2 }])).toBe(2500);\n});\n",
+  'README.md': '# acme-shop\n\nThe storefront. `npm run dev` to start, `npm test` to test.\n\n## Checkout\n\nCard payments everywhere, Apple Pay on supported devices.\n',
+};
+async function createDemo(status) {
+  const me = auth.name || 'you';
+  const made = await fetch('/api/new', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'huddle-demo' }) }).then(r => r.json());
+  const P = made.project, T = made.token;
+  const as = (n) => (ep, body) => demoCall(T, P, ep, { agent: demoAgent(n), ...(body || {}) });
+  const say = (t) => status && status(t);
+  say('Bringing in the team…');
+  for (const m of DEMO_TEAM) {
+    await as(m.name)('hello', { tool: m.tool, runner: 'full', build: { sha: 'demo', at: Date.now() } });
+    await as(m.name)('usage', { five: m.five, week: Math.round(m.five / 3) });
+    await as(m.name)('stats', { conversation: true, turns: 6 + m.five % 9, activeMs: (20 + m.five) * 60000, usage: { [m.tool === 'codex' ? 'gpt-5.5-codex' : 'claude-opus-5-5']: { input: 90000 + m.five * 3000, output: 21000, cacheRead: 400000, cacheWrite: 50000, messages: 30 } } });
+  }
+  await as('maya')('setting', { aiName: 'Pip' });
+  say('Writing the project brief…');
+  await as('sam')('doc', { text: '# acme-shop\n\nThe online store for Acme. React front end in `src/`, API routes in `src/api/`.\n\n## Conventions\n- Money is always in cents.\n- Every change to checkout needs a test in `tests/`.\n\n## Who owns what\n- maya: checkout UI\n- dev: payments API\n- sam: docs and release', force: true });
+  await as('dev')('memory', { title: 'Amounts are in cents', text: 'Every price and total in the API is an integer number of cents. Never send dollars.' });
+  await as('maya')('memory', { title: 'Apple Pay only works on https', text: 'Use `npm run dev:https` to test the Apple Pay button locally; plain http hides it.' });
+  await as('sam')('memory', { title: 'Release checklist lives in RELEASING.md', text: 'Tag, changelog, then deploy. Ask sam before deploying.' });
+  await as('sam')('skill', { name: 'release-notes', description: 'Write release notes from the commits since the last tag', body: 'List the commits since the last tag, group them by area, and write one plain sentence per user-visible change.' });
+  say('Handing out the work…');
+  const g = await demoCall(T, P, 'goal', { agent: { id: 'human:' + me, name: me, kind: 'human', host: 'dashboard' }, text: 'Add Apple Pay to checkout. Customers on iPhone should be able to pay in one tap, and card payments must keep working.' });
+  await as('maya')('claim-goal', { id: g.goal.id });
+  const plan = await as('maya')('plan', { goalId: g.goal.id, title: 'Apple Pay at checkout', summary: 'UI, endpoint, domain file, then an end-to-end test.', tasks: [
+    { title: 'Apple Pay button on checkout', detail: 'Show the Apple Pay button on supported devices, keep the card form for everyone else.', owner: 'maya', effort: 'medium', paths: ['src/checkout/'] },
+    { title: 'Apple Pay session endpoint', detail: 'POST /api/payments/apple-session returns the merchant session.', owner: 'dev', effort: 'medium', paths: ['src/api/payments.ts'] },
+    { title: 'Domain verification file', detail: 'Upload the Apple domain verification file.', owner: 'sam', effort: 'light' },
+    { title: 'End-to-end test for Apple Pay', detail: 'Cover the happy path and the card fallback.', effort: 'light' } ] });
+  const [t1, t2, t3] = plan.tasks;
+  await as('maya')('task-update', { id: t1.id, status: 'doing' });
+  await as('dev')('task-update', { id: t2.id, status: 'doing', run: { attempt: 1, outcome: 'retrying', ms: 52000, error: 'stream disconnected before completion', agent: 'codex' } });
+  await as('dev')('task-update', { id: t2.id, status: 'done', note: 'The endpoint returns { merchantSession }; tests pass.', run: { attempt: 2, outcome: 'ok', ms: 384000, agent: 'codex' }, checks: { review: 'ok', tests: 'passed', testCommand: 'npm test', merged: true } });
+  await as('sam')('task-update', { id: t3.id, status: 'blocked', note: "Needs the Apple developer account login, which only a person can do. Waiting for you." });
+  const flaky = await demoCall(T, P, 'goal', { agent: { id: 'human:' + me, name: me, kind: 'human', host: 'dashboard' }, text: 'The cart test fails about one run in five. Find out why and fix it.', to: 'dev' });
+  const ft = (await demoCall(T, P, 'board')).tasks.find(t => t.goalId === flaky.goal.id);
+  await as('dev')('task-update', { id: ft.id, title: 'Fix the flaky cart test', status: 'done', run: { attempt: 1, outcome: 'ok', ms: 241000, agent: 'codex' }, checks: { review: 'ok', tests: 'passed', testCommand: 'npm test', pr: 'https://github.com/acme/shop/pull/128', prState: 'open' }, note: 'Two tests shared one fake clock. Each gets its own now.' });
+  const e2e = await demoCall(T, P, 'goal', { agent: demoAgent('maya'), text: 'Run the full end-to-end suite against staging.', to: 'dev' });
+  const et = (await demoCall(T, P, 'board')).tasks.find(t => t.goalId === e2e.goal.id);
+  await as('dev')('task-update', { id: et.id, title: 'Run e2e suite on staging', status: 'doing' });
+  await as('dev')('approval-request', { taskId: et.id, commands: [{ command: 'npm run e2e -- --env staging', why: 'reaches the staging server' }] });
+  say('Sharing code and messages…');
+  for (const [f, text] of Object.entries(DEMO_FILES)) await as(f.startsWith('src/api') ? 'dev' : 'maya')('content', { path: f, branch: 'main', content: text, tool: 'Edit' });
+  await as('dev')('unlock', { all: true });
+  await as('maya')('unlock', { all: true });
+  await as('maya')('lock', { path: 'src/checkout/ApplePayButton.tsx', branch: 'main' });
+  const sha = 'de0' + '0'.repeat(37);
+  await as('maya')('git-snapshot', { branch: 'main', sha, i: 0, n: 1, files: Object.entries(DEMO_FILES).map(([path, content]) => ({ path, content })) });
+  await as('maya')('status', { status: 'Building the Apple Pay button on checkout' });
+  await as('dev')('status', { status: 'Adding refunds to the payments endpoint' });
+  await as('sam')('status', { status: 'Updating the README for the new checkout' });
+  await as('maya')('activity', { items: [{ kind: 'prompt', text: "Build the Apple Pay button on checkout, using dev's new endpoint" }, { kind: 'tool', tool: 'Read', text: 'Read: src/api/payments.ts' }, { kind: 'tool', tool: 'Edit', text: 'Edit: src/checkout/ApplePayButton.tsx' }, { kind: 'text', text: 'The button now shows on Safari with the cart total, and the card form stays for everyone else. Next I am wiring up the payment sheet.' }] });
+  await as('dev')('activity', { items: [{ kind: 'prompt', text: 'why does the cart test fail sometimes' }, { kind: 'tool', tool: 'Bash', text: 'Bash: npm test -- cart --runInBand' }, { kind: 'text', text: 'Two tests shared one fake clock, so whichever ran second saw the wrong time. Each test gets its own now; 50 runs in a row pass.' }, { kind: 'end', text: '' }] });
+  await as('maya')('message', { text: "I'm in src/checkout/ for the Apple Pay button. dev, does your endpoint return the merchant session as JSON?" });
+  await as('dev')('message', { to: 'maya', text: 'Yes: POST /api/payments/apple-session returns { merchantSession }. Amounts in cents.' });
+  await as('sam')('message', { to: me, text: 'The domain verification file needs the Apple developer login. Can you do that one when you are back?' });
+  await as('sam')('handoff', { text: 'Was on: README for the new checkout. Next: domain verification once someone has the Apple login.', files: ['README.md'], commits: ['a1b2c3d docs: checkout section'] });
+  await as('dev')('problem', { kind: 'crash', message: 'Codex crashed once on "Apple Pay session endpoint"; huddle ran it again and it finished', detail: 'stream disconnected before completion' });
+  say('Setting up accounts…');
+  const own = await demoCall(T, P, 'setup-owner', { agent: { id: 'human:' + me, name: me, kind: 'human', host: 'dashboard' } });
+  for (const [n, role] of [['maya', 'member'], ['dev', 'member'], ['sam', 'member'], ['alex', 'viewer']]) {
+    const inv = await demoCall(own.token, P, 'member-invite', { agent: { id: 'human:' + me, name: me, kind: 'human' }, role });
+    await demoCall(null, P, 'redeem', { code: inv.code, name: n }).catch(() => {});
+  }
+  await demoCall(own.token, P, 'policy', { agent: { id: 'human:' + me, name: me, kind: 'human' }, allow: ['npm test', 'npm run typecheck'], deny: ['git push --force', 'npm publish'] });
+  store.set(demoKey(P), T);
+  return { project: P, token: own.token, name: me };
+}
+async function openDemo(status) {
+  const d = await createDemo(status);
+  known[d.project] = d.token;
+  store.set('huddle.projects', JSON.stringify(known));
+  store.set('huddle.last', d.project);
+  if (!auth.name) { auth.name = d.name; store.set('huddle.name', d.name); }
+  if (auth.project) store.set('huddle.back', auth.project);
+  location.hash = '#p=' + encodeURIComponent(d.project);
+  location.reload();
+}
+// while a demo is open, its teammates keep working: one small step every few seconds
+const DEMO_STEPS = [
+  (as) => as('maya')('activity', { items: [{ kind: 'tool', tool: 'Read', text: 'Read: src/checkout/ApplePayButton.tsx' }] }),
+  (as, k) => as('maya')('content', { path: 'src/checkout/ApplePayButton.tsx', branch: 'main', tool: 'Edit', content: DEMO_FILES['src/checkout/ApplePayButton.tsx'] + `\n// step ${k}: payment sheet wired up\n` }),
+  (as) => as('dev')('activity', { items: [{ kind: 'prompt', text: 'add refunds for Apple Pay orders' }, { kind: 'tool', tool: 'Bash', text: 'Bash: npm test -- payments' }] }),
+  (as) => as('dev')('activity', { items: [{ kind: 'text', text: 'Refunds go through the same payment session. 14 payment tests pass.' }, { kind: 'end', text: '' }] }),
+  (as) => as('maya')('activity', { items: [{ kind: 'tool', tool: 'Bash', text: 'Bash: npm run typecheck' }] }),
+  (as) => as('maya')('message', { to: 'dev', text: 'Your endpoint works on staging. One question: refunds also in cents?' }),
+  (as) => as('dev')('message', { to: 'maya', text: 'Yes, cents everywhere, same as card payments.' }),
+  (as) => as('sam')('activity', { items: [{ kind: 'prompt', text: 'add the Apple Pay steps to the README' }, { kind: 'tool', tool: 'Edit', text: 'Edit: README.md' }, { kind: 'end', text: '' }] }),
+  (as) => as('maya')('activity', { items: [{ kind: 'text', text: 'Checkout shows Apple Pay on supported devices and falls back to the card form everywhere else.' }, { kind: 'end', text: '' }] }),
+];
+let demoTimer = null;
+function runDemo() {
+  const T = store.get(demoKey(auth.project));
+  $('demobar').hidden = !T;
+  if (!T || demoTimer) return;
+  fitMain();
+  let k = 0;
+  const as = (n) => (ep, body) => demoCall(T, auth.project, ep, { agent: demoAgent(n), ...(body || {}) });
+  const tick = async () => {
+    if (!document.hidden) {
+      try { await DEMO_STEPS[k % DEMO_STEPS.length](as, k); for (const m of DEMO_TEAM) await as(m.name)('hello', {}); } catch {}
+      k++;
+    }
+    demoTimer = setTimeout(tick, 6000 + Math.random() * 4000);
+  };
+  demoTimer = setTimeout(tick, 3000);
+}
+$('demoLeave').onclick = () => { clearTimeout(demoTimer); goBack(); if (!backTarget()) { store.del('huddle.last'); history.replaceState(null, '', location.pathname); location.reload(); } };
+
 // ---------- live events ----------
 function applySnapshot(s) {
   S.agents = {}; S.locks = {}; S.files = {};
@@ -2579,6 +2732,8 @@ function applySnapshot(s) {
   S.projectSettings = s.projectSettings || {};
   S.problems = s.problems || [];
   renderHealthBadge();
+  // names in the feed depend on who uses which agent ("dev's Codex"), known only from here on
+  if (S.view === 'timeline' && S.entries.length) renderFeed();
   if (S.view === 'health') renderHealth();
   // (after the first snapshot, so waiting approvals count)
   if (!S.caughtUp) { S.caughtUp = true; catchUp(); }
@@ -2767,6 +2922,7 @@ async function start() {
   await loadMe();
   showMe();
   loadNotes();
+  runDemo();
   // back from signing in with GitHub to link it
   if (/[#&]gh=link/.test(location.hash) || params.get('gh') === 'link') { api('link-github', {}).catch(() => {}); S.stab = 'team'; setTimeout(() => showView('settings'), 0); }
   // history: messages, Claude activity and goals, merged by time
