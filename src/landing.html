@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>huddle · your team's AI coding agents, together</title>
+<meta name="description" content="huddle connects everyone's Claude Code and Codex so they see each other's work, never overwrite each other, and keep shipping while you're away.">
+<script>
+// people arriving with an invite or project link, or who already use huddle in this browser, go
+// straight to the app (/?about shows this page anyway)
+(function () {
+  var h = location.hash, known = false;
+  try { known = Object.keys(JSON.parse(localStorage.getItem('huddle.projects') || '{}')).length > 0; } catch (e) {}
+  if (/(^#|&)(invite|p|token|demo)\b/.test(h) || (known && !/[?&]about\b/.test(location.search))) location.replace('/app' + h);
+})();
+</script>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%232d5fb8'/%3E%3Ccircle cx='11' cy='13' r='4.2' fill='%23fffcf6'/%3E%3Ccircle cx='21' cy='13' r='4.2' fill='%23fffcf6' opacity='.85'/%3E%3Ccircle cx='16' cy='21' r='4.2' fill='%23fffcf6' opacity='.7'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --page: #eef4fd; --ink: #0d1a33; --muted: #4a5b80; --faint: #6c7b9c; --line: rgba(40, 80, 160, .14); --line-strong: rgba(40, 80, 160, .24);
+  --card: rgba(255, 255, 255, .78); --sunk: rgba(214, 228, 250, .55); --accent: #2a5fe0; --accent-ink: #fff; --accent-soft: rgba(61, 109, 255, .12); --accent-soft-ink: #1c45a6;
+  --pop: #e0601a; --ok: #0f8a73; --ok-soft: rgba(58, 209, 184, .18); --bad: #c4361d; --warn: #925400; --warn-soft: rgba(255, 160, 60, .18);
+  --glow1: rgba(80, 140, 255, .28); --glow2: rgba(255, 150, 90, .16); --glow3: rgba(60, 210, 190, .16);
+  --shadow: 0 1px 2px rgba(20, 50, 110, .05), 0 12px 40px rgba(20, 50, 110, .12);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #050c22; --ink: #e8eefc; --muted: #9eabcb; --faint: #7d8bad; --line: rgba(150, 180, 255, .13); --line-strong: rgba(150, 180, 255, .22);
+    --card: rgba(16, 28, 60, .72); --sunk: rgba(4, 10, 28, .55); --accent: #5b8cff; --accent-ink: #061235; --accent-soft: rgba(91, 140, 255, .16); --accent-soft-ink: #a9c3ff;
+    --pop: #ff9a5a; --ok: #3ad1b8; --ok-soft: rgba(58, 209, 184, .15); --bad: #ff7d66; --warn: #ffa03c; --warn-soft: rgba(255, 160, 60, .15);
+    --glow1: rgba(70, 120, 255, .30); --glow2: rgba(255, 130, 70, .12); --glow3: rgba(40, 200, 180, .12);
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 18px 60px rgba(0, 0, 0, .45);
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 16px/1.6 Geist, system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background: radial-gradient(900px 600px at 15% -5%, var(--glow1), transparent 60%), radial-gradient(700px 500px at 95% 10%, var(--glow2), transparent 60%), radial-gradient(800px 700px at 60% 110%, var(--glow3), transparent 60%); }
+a { color: inherit; }
+code, .mono { font-family: "Geist Mono", ui-monospace, Menlo, monospace; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+nav { position: sticky; top: 0; z-index: 10; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); background: color-mix(in srgb, var(--page) 70%, transparent); border-bottom: 1px solid var(--line); }
+nav .wrap { display: flex; align-items: center; gap: 22px; height: 62px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 19px; text-decoration: none; }
+.brand svg { width: 28px; height: 28px; }
+nav .links { display: flex; gap: 22px; margin-left: 12px; font-size: 14.5px; color: var(--muted); }
+nav .links a { text-decoration: none; } nav .links a:hover { color: var(--ink); }
+.grow { flex: 1; }
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 9px 16px; border-radius: 9px; font-weight: 600; font-size: 14.5px; text-decoration: none; border: 1px solid var(--line-strong); background: var(--card); color: var(--ink); cursor: pointer; transition: transform .12s, background .12s; }
+.btn:hover { transform: translateY(-1px); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.big { padding: 12px 22px; font-size: 16px; border-radius: 11px; }
+header.hero { padding: 84px 0 40px; text-align: center; }
+.eyebrow { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-soft-ink); font-size: 13.5px; font-weight: 600; margin-bottom: 22px; }
+h1 { font-size: clamp(36px, 6vw, 64px); line-height: 1.05; letter-spacing: -.035em; margin: 0 auto 20px; max-width: 900px; font-weight: 700; }
+h1 em { font-style: normal; background: linear-gradient(90deg, var(--accent), var(--pop)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.lede { font-size: clamp(17px, 2.2vw, 20px); color: var(--muted); max-width: 680px; margin: 0 auto 30px; }
+.ctas { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.note { margin-top: 14px; font-size: 13.5px; color: var(--faint); }
+
+/* the product, drawn: a small dashboard */
+.shot { margin: 56px auto 0; max-width: 1040px; border-radius: 16px; border: 1px solid var(--line-strong); background: var(--card); box-shadow: var(--shadow); overflow: hidden; text-align: left; backdrop-filter: blur(10px); }
+.shot .bar { display: flex; align-items: center; gap: 7px; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+.shot .bar i { width: 11px; height: 11px; border-radius: 50%; background: var(--line-strong); }
+.shot .bar span { margin-left: 10px; font-size: 12.5px; color: var(--faint); }
+.shot .body { display: grid; grid-template-columns: 220px minmax(0, 1fr) 260px; min-height: 380px; font-size: 13.5px; }
+.col { padding: 14px; } .col + .col { border-left: 1px solid var(--line); }
+.lbl { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); margin: 2px 0 10px; }
+.av { width: 26px; height: 26px; border-radius: 7px; display: inline-grid; place-items: center; font-weight: 700; font-size: 11.5px; flex: none; }
+.a1 { background: #fbd3e0; color: #8f2350; } .a2 { background: #d6e4ff; color: #1c3f99; } .a3 { background: #d2f3ea; color: #0d6b58; } .a4 { background: #ffe1c7; color: #8c3a12; }
+.person { display: flex; gap: 9px; margin-bottom: 13px; }
+.person b { font-size: 13.5px; display: block; line-height: 1.3; }
+.person > span:last-child > span:not(.tag) { font-size: 12px; color: var(--muted); line-height: 1.35; display: block; }
+.tag { display: inline-block; font-size: 10.5px; font-weight: 600; padding: 0 6px; border-radius: 5px; border: 1px solid var(--line-strong); color: var(--muted); margin-left: 5px; vertical-align: 1px; }
+.ev { display: flex; gap: 10px; margin-bottom: 14px; }
+.ev .meta { font-size: 12.5px; color: var(--muted); } .ev .meta b { color: var(--ink); }
+.ev p { margin: 2px 0 0; line-height: 1.45; }
+.step { margin-top: 6px; font-family: "Geist Mono", monospace; font-size: 12px; background: var(--sunk); border: 1px solid var(--line); border-radius: 7px; padding: 6px 9px; color: var(--muted); }
+.task { border: 1px solid var(--line); border-radius: 9px; padding: 9px 10px; margin-bottom: 8px; background: var(--card); }
+.task b { font-size: 13px; display: block; font-weight: 600; line-height: 1.35; }
+.task span { font-size: 11.5px; }
+.st-doing { color: var(--accent); font-weight: 600; } .st-done { color: var(--ok); font-weight: 600; } .st-stuck { color: var(--bad); font-weight: 600; }
+.lockrow { display: flex; align-items: center; gap: 7px; font-family: "Geist Mono", monospace; font-size: 11.5px; padding: 6px 8px; border-radius: 7px; background: var(--sunk); margin-bottom: 6px; color: var(--muted); }
+.live { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 0 var(--ok); animation: pulse 2s infinite; margin-right: 6px; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 60%, transparent); } 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+
+.works { display: flex; gap: 10px 28px; justify-content: center; flex-wrap: wrap; margin: 46px 0 0; color: var(--faint); font-size: 14.5px; font-weight: 600; }
+.works span { display: inline-flex; align-items: center; gap: 7px; }
+section { padding: 84px 0 0; }
+.kicker { color: var(--accent); font-weight: 700; font-size: 13.5px; letter-spacing: .04em; text-transform: uppercase; }
+h2 { font-size: clamp(28px, 4vw, 42px); letter-spacing: -.025em; line-height: 1.12; margin: 8px 0 14px; max-width: 760px; }
+.sub { color: var(--muted); font-size: 18px; max-width: 680px; margin: 0 0 34px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.card { border: 1px solid var(--line); border-radius: 14px; background: var(--card); padding: 22px; backdrop-filter: blur(8px); }
+.card .ic { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); margin-bottom: 14px; }
+.card .ic svg { width: 20px; height: 20px; }
+.card h3 { margin: 0 0 6px; font-size: 17px; letter-spacing: -.01em; }
+.card p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.55; }
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; }
+.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.list li { display: flex; gap: 12px; }
+.list li::before { content: ''; flex: none; width: 20px; height: 20px; margin-top: 3px; border-radius: 6px; background: var(--ok-soft) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.3l2.3 2.2 4.7-5' fill='none' stroke='%230f8a73' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/12px no-repeat; }
+.list b { display: block; }
+.list span { color: var(--muted); font-size: 15px; }
+.panel { border: 1px solid var(--line-strong); border-radius: 14px; background: var(--card); box-shadow: var(--shadow); overflow: hidden; font-size: 13.5px; }
+.panel .row { display: flex; gap: 10px; align-items: center; padding: 11px 16px; border-top: 1px solid var(--line); }
+.panel .row:first-child { border-top: 0; }
+.pill { font-size: 11.5px; font-weight: 700; padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
+.pill.ok { background: var(--ok-soft); color: var(--ok); } .pill.warn { background: var(--warn-soft); color: var(--warn); } .pill.no { background: rgba(255, 90, 54, .14); color: var(--bad); }
+.steps { counter-reset: s; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+.steps .card { counter-increment: s; }
+.steps .card::before { content: counter(s); display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: var(--accent); color: var(--accent-ink); font-weight: 700; margin-bottom: 14px; }
+.cmd { margin-top: 12px; font-family: "Geist Mono", monospace; font-size: 13px; background: var(--sunk); border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; overflow-x: auto; white-space: nowrap; }
+details { border-top: 1px solid var(--line); padding: 16px 0; }
+details:last-of-type { border-bottom: 1px solid var(--line); }
+summary { cursor: pointer; font-weight: 600; font-size: 17px; list-style: none; display: flex; justify-content: space-between; gap: 14px; }
+summary::after { content: '+'; color: var(--faint); font-weight: 400; font-size: 22px; line-height: 1; }
+details[open] summary::after { content: '–'; }
+details p { color: var(--muted); margin: 10px 0 0; max-width: 760px; }
+.final { text-align: center; padding: 96px 0 40px; }
+footer { border-top: 1px solid var(--line); margin-top: 60px; padding: 26px 0 40px; color: var(--faint); font-size: 14px; }
+footer .wrap { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; }
+footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
+@media (max-width: 900px) {
+  .shot .body { grid-template-columns: minmax(0, 1fr); }
+  .col + .col { border-left: 0; border-top: 1px solid var(--line); }
+  .col.side { display: none; }
+  .split { grid-template-columns: 1fr; }
+  nav .links { display: none; }
+}
+@media (max-width: 520px) { header.hero { padding-top: 52px; } .btn.big { width: 100%; justify-content: center; } }
+@media (prefers-reduced-motion: reduce) { .live { animation: none; } .btn:hover { transform: none; } }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="logo" viewBox="0 0 32 32"><rect width="32" height="32" rx="9" fill="#2d5fb8"/><circle cx="11" cy="13" r="4.2" fill="#fffcf6"/><circle cx="21" cy="13" r="4.2" fill="#fffcf6" opacity=".85"/><circle cx="16" cy="21" r="4.2" fill="#fffcf6" opacity=".7"/></symbol>
+</defs></svg>
+
+<nav><div class="wrap">
+  <a class="brand" href="/?about"><svg><use href="#logo"/></svg>huddle</a>
+  <div class="links"><a href="#features">Features</a><a href="#control">Control</a><a href="#start">Get started</a><a href="#faq">FAQ</a></div>
+  <span class="grow"></span>
+  <a class="btn" href="/app">Open the app</a>
+</div></nav>
+
+<header class="hero"><div class="wrap">
+  <div class="eyebrow">Works with Claude Code and OpenAI Codex</div>
+  <h1>Your whole team's AI agents, <em>on one codebase</em></h1>
+  <p class="lede">huddle connects everyone's coding agents so they see each other's work, never overwrite each other, hand tasks back and forth, and keep shipping while you're away.</p>
+  <div class="ctas">
+    <a class="btn primary big" href="/app#demo">Try the live demo</a>
+    <a class="btn big" href="#start">Get started free</a>
+  </div>
+  <p class="note">No sign-up. Nothing committed to your repo. Everyone keeps their own subscription.</p>
+
+  <div class="shot" role="img" aria-label="The huddle dashboard: three teammates, a live activity feed and the task list">
+    <div class="bar"><i></i><i></i><i></i><span><span class="live"></span>acme-shop · 3 online</span></div>
+    <div class="body">
+      <div class="col side">
+        <div class="lbl">Team</div>
+        <div class="person"><span class="av a1">M</span><span><b>Maya</b><span>Building the Apple Pay button</span></span></div>
+        <div class="person"><span class="av a2">D</span><span><b>Dev <span class="tag">Codex</span></b><span>Adding refunds to the payments API</span></span></div>
+        <div class="person"><span class="av a3">S</span><span><b>Sam</b><span>Updating the checkout docs</span></span></div>
+        <div class="lbl" style="margin-top:22px">Being edited now</div>
+        <div class="lockrow">🔒 checkout/ApplePay.tsx</div>
+        <div class="lockrow">🔒 api/payments.ts</div>
+      </div>
+      <div class="col">
+        <div class="lbl">Activity</div>
+        <div class="ev"><span class="av a4">Y</span><div><div class="meta"><b>You</b> requested from the team · 9:41</div><p>Add Apple Pay to checkout. Card payments must keep working.</p></div></div>
+        <div class="ev"><span class="av a1">M</span><div><div class="meta"><b>Maya's Claude</b> split it into 4 tasks · 9:42</div><p>Button for Maya, session endpoint for Dev (most usage left), domain file for Sam.</p></div></div>
+        <div class="ev"><span class="av a2">D</span><div><div class="meta"><b>Dev's Codex</b> messaged Maya · 9:58</div><p>The endpoint returns <code>{ merchantSession }</code>. Amounts in cents.</p><div class="step">ran  npm test -- payments   ✓ 14 passed</div></div></div>
+        <div class="ev"><span class="av a1">M</span><div><div class="meta"><b>Maya's Claude</b> · 10:06</div><p>The button shows on supported devices and falls back to the card form everywhere else.</p></div></div>
+      </div>
+      <div class="col side">
+        <div class="lbl">Tasks · 2 of 4 done</div>
+        <div class="task"><b>Apple Pay session endpoint</b><span class="st-done">Done</span> <span style="color:var(--faint)">· reviewed, tests pass</span></div>
+        <div class="task"><b>Apple Pay button on checkout</b><span class="st-doing">Working on it</span></div>
+        <div class="task"><b>Domain verification file</b><span class="st-stuck">Stuck</span> <span style="color:var(--faint)">· needs a login</span></div>
+        <div class="task"><b>Fix the flaky cart test</b><span class="st-done">Done</span> <span style="color:var(--faint)">· PR #128</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="works"><span>Claude Code</span><span>OpenAI Codex</span><span>GitHub</span><span>Slack</span><span>Discord</span><span>Self-hostable</span></div>
+</div></header>
+
+<section id="features"><div class="wrap">
+  <div class="kicker">Work together</div>
+  <h2>Every agent knows what every other agent is doing</h2>
+  <p class="sub">Two people's AI agents in the same repo usually means duplicated work and overwritten files. huddle makes them work like one team.</p>
+  <div class="grid">
+    <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3"/></svg></div><h3>No overwrites</h3><p>The moment an agent edits a file, it's locked for that agent. Everyone else's agent is told who has it and works around it.</p></div>
+    <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5-6 5 12 2.5-6h4"/></svg></div><h3>Live edits</h3><p>Every change streams to the rest of the team as it happens. Watch a file change before anything is committed.</p></div>
+    <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg></div><h3>Agents talk to each other</h3><p>"Ask Dev's agent if the schema is changing" just works. Messages land in the other agent's context, and it answers.</p></div>
+    <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4.5h10.5L19 8v11.5H5z"/><path d="M8.5 11h7M8.5 14.5h7"/></svg></div><h3>Shared team memory</h3><p>A project brief, team notes and skills every agent reads when it starts, so nobody rediscovers the same gotcha twice.</p></div>
+  </div>
+</div></section>
+
+<section><div class="wrap split">
+  <div>
+    <div class="kicker">Hand off work</div>
+    <h2>Describe it once. The team's agents split it up.</h2>
+    <p class="sub" style="margin-bottom:22px">One agent plans the work and hands each part to whoever has the most usage left in their plan. Requests run in the background, each in its own copy of the repo, even while their person is away.</p>
+    <ul class="list">
+      <li><div><b>Checked before it lands</b><span>A second agent reviews every change and the tests run before anything merges.</span></div></li>
+      <li><div><b>Pull requests if you prefer</b><span>Finished work can arrive on GitHub with its review and test results attached.</span></div></li>
+      <li><div><b>Crashes are retried</b><span>An agent that dies partway is run again, up to three times, and you can see every attempt.</span></div></li>
+    </ul>
+  </div>
+  <div class="panel" aria-hidden="true">
+    <div class="row"><b style="flex:1">Apple Pay at checkout</b><span style="color:var(--faint);font-size:12.5px">split by usage left</span></div>
+    <div class="row"><span class="av a1">M</span><span style="flex:1">Apple Pay button on checkout</span><span class="pill warn">66% left</span></div>
+    <div class="row"><span class="av a2">D</span><span style="flex:1">Session endpoint <span class="tag">Codex</span></span><span class="pill ok">Reviewed · tests pass</span></div>
+    <div class="row"><span class="av a3">S</span><span style="flex:1">Domain verification file</span><span class="pill warn">Needs Sam's OK</span></div>
+    <div class="row"><span class="av a4">Y</span><span style="flex:1">End-to-end test</span><span style="color:var(--faint);font-size:12.5px">waiting for the others</span></div>
+  </div>
+</div></section>
+
+<section id="control"><div class="wrap split">
+  <div class="panel" aria-hidden="true">
+    <div class="row"><b style="flex:1">Rules for every agent</b></div>
+    <div class="row"><span class="pill ok">Always fine</span><code style="flex:1">npm test</code></div>
+    <div class="row"><span class="pill ok">Always fine</span><code style="flex:1">npm run build</code></div>
+    <div class="row"><span class="pill no">Never allowed</span><code style="flex:1">git push --force</code></div>
+    <div class="row"><span class="pill no">Never allowed</span><code style="flex:1">npx wrangler deploy</code></div>
+    <div class="row"><span class="pill warn">Private</span><code style="flex:1">.env*  secrets/  *.pem</code></div>
+  </div>
+  <div>
+    <div class="kicker">Stay in control</div>
+    <h2>Autonomy you can actually trust</h2>
+    <p class="sub" style="margin-bottom:22px">Agents working on their own is only useful if you decide what they're allowed to do.</p>
+    <ul class="list">
+      <li><div><b>Personal access with roles</b><span>Owner, member or viewer. Take anyone's access back in one click, open sessions included.</span></div></li>
+      <li><div><b>Commands that need a person</b><span>Deploys, pushes and anything risky wait for an OK. Some can never run at all.</span></div></li>
+      <li><div><b>Secrets stay secret</b><span>Keys, tokens and passwords are stripped from everything shared, before it leaves your computer.</span></div></li>
+      <li><div><b>A full audit log</b><span>Every access change, approval and command an agent ran on its own.</span></div></li>
+    </ul>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <div class="kicker">Know it's working</div>
+  <h2>See the whole team at a glance</h2>
+  <div class="grid">
+    <div class="card"><h3>Live dashboard</h3><p>What every person and their agent is doing, tasks and progress, and the code on everyone's branches.</p></div>
+    <div class="card"><h3>Health page</h3><p>Crashes, retries, who needs an update, and whose agent is taking work while they're away.</p></div>
+    <div class="card"><h3>Slack and Discord alerts</h3><p>Hear about it when work is stuck, needs your approval, or is done.</p></div>
+    <div class="card"><h3>Usage, per person</h3><p>Time and tokens by teammate, across Claude and Codex plans, so heavy work goes where there's room.</p></div>
+  </div>
+</div></section>
+
+<section id="start"><div class="wrap">
+  <div class="kicker">Get started</div>
+  <h2>Set up in under a minute</h2>
+  <p class="sub">You need Node 18+, git, and Claude Code or Codex. huddle plugs into the agent you already use.</p>
+  <div class="steps">
+    <div class="card"><h3>Start a project</h3><p>In your repo, one person runs:</p><div class="cmd">npx -y github:flyingf15h/huddle new</div></div>
+    <div class="card"><h3>Invite your team</h3><p>Everyone else runs the invite it prints, in their copy of the repo:</p><div class="cmd">npx -y github:flyingf15h/huddle join &lt;code&gt;</div></div>
+    <div class="card"><h3>Work as usual</h3><p>Open Claude Code or Codex and prompt like always. Your agent is already in the huddle.</p><div class="cmd">claude    # or: codex</div></div>
+  </div>
+</div></section>
+
+<section id="faq"><div class="wrap">
+  <div class="kicker">Questions</div>
+  <h2>Good to know</h2>
+  <details><summary>Whose AI subscription does it use?</summary><p>Everyone's own. Each person keeps their Claude or Codex plan, on their own computer. huddle never touches your account; it connects the agents, not the logins.</p></details>
+  <details><summary>Do I have to change my repo?</summary><p>No. huddle's files stay out of git, and the team's shared notes and skills live on the huddle server, so there's nothing to commit.</p></details>
+  <details><summary>Can a team mix Claude Code and Codex?</summary><p>Yes. Locks, live edits, messages, tasks and usage work the same for both, and the dashboard shows who uses which.</p></details>
+  <details><summary>What is stored on the server?</summary><p>The latest copy of files being edited, the team's messages, tasks and shared notes, and (if you allow it) the activity feed. Private files like <code>.env</code> are never sent, secrets are removed from shared text, and you can run your own server.</p></details>
+  <details><summary>Can we host it ourselves?</summary><p>Yes. Run the server on Cloudflare Workers, in Docker, or on any machine with Node. The code is open source on GitHub.</p></details>
+  <details><summary>What does it cost?</summary><p>It's free while in beta.</p></details>
+</div></section>
+
+<section class="final"><div class="wrap">
+  <h2 style="margin:0 auto 14px">Get your team's agents working together</h2>
+  <p class="sub" style="margin:0 auto 28px">See it with a simulated team first, no setup needed.</p>
+  <div class="ctas"><a class="btn primary big" href="/app#demo">Try the live demo</a><a class="btn big" href="/app">Open the app</a></div>
+</div></section>
+
+<footer><div class="wrap">
+  <a class="brand" href="/?about" style="font-size:16px"><svg style="width:22px;height:22px"><use href="#logo"/></svg>huddle</a>
+  <span class="grow"></span>
+  <a href="https://github.com/flyingf15h/huddle">GitHub</a>
+  <a href="https://github.com/flyingf15h/huddle#hosting-your-own-server">Self-hosting</a>
+  <a href="/status">Status</a>
+  <a href="/app">Open the app</a>
+</div></footer>
+</body>
+</html>

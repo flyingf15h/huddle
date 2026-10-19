@@ -172,11 +172,11 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
     assert.match(await inbox, /ping/);
     ok('huddle_inbox can block for a reply');
 
-    const res = await fetch(url + '/');
-    assert.match(await res.text(), /<title>huddle<\/title>/);
+    assert.match(await (await fetch(url + '/app')).text(), /<title>huddle<\/title>/);
+    assert.match(await (await fetch(url + '/')).text(), /Try the live demo/);
     const bad = await fetch(url + `/api/p/${project}/state`, { headers: { authorization: 'Bearer nope' } });
     assert.equal(bad.status, 401);
-    ok('dashboard is served and a wrong token is rejected');
+    ok('the landing page and the dashboard are served, and a wrong token is rejected');
 
     // shared knowledge: PROJECT.md, memory, skills
     bob.hook('post', { tool_name: 'Read', tool_input: {} }); // bob has now seen the (empty) shared state
@@ -258,7 +258,7 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
     const m = s1.models['claude-test'];
     assert.deepEqual([m.messages, m.output, m.input, m.cacheRead], [3, 40 + 7 + 3, 30, 3000]);
     assert(s1.activeMs >= before0.activeMs);
-    assert.match(await (await fetch(url + '/')).text(), /data-view="stats"/);
+    assert.match(await (await fetch(url + '/app')).text(), /data-view="stats"/);
     ok('the stats page counts conversations, prompts, time with Claude and tokens per person (numbers only)');
 
     // autopilot: every Claude is active for the team by default; "requests" only runs what is sent to it

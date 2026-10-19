@@ -180,7 +180,7 @@ async function cmdServer({ flags }) {
     if (server.huddleOpen) return console.log(`\n${label}: ${url}\n  anyone can start a project:  huddle new NAME --server ${url}`);
     const code = encodeInvite(url, token, project);
     console.log(`\n${label}: ${url}`);
-    console.log(`  dashboard:  ${url}/#invite=${code}`);
+    console.log(`  dashboard:  ${url}/app#invite=${code}`);
     console.log(`  invite:     ${joinCommand(code)}`);
   };
   console.log(`huddle server listening on port ${port} (data in ${dataDir})`);
@@ -598,7 +598,7 @@ async function cmdJoin({ pos, flags }) {
   const code = inv.token.startsWith('hm_') ? encodeInvite(inv.server, inv.token, inv.project) : await shortInvite(cfg);
   console.log(`
 ✓ joined "${inv.project.replace(/-[0-9a-f]{6,8}$/, '')}" as ${name}${mcp ? '' : ' (the huddle tools need registering by hand, see above)'}
-  Dashboard: ${inv.server}/#invite=${code}${inv.token.startsWith('hm_') ? '\n  (that link is yours alone: it opens the project as you)' : ''}`);
+  Dashboard: ${inv.server}/app#invite=${code}${inv.token.startsWith('hm_') ? '\n  (that link is yours alone: it opens the project as you)' : ''}`);
   if (agent !== 'codex' && process.stdin.isTTY && !flags.yes && await yes('Let Claude make routine edits, use git and run builds and tests here without asking each time?')) {
     const n = addPermissions(path.join(root, '.claude', 'settings.local.json'), permissionPreset(root));
     console.log(n ? '  done (in your own .claude/settings.local.json; deploys and anything risky still ask)' : '  already set');
@@ -1265,7 +1265,7 @@ async function cmdInvite({ flags }) {
   if (who.accounts) return cmdMembers({ pos: ['invite'], flags });
   const code = await shortInvite(cfg);
   console.log(joinCommand(code, cfg.server));
-  console.log(`\ndashboard: ${cfg.server}/#invite=${code}`);
+  console.log(`\ndashboard: ${cfg.server}/app#invite=${code}`);
 }
 
 // ---------- accounts, rules, notifications, health ----------
@@ -1382,7 +1382,7 @@ function cmdOpen() {
   // your approve key rides along (the page keeps it and drops it from the address bar), so this
   // browser can approve commands your Claude asks for
   const key = ownerKey(cfg);
-  const url = `${cfg.server}/#invite=${encodeInvite(cfg.server, cfg.token, cfg.project)}${key ? '&name=' + encodeURIComponent(cfg.name) + '&k=' + key : ''}`;
+  const url = `${cfg.server}/app#invite=${encodeInvite(cfg.server, cfg.token, cfg.project)}${key ? '&name=' + encodeURIComponent(cfg.name) + '&k=' + key : ''}`;
   if (key) humanClient().post('hello', { keyHash: sha(key) }).catch(() => {});
   const opener = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer' : 'xdg-open';
   spawn(opener, [url], { detached: true, stdio: 'ignore' }).on('error', () => console.log(url)).unref();

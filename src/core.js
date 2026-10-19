@@ -1366,7 +1366,7 @@ const NOTIFY_EVENTS = ['approval', 'stuck', 'done', 'failed', 'member'];
 function notify(p, event, text) {
   const hooks = (p.secretHooks || []).filter(h => !h.events || h.events.includes(event));
   if (!hooks.length) return;
-  const link = p.origin ? `${p.origin}/#p=${encodeURIComponent(p.name)}` : '';
+  const link = p.origin ? `${p.origin}/app#p=${encodeURIComponent(p.name)}` : '';
   const title = p.name.replace(/-[0-9a-f]{6,8}$/, '');
   for (const h of hooks) {
     const line = `[${title}] ${text}${link ? `\n${link}` : ''}`;

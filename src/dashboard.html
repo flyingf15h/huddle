@@ -680,7 +680,7 @@ dialog { background: var(--glass); backdrop-filter: blur(22px) saturate(1.3); bo
 </defs></svg>
 
 <div id="login" hidden>
-  <div class="hhead"><div class="brand"><svg><use href="#logo"/></svg>huddle</div><span class="grow"></span><span class="small muted" id="hwho"></span></div>
+  <div class="hhead"><div class="brand"><svg><use href="#logo"/></svg>huddle</div><span class="grow"></span><span class="small muted" id="hwho"></span><a class="small muted" href="/?about">About huddle</a></div>
   <div id="lerr" class="err" role="alert"></div>
   <section id="hmine">
     <h1 class="htitle">Your projects</h1>
@@ -702,7 +702,7 @@ dialog { background: var(--glass); backdrop-filter: blur(22px) saturate(1.3); bo
   </div>
   <div id="lgh" hidden>
     <div class="lor"><span>or</span></div>
-    <a class="ghbtn" id="lghbtn" href="/auth/github/login"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.05-.49.05-.49.81.06 1.23.83 1.23.83.72 1.23 1.88.88 2.34.67.07-.52.28-.88.51-1.08-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>Sign in with GitHub</a>
+    <a class="ghbtn" id="lghbtn" href="/auth/github/login?next=/app"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.05-.49.05-.49.81.06 1.23.83 1.23.83.72 1.23 1.88.88 2.34.67.07-.52.28-.88.51-1.08-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>Sign in with GitHub</a>
     <div id="lghprojects"></div>
   </div>
 </div>
@@ -2291,7 +2291,7 @@ for (const b of document.querySelectorAll('[data-irole]')) b.onclick = () => { i
 document.addEventListener('click', (e) => { if (e.target.closest('[data-goto-settings]')) { $('dlg-invite').close(); S.stab = 'team'; showView('settings'); } });
 const copy = (text, btn, label) => navigator.clipboard.writeText(text).then(() => { btn.textContent = 'Copied'; setTimeout(() => { btn.textContent = label; }, 1500); });
 $('copyjoin').onclick = () => copy($('joincmd').textContent, $('copyjoin'), 'Copy');
-$('copydash').onclick = async () => copy(`${location.origin}/#invite=${await invite()}`, $('copydash'), 'copy dashboard link');
+$('copydash').onclick = async () => copy(`${location.origin}/app#invite=${await invite()}`, $('copydash'), 'copy dashboard link');
 $('btn-help').onclick = () => $('dlg-help').showModal();
 $('tourgo').onclick = () => { $('dlg-help').close(); startTour(); };
 
@@ -2604,7 +2604,7 @@ async function teamTab() {
   const [{ members }, inv] = await Promise.all([api('members'), isOwner() ? api('invites') : Promise.resolve({ invites: [] })]);
   const ghLine = !gh.github ? '' : gh.user
     ? (members.find(m => m.name === S.me.name && m.github) ? `<span class="pill ok">GitHub ${esc(gh.user.login)} linked</span>` : `<button data-act="link-github">Link GitHub account ${esc(gh.user.login)}</button>`)
-    : `<a class="ghbtn" style="display:inline-flex" href="/auth/github/login?next=${encodeURIComponent('/#p=' + auth.project + '&gh=link')}">Sign in with GitHub</a>`;
+    : `<a class="ghbtn" style="display:inline-flex" href="/auth/github/login?next=${encodeURIComponent('/app#p=' + auth.project + '&gh=link')}">Sign in with GitHub</a>`;
   return `<div class="panel"><h3>People</h3><p class="pdesc">Removing someone stops their access at once, including any agent sessions they have open.</p>
     <div class="plist">${members.map(m => `<div class="srow">${avatar(m.name, true)}<span class="grow"><b>${esc(m.name)}</b>${m.name === S.me.name ? ' <span class="muted">(you)</span>' : ''}<span class="sub">${m.github ? 'GitHub ' + esc(m.github) + ' · ' : ''}${m.lastSeen ? 'active ' + esc(ago(m.lastSeen)) : 'not seen yet'}</span></span>
       ${isOwner() ? `<select data-role="${esc(m.name)}" aria-label="Role for ${esc(m.name)}">${['owner', 'member', 'viewer'].map(r => `<option value="${r}" ${m.role === r ? 'selected' : ''}>${ROLE_TEXT[r]}</option>`).join('')}</select>
@@ -3088,7 +3088,13 @@ async function start() {
   setInterval(() => { if (auth.name) api('hello', {}).catch(() => {}); }, 60000);
   setInterval(() => { renderTeam(); renderSide(); }, 30000);
 }
-if (shortFromLink) lookUpInvite(shortFromLink).then(inv => { auth = { ...auth, ...inv }; if (params.get('k')) { keys[inv.project] = params.get('k'); store.set('huddle.keys', JSON.stringify(keys)); } start(); })
+// /app#demo (the landing page's "Try the live demo"): a fresh demo project, straight away
+if (params.has('demo')) {
+  history.replaceState(null, '', location.pathname);
+  showLogin('Setting up a demo project with a simulated team…');
+  $('lerr').className = 'muted';
+  openDemo((t) => { $('lerr').textContent = t; }).catch(e => { $('lerr').className = 'err'; showLogin("Couldn't set up the demo: " + e.message); });
+} else if (shortFromLink) lookUpInvite(shortFromLink).then(inv => { auth = { ...auth, ...inv }; if (params.get('k')) { keys[inv.project] = params.get('k'); store.set('huddle.keys', JSON.stringify(keys)); } start(); })
   .catch(() => { auth.token = null; showLogin("That invite didn't work. Ask for a new one."); });
 else start();
 </script>

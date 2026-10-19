@@ -49,7 +49,7 @@ async function session(cfg, cookieHeader) {
 async function login(cfg, origin, next) {
   if (!configured(cfg)) return { status: 501, headers: { 'content-type': 'text/plain' }, body: 'GitHub sign-in is not set up on this server.' };
   const nonce = b64u(globalThis.crypto ? globalThis.crypto.getRandomValues(new Uint8Array(16)) : require('crypto').randomBytes(16));
-  const state = `${nonce}.${b64u(new TextEncoder().encode(String(next || '/').slice(0, 300)))}`;
+  const state = `${nonce}.${b64u(new TextEncoder().encode(String(next || '/app').slice(0, 300)))}`;
   const u = new URL('https://github.com/login/oauth/authorize');
   u.searchParams.set('client_id', cfg.clientId);
   u.searchParams.set('redirect_uri', origin + '/auth/github/callback');
