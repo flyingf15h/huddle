@@ -1283,7 +1283,7 @@ const MAX_PROBLEMS = 100;
 const OWNER_ROUTES = new Set(['POST member-role', 'POST member-remove', 'POST invite-revoke', 'GET invites', 'POST project-setting',
   'POST notify-set', 'POST notify-test', 'POST policy', 'POST merge-person', 'POST tidy', 'POST forget-agent']);
 // a viewer reads everything (dashboard, feed, code) and changes nothing
-const VIEWER_POSTS = new Set(['hello', 'inbox', 'link-github', 'redeem']);
+const VIEWER_POSTS = new Set(['hello', 'inbox', 'link-github', 'redeem', 'leave']);
 const hasOwner = (p) => Object.values(p.members || {}).some(m => m.role === 'owner');
 const newMemberToken = () => 'hm_' + crypto.randomBytes(24).toString('base64url');
 
@@ -1476,6 +1476,19 @@ Object.assign(routes, {
     audit(p, a.name, 'remove', `removed ${b.name} (${m.role})`);
     p.emit('members', { members: publicMembers(p), removed: b.name });
     return { ok: true };
+  },
+  // leaving on your own: your personal access ends (with no accounts there's nothing to end here;
+  // the browser just stops listing the project)
+  'POST leave': (p, b, q, ctx) => {
+    const name = (ctx.auth || {}).name;
+    if (!name || !(p.members || {})[name]) return { ok: true, accountRemoved: false };
+    const m = p.members[name];
+    if (m.role === 'owner' && Object.values(p.members).filter(x => x.role === 'owner').length < 2 && Object.keys(p.members).length > 1) throw httpError(409, 'make someone else an owner first, so the project still has one');
+    delete p.members[name];
+    for (const [k, l] of Object.entries(p.locks)) if (l.holderName === name) { delete p.locks[k]; p.emit('unlock', { path: l.path, holder: l.holder, holderName: l.holderName, reason: 'left the project' }); }
+    audit(p, name, 'remove', `${name} left the project`);
+    p.emit('members', { members: publicMembers(p) });
+    return { ok: true, accountRemoved: true };
   },
   // a person signed in with GitHub on the dashboard can open the project with that from then on
   'POST link-github': (p, b, q, ctx) => {

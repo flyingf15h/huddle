@@ -82,7 +82,11 @@ const ok = (m) => console.log('✓ ' + m);
     await ana('POST', 'project-setting', { agent: agent('ana'), sharedToken: false });
     assert.strictEqual((await s('GET', 'state')).status, 401);
     assert.ok((await bob('GET', 'state')).agents);
-    ok('removed people and revoked invites stop working at once, and the shared invite can be switched off');
+    const linv = await ana('POST', 'member-invite', { agent: agent('ana') });
+    const leaver = as((await call(null, 'POST', 'redeem', { code: linv.code, name: 'lea' }, P)).token);
+    assert.ok((await leaver('POST', 'leave', { agent: agent('lea') })).accountRemoved);
+    assert.strictEqual((await leaver('GET', 'state')).status, 401);
+    ok('removed people, people who leave and revoked invites stop working at once, and the shared invite can be switched off');
 
     // trust: never-allowed commands, private files, secrets out of the feed, the audit log
     await ana('POST', 'policy', { agent: agent('ana'), allow: ['npm test'], deny: ['git push', 'curl'] });

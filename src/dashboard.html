@@ -523,6 +523,8 @@ ol.steps { padding-left: 20px; } ol.steps li { margin-bottom: 10px; }
 .fieldset .hintline { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
 .fieldset textarea { width: 100%; min-height: 84px; font-family: var(--mono, ui-monospace, monospace); font-size: 12.5px; resize: vertical; }
 .fieldset input[type=url], .fieldset input[type=text] { width: 100%; }
+button.danger { border-color: var(--bad); color: var(--bad); background: transparent; font-weight: 600; }
+button.danger:hover { background: var(--bad-soft); border-color: var(--bad); }
 .pactions { display: flex; gap: 8px; align-items: center; justify-content: flex-end; padding: 0 16px 14px; flex-wrap: wrap; }
 .checks { display: flex; gap: 6px 14px; flex-wrap: wrap; font-size: 13px; }
 .checks label { display: inline-flex; align-items: center; gap: 6px; font-weight: 400; margin: 0; }
@@ -546,8 +548,29 @@ ol.steps { padding-left: 20px; } ol.steps li { margin-bottom: 10px; }
 .ghbtn svg { width: 16px; height: 16px; }
 #lghprojects { display: grid; gap: 6px; margin-top: 8px; }
 @media (max-width: 720px) { .pageview { padding: 12px 12px 24px; } .srow { flex-wrap: wrap; } .srow .grow { flex-basis: 60%; } .audit td { padding: 8px 10px; } .audit td:nth-child(2) { white-space: normal; } }
-#login { max-width: 420px; margin: 14vh auto; padding: 0 16px; display: flex; flex-direction: column; gap: 10px; }
+#login { max-width: 920px; margin: 0 auto; padding: 28px 16px 48px; display: flex; flex-direction: column; gap: 18px; }
 #login p { margin: 4px 0; }
+.hhead { display: flex; align-items: center; gap: 12px; }
+.hhead .brand { display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 700; }
+.hhead .brand svg { width: 30px; height: 30px; }
+.htitle { font-size: 22px; font-weight: 600; margin: 8px 0 12px; letter-spacing: -.01em; }
+.hgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.pcard { display: flex; flex-direction: column; gap: 10px; text-align: left; padding: 16px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--raised); box-shadow: var(--shadow-sm); font-weight: 400; position: relative; min-height: 132px; }
+.pcard:hover { border-color: var(--accent); background: var(--raised); }
+.pcard .pt { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 600; padding-right: 26px; }
+.pcard .pt span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pcard .pm { font-size: 13px; color: var(--muted); display: flex; gap: 6px 12px; flex-wrap: wrap; }
+.pcard .avs { display: flex; margin-top: auto; }
+.pcard .avs .av + .av { margin-left: -6px; box-shadow: 0 0 0 2px var(--raised); }
+.pcard .pforget { position: absolute; top: 10px; right: 10px; border: 0; background: none; color: var(--faint); padding: 2px 6px; font-size: 16px; line-height: 1; }
+.pcard .pforget:hover { color: var(--bad); background: var(--sunk); }
+.hempty { padding: 26px; text-align: center; color: var(--muted); border: 1px dashed var(--line-strong); border-radius: var(--radius); }
+.hcols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+.hcard { display: flex; flex-direction: column; gap: 10px; padding: 18px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--raised); box-shadow: var(--shadow-sm); }
+.hcard h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.hcard .cmd code { display: block; padding: 8px 10px; background: var(--sunk); border-radius: 6px; font-size: 12.5px; overflow-x: auto; }
+.vdesc { color: var(--muted); font-size: 13.5px; }
+@media (max-width: 720px) { .vdesc { display: none; } }
 .lrow { display: flex; gap: 8px; justify-content: flex-end; }
 .err { color: var(--bad); font-weight: 600; }
 
@@ -650,13 +673,29 @@ dialog { background: var(--glass); backdrop-filter: blur(22px) saturate(1.3); bo
 </defs></svg>
 
 <div id="login" hidden>
-  <div class="brand"><svg><use href="#logo"/></svg>huddle</div>
-  <p class="muted">Paste the invite code someone sent you.</p>
-  <input id="linvite" placeholder="Invite code" autocomplete="off" aria-label="Invite code">
-  <input id="lname" placeholder="Your name" autocomplete="name" aria-label="Your name">
-  <div class="lrow"><button id="lback" hidden>Back</button><button class="primary" id="lgo">Open project</button></div>
-  <div id="lerr" class="err"></div>
-  <button class="ghost" id="ldemo">No invite yet? Try a demo project</button>
+  <div class="hhead"><div class="brand"><svg><use href="#logo"/></svg>huddle</div><span class="grow"></span><span class="small muted" id="hwho"></span></div>
+  <div id="lerr" class="err" role="alert"></div>
+  <section id="hmine">
+    <h1 class="htitle">Your projects</h1>
+    <div id="hprojects" class="hgrid"></div>
+  </section>
+  <div class="hcols">
+    <section class="hcard">
+      <h2>Join a project</h2>
+      <p class="muted">Paste the invite code or link someone sent you.</p>
+      <input id="linvite" placeholder="Invite code" autocomplete="off" aria-label="Invite code">
+      <input id="lname" placeholder="Your name" autocomplete="name" aria-label="Your name">
+      <div class="lrow"><button class="primary" id="lgo">Open project</button></div>
+    </section>
+    <section class="hcard">
+      <h2>Try huddle</h2>
+      <p class="muted">A demo project with a simulated team: two people on Claude Code and one on Codex, working on a small online store. Nothing in it touches real code.</p>
+      <div class="lrow" style="justify-content:flex-start"><button id="ldemo">Open a demo project</button></div>
+      <h2 style="margin-top:18px">Start your own</h2>
+      <p class="muted">In your project's folder, run:</p>
+      <div class="cmd"><code>npx -y github:flyingf15h/huddle new</code></div>
+    </section>
+  </div>
   <div id="lgh" hidden>
     <div class="lor"><span>or</span></div>
     <a class="ghbtn" id="lghbtn" href="/auth/github/login"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.05-.49.05-.49.81.06 1.23.83 1.23.83.72 1.23 1.88.88 2.34.67.07-.52.28-.88.51-1.08-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>Sign in with GitHub</a>
@@ -672,7 +711,7 @@ dialog { background: var(--glass); backdrop-filter: blur(22px) saturate(1.3); bo
     <div class="navlist" id="views">
       <button data-view="timeline" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5h16M4 12h16M4 17.5h10"/></svg><span>Activity</span></button>
       <button data-view="code"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 7.5L4 12l4.5 4.5M15.5 7.5L20 12l-4.5 4.5"/></svg><span>Code</span></button>
-      <button data-view="brief"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4.5h10.5L19 8v11.5H5z"/><path d="M8.5 11h7M8.5 14.5h7M8.5 8h4"/></svg><span class="navtwo"><span>Brief &amp; memory</span><span class="navsub">Shared memory files between your team's agents</span></span></button>
+      <button data-view="brief"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4.5h10.5L19 8v11.5H5z"/><path d="M8.5 11h7M8.5 14.5h7M8.5 8h4"/></svg><span>Brief &amp; memory</span></button>
       <button data-view="stats"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19.5V11M10 19.5V5M15 19.5v-6M20 19.5V8.5"/></svg><span>Usage</span></button>
       <button data-view="health"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2.5-6 5 12 2.5-6h4"/></svg><span>Health</span><span class="navbadge" id="healthBadge" hidden></span></button>
       <button data-view="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>Team &amp; settings</span></button>
@@ -684,6 +723,7 @@ dialog { background: var(--glass); backdrop-filter: blur(22px) saturate(1.3); bo
   <div class="maincol">
   <header>
     <h1 id="vtitle">Activity</h1>
+    <span id="vdesc" class="vdesc"></span>
     <div id="filters" class="seg sm" role="group" aria-label="Show">
       <button data-f="all" class="on" title="Every prompt, step, reply, message and file change">Everything</button>
       <button data-f="key" title="Requests, prompts, replies, messages and hand-offs, without every tool step and file change">Highlights</button>
@@ -997,7 +1037,8 @@ if (params.get('name')) auth.name = params.get('name');
 if (fromInvite) auth = { ...auth, ...fromInvite };
 else if (params.get('token')) { auth.token = params.get('token'); auth.project = params.get('project'); }
 else {
-  const want = params.get('p') || store.get('huddle.last');
+  // (no project in the address: the home screen, where every project this browser knows is listed)
+  const want = params.get('p');
   if (want && known[want]) auth = { ...auth, project: want, token: known[want] };
 }
 const setHash = () => history.replaceState(null, '', auth.project ? '#p=' + encodeURIComponent(auth.project) : location.pathname);
@@ -1858,11 +1899,14 @@ async function loadFile(highlight) {
 }
 
 // ---------- views ----------
+const VIEW_DESC = { brief: "Shared memory files between your team's agents", code: "Everyone's shared branches, with live edits", stats: 'How much each person used their agent in this project',
+  health: "Whether huddle is working on everyone's computer", settings: 'People, access, rules and alerts for this project' };
 const VIEW_TITLES = { timeline: 'Activity', code: 'Code', brief: 'Brief & memory', stats: 'Usage', health: 'Health', settings: 'Team & settings' };
 function showView(v) {
   S.view = v;
   for (const b of document.querySelectorAll('[data-view]')) b.classList.toggle('on', b.dataset.view === v);
   $('vtitle').textContent = VIEW_TITLES[v];
+  $('vdesc').textContent = VIEW_DESC[v] || '';
   $('feed').hidden = v !== 'timeline';
   $('filters').hidden = $('whof').hidden = v !== 'timeline';
   $('codeview').hidden = v !== 'code';
@@ -2302,17 +2346,18 @@ function showMe() {
 $('pname').onclick = () => {
   if (menuFor === $('pname')) return closeMenu();
   const names = Object.keys(known);
-  openMenu($('pname'), `<div class="mh">Switch project</div>
+  openMenu($('pname'), `<button class="mi" role="menuitem" data-home>← All projects</button><hr><div class="mh">Switch project</div>
     ${names.map(n => `<button class="mi${n === auth.project ? ' cur' : ''}" role="menuitem" data-proj="${esc(n)}">${avatar(prettyProject(n), true)}<span>${esc(prettyProject(n))}</span>${n === auth.project ? '<span class="check" aria-label="current">✓</span>' : ''}</button>`).join('')}
-    <hr><button class="mi" role="menuitem" data-proj="">Open a project with an invite…</button>
+    <hr><button class="mi" role="menuitem" data-proj="">Join a project with an invite…</button>
     <button class="mi" role="menuitem" data-demo>Try a demo project</button>`, (m) => {
+    m.querySelector('[data-home]').onclick = () => { closeMenu(); goHome(); };
     const d = m.querySelector('[data-demo]');
     d.onclick = async () => { d.disabled = true; d.textContent = 'Setting up the demo…'; try { await openDemo((t) => { d.textContent = t; }); } catch (e) { d.textContent = "Couldn't make the demo: " + e.message; } };
     for (const b of m.querySelectorAll('[data-proj]')) b.onclick = () => {
       closeMenu();
       const v = b.dataset.proj;
       if (v === auth.project) return;
-      if (!v) { store.set('huddle.back', auth.project); history.replaceState(null, '', location.pathname); store.del('huddle.last'); return location.reload(); }
+      if (!v) return goHome();
       location.hash = '#p=' + encodeURIComponent(v);
     };
   });
@@ -2329,12 +2374,56 @@ $('nameinput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('na
 // pasting another invite (or #p=) into this tab only changes the hash, which doesn't reload
 window.addEventListener('hashchange', () => location.reload());
 
-// ---------- login ----------
+// ---------- home: every project this browser has opened, one card each ----------
 function showLogin(msg) {
-  setHash(); $('app').hidden = true; $('login').hidden = false; $('lname').value = auth.name; $('lerr').textContent = msg || '';
-  $('lback').hidden = !backTarget();
-  $('linvite').focus();
+  auth.project = null; auth.token = null;
+  history.replaceState(null, '', location.pathname);
+  document.title = 'huddle';
+  $('app').hidden = true; $('login').hidden = false; $('lname').value = auth.name; $('lerr').textContent = msg || '';
+  $('hwho').textContent = auth.name ? `You're ${auth.name}` : '';
+  renderHome().catch(() => {});
   githubLogin().catch(() => {});
+}
+function goHome() { store.del('huddle.last'); history.replaceState(null, '', location.pathname); location.reload(); }
+async function renderHome() {
+  const names = Object.keys(known);
+  const el = $('hprojects');
+  if (!names.length) { el.innerHTML = '<div class="hempty">No projects yet. Join one with an invite below, or open the demo to look around.</div>'; return; }
+  const card = (n, info) => {
+    const demo = !!store.get(demoKey(n));
+    const online = info ? [...new Set(info.state.agents.filter(a => a.online && a.kind !== 'human').map(a => a.name))] : [];
+    const team = info ? [...new Set([...info.state.agents.filter(a => a.kind !== 'human').map(a => a.name), ...(info.state.members || []).map(m => m.name)])] : [];
+    const open = info && info.board ? info.board.tasks.filter(t => t.status !== 'done').length : 0;
+    const stuck = info && info.board ? info.board.tasks.filter(t => t.status === 'blocked').length : 0;
+    return `<button class="pcard" data-open="${esc(n)}">
+      <span class="pt">${avatar(prettyProject(n), true)}<span>${esc(prettyProject(n))}</span>${demo ? '<span class="pill acc">Demo</span>' : ''}</span>
+      <span class="pm">${!info ? (info === null ? '<span class="err">Your access to this project ended</span>' : 'Loading…') : `<span>${online.length ? `<b style="color:var(--ok)">${online.length} online</b>` : 'Nobody online'}</span><span>${open} open task${open === 1 ? '' : 's'}</span>${stuck ? `<span style="color:var(--bad)">${stuck} stuck</span>` : ''}`}</span>
+      <span class="avs">${team.slice(0, 6).map(t => avatar(t, true)).join('')}</span>
+      <span class="pforget" role="button" tabindex="0" data-forget="${esc(n)}" title="Remove from this list" aria-label="Remove ${esc(prettyProject(n))} from this list">×</span>
+    </button>`;
+  };
+  el.innerHTML = names.map(n => card(n, undefined)).join('');
+  const infos = await Promise.all(names.map(async n => {
+    const get = (ep) => fetch(`/api/p/${encodeURIComponent(n)}/${ep}`, { headers: { authorization: 'Bearer ' + known[n] } }).then(r => { if (r.status === 401) throw new Error('gone'); return r.json(); });
+    try { const [state, board] = await Promise.all([get('state'), get('board').catch(() => null)]); return { state, board }; }
+    catch { return null; }
+  }));
+  // the ones with people online first, then the rest
+  const order = names.map((n, i) => [n, infos[i]]).sort((x, y) => ((y[1] && y[1].state.agents.some(a => a.online && a.kind !== 'human')) - (x[1] && x[1].state.agents.some(a => a.online && a.kind !== 'human'))));
+  el.innerHTML = order.map(([n, info]) => card(n, info)).join('');
+}
+$('hprojects').addEventListener('click', (e) => {
+  const f = e.target.closest('[data-forget]');
+  if (f) { e.stopPropagation(); forgetProject(f.dataset.forget); return renderHome(); }
+  const c = e.target.closest('[data-open]');
+  if (c) { store.set('huddle.last', c.dataset.open); location.hash = '#p=' + encodeURIComponent(c.dataset.open); }
+});
+// this browser stops listing the project (and holding its keys)
+function forgetProject(n) {
+  delete known[n]; store.set('huddle.projects', JSON.stringify(known));
+  delete keys[n]; store.set('huddle.keys', JSON.stringify(keys));
+  store.del(demoKey(n));
+  if (store.get('huddle.last') === n) store.del('huddle.last');
 }
 // signed in with GitHub: the projects that account is on, one click each
 async function githubLogin() {
@@ -2349,27 +2438,12 @@ async function githubLogin() {
       || '<p class="small muted" style="margin:0">No projects are linked to this GitHub account yet. Open one with its invite, then link GitHub in Team &amp; settings.</p>');
   for (const b of document.querySelectorAll('[data-ghproj]')) b.onclick = () => { auth = { ...auth, project: b.dataset.ghproj, token: 'github', name: b.dataset.ghname }; start(); };
 }
-// Back (or Escape) returns to the project you came from, or any other project this browser has opened
-function backTarget() {
-  const prev = store.get('huddle.back');
-  if (prev && known[prev] && prev !== auth.project) return prev;
-  return Object.keys(known).find(n => n !== auth.project) || null;
-}
-function goBack() {
-  const to = backTarget();
-  if (!to) return;
-  store.del('huddle.back'); store.set('huddle.last', to);
-  location.hash = '#p=' + encodeURIComponent(to);
-  location.reload();
-}
-$('lback').onclick = goBack;
 $('ldemo').onclick = async () => {
   const b = $('ldemo');
   b.disabled = true;
   if (!auth.name && $('lname').value.trim()) auth.name = $('lname').value.trim().replace(/\s+/g, '-');
   try { await openDemo((t) => { b.textContent = t; }); } catch (e) { b.disabled = false; b.textContent = 'Try a demo project'; $('lerr').textContent = "Couldn't make the demo: " + e.message; }
 };
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('login').hidden && !document.querySelector('dialog[open]')) goBack(); });
 $('linvite').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('lgo').click(); });
 $('lgo').onclick = async () => {
   const typed = $('linvite').value.trim();
@@ -2475,7 +2549,7 @@ async function teamTab() {
   const gh = await fetch('/auth/me').then(r => r.json()).catch(() => ({ github: false }));
   if (!S.me.accounts) {
     return `<div class="panel"><h3>Personal access</h3><p class="pdesc">Right now everyone joins with one shared invite, and anyone who has it is in. Set up accounts to give each person their own access with a role (owner, member or viewer) that you can change or take back at any time.</p>
-      <div class="pbody"><button class="primary" data-act="setup">Set up accounts</button> <span class="small muted" style="margin-left:8px">You become the owner. Everyone else keeps working until you switch the shared invite off.</span></div></div>`;
+      <div class="pbody"><button class="primary" data-act="setup">Set up accounts</button> <span class="small muted" style="margin-left:8px">You become the owner. Everyone else keeps working until you switch the shared invite off.</span></div></div>${leavePanel()}`;
   }
   const [{ members }, inv] = await Promise.all([api('members'), isOwner() ? api('invites') : Promise.resolve({ invites: [] })]);
   const ghLine = !gh.github ? '' : gh.user
@@ -2491,9 +2565,23 @@ async function teamTab() {
     <div class="panel"><h3>Access</h3>
       <div class="switchrow" style="border-top:0"><span class="grow"><b>The shared invite still works</b><span>Turn this off once everyone has their own access. Then only personal invites work.</span></span>${toggle('sharedToken', S.me.sharedToken)}</div>
       <div class="switchrow"><span class="grow"><b>Members can invite people</b><span>Members can invite other members and viewers. Only owners can invite owners.</span></span>${toggle('membersCanInvite', S.me.membersCanInvite)}</div></div>` : ''}
+    ${leavePanel(members)}
     ${gh.github ? `<div class="panel"><h3>Sign in with GitHub</h3><p class="pdesc">Link your GitHub account to open this project from any browser without an invite link.</p><div class="pbody">${ghLine}</div></div>` : ''}`;
 }
 
+function leavePanel(members = []) {
+  const demo = !!store.get(demoKey(auth.project));
+  const personal = !demo && S.me.accounts && S.me.via === 'member';
+  // the only owner of a team can't walk away and leave it without one
+  const soleOwner = personal && isOwner() && members.length > 1 && members.filter(m => m.role === 'owner').length < 2;
+  return `<div class="panel"><h3>Leave this project</h3><p class="pdesc">${demo ? 'The demo is removed from your projects. You can open a fresh one from the home screen any time.' : soleOwner
+    ? "You're the only owner. Make someone else an owner above first, so the team still has one."
+    : personal
+    ? "Your access ends right away, and you'd need a new invite to come back. Your past work stays in the project."
+    : 'This project is removed from this browser. Anyone with the shared invite, you included, can still open it again.'}
+    To also disconnect your computer, run <code>huddle leave</code> in the project folder.</p>
+    <div class="pactions" style="padding-top:12px"><span class="small muted" id="leaveMsg"></span><button class="danger" data-act="leave" ${soleOwner ? 'disabled' : ''}>Leave ${esc(prettyProject(auth.project))}</button></div></div>`;
+}
 function rulesTab() {
   const ps = S.projectSettings || {};
   const pol = ps.policy || {};
@@ -2574,6 +2662,12 @@ function wireSettings() {
       await loadMe(); renderSettings();
     });
     if (act === 'link-github') return run(async () => { await api('link-github', {}); renderSettings(); });
+    if (act === 'leave') {
+      if (!confirm(`Leave ${prettyProject(auth.project)}?`)) return;
+      const done = () => { clearTimeout(demoTimer); forgetProject(auth.project); goHome(); };
+      if (store.get(demoKey(auth.project))) return done();
+      return api('leave', {}).then(done).catch(e => msg('leaveMsg', e.message, true));
+    }
     if (act === 'save-rules') return run(async () => {
       const lines = (id) => $(id).value.split('\n').map(x => x.trim()).filter(Boolean);
       const sharing = (el.querySelector('[data-sharing].on') || {}).dataset;
@@ -2684,7 +2778,6 @@ async function openDemo(status) {
   store.set('huddle.projects', JSON.stringify(known));
   store.set('huddle.last', d.project);
   if (!auth.name) { auth.name = d.name; store.set('huddle.name', d.name); }
-  if (auth.project) store.set('huddle.back', auth.project);
   location.hash = '#p=' + encodeURIComponent(d.project);
   location.reload();
 }
@@ -2717,7 +2810,7 @@ function runDemo() {
   };
   demoTimer = setTimeout(tick, 3000);
 }
-$('demoLeave').onclick = () => { clearTimeout(demoTimer); goBack(); if (!backTarget()) { store.del('huddle.last'); history.replaceState(null, '', location.pathname); location.reload(); } };
+$('demoLeave').onclick = () => { clearTimeout(demoTimer); goHome(); };
 
 // ---------- live events ----------
 function applySnapshot(s) {
