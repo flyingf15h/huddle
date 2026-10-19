@@ -302,19 +302,19 @@ details.goal > summary { list-style: none; cursor: pointer; padding: 11px 13px 1
 details.goal > summary::-webkit-details-marker { display: none; }
 details.goal > summary:hover { background: var(--sunk); }
 .gtitle { display: flex; gap: 8px; align-items: flex-start; }
-.gtitle .gt { flex: 1; font-weight: 600; overflow-wrap: anywhere; line-height: 1.35; font-size: 15px; }
+.gtitle .gt { flex: 1; font-weight: 600; overflow-wrap: anywhere; line-height: 1.35; font-size: 14.5px; }
 .chev { flex: none; color: var(--faint); transition: transform .15s; width: 12px; height: 12px; margin-top: 4px; }
 details.goal[open] > summary .chev { transform: rotate(90deg); }
 .tags { display: flex; gap: 5px; flex-wrap: wrap; margin: 6px 0 0 20px; }
 .tag { font-size: 11.5px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--pop-soft); color: var(--pop-ink); }
 .progress { flex: 1; height: 5px; background: var(--sunk); border-radius: 99px; overflow: hidden; max-width: 140px; }
 .progress span { display: block; height: 100%; background: var(--ok); border-radius: 99px; transition: width .4s; }
-.gmeta { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--muted); margin: 5px 0 0 20px; }
+.gmeta { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); margin: 7px 0 0 20px; }
 .gfull { margin: 0 13px 10px 33px; font-size: 13px; color: var(--muted); }
 .gfull summary { cursor: pointer; font-weight: 600; color: var(--accent); }
 .gfull div { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 4px; max-height: 220px; overflow: auto; }
 .tlist { padding: 0 6px 8px; }
-.trow { display: flex; gap: 11px; align-items: flex-start; width: 100%; text-align: left; border: 0; border-radius: 10px; background: none; padding: 9px 9px; font-weight: 400; }
+.trow { display: flex; gap: 10px; align-items: flex-start; width: 100%; text-align: left; border: 0; border-radius: 8px; background: none; padding: 8px 8px; font-weight: 400; }
 .trow + .trow, .tdetail + .trow { border-top: 1px solid var(--line); border-radius: 0 0 10px 10px; }
 .trow:hover { background: var(--wash); }
 .trow .dot { margin-top: 5px; }
@@ -323,9 +323,31 @@ details.goal[open] > summary .chev { transform: rotate(90deg); }
 .dot.done { border-color: var(--ok); background: var(--ok); }
 .dot.blocked { border-color: var(--bad); background: var(--bad); }
 .tmain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.trow .tt { font-size: 14.5px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; color: var(--ink); }
-.trow.done .tt { color: var(--muted); font-weight: 500; text-decoration: line-through; text-decoration-color: var(--line-strong); }
-.tmeta { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); }
+.trow .tt { font-size: 14px; font-weight: 500; line-height: 1.4; overflow-wrap: anywhere; color: var(--ink); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.trow.done .tt { color: var(--muted); }
+.towner { flex: none; display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); margin-top: 1px; max-width: 84px; }
+.towner > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trow.done .towner { opacity: .7; }
+.towner .av.sm, .frow .av.sm { width: 18px; height: 18px; font-size: 10px; border-radius: 5px; }
+.gsub { display: block; font-size: 12.5px; font-weight: 400; color: var(--muted); margin-top: 2px; }
+details.finished { margin-top: 4px; }
+details.finished > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--muted); padding: 6px 2px; border-radius: 6px; }
+details.finished > summary::-webkit-details-marker { display: none; }
+details.finished > summary:hover { color: var(--ink); }
+details.finished > summary .chev { margin-top: 0; }
+details.finished[open] > summary .chev { transform: rotate(90deg); }
+details.finished .count { font-size: 11.5px; font-weight: 600; color: var(--muted); background: var(--sunk); border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; }
+.flist { display: flex; flex-direction: column; margin-top: 2px; }
+.frow { display: flex; align-items: center; gap: 8px; width: 100%; border: 0; background: none; text-align: left; padding: 6px 6px; border-radius: 6px; font-size: 13px; font-weight: 400; color: var(--muted); }
+.frow:hover { background: var(--wash); color: var(--ink); }
+.frow > svg { flex: none; width: 12px; height: 12px; color: var(--ok); }
+.frow .ft { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.frow .fn { flex: none; font-size: 11.5px; color: var(--faint); }
+.frow .fav { flex: none; display: inline-flex; }
+.frow .fav .av + .av { margin-left: -5px; box-shadow: 0 0 0 2px var(--bg); }
+.frow .fa { flex: none; width: 26px; text-align: right; font-size: 11.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.fdetail { background: var(--raised); border: 1px solid var(--line); border-radius: 8px; margin: 2px 0 6px; padding: 2px; }
+.tmeta { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
 .tmeta .who { font-weight: 600; color: var(--ink); }
 .tmeta > span + span:not(.av)::before { content: '·'; margin-right: 7px; color: var(--faint); }
 .tmeta .who::before { display: none; }
@@ -837,7 +859,11 @@ function openMenu(anchor, html, ready) {
   m.innerHTML = html;
   document.body.append(m);
   const r = anchor.getBoundingClientRect();
-  m.style.top = (r.bottom + 6) + 'px';
+  // open upward when the button sits low (the my-Claude button is at the bottom of the sidebar)
+  const below = innerHeight - r.bottom - 8, h = m.offsetHeight;
+  if (h + 6 > below && r.top > below) { m.style.top = Math.max(8, r.top - 6 - h) + 'px'; m.style.maxHeight = (r.top - 14) + 'px'; }
+  else { m.style.top = (r.bottom + 6) + 'px'; m.style.maxHeight = (below - 6) + 'px'; }
+  m.style.overflowY = 'auto';
   m.style.left = Math.max(8, Math.min(r.left, innerWidth - m.offsetWidth - 8)) + 'px';
   menuFor = anchor;
   anchor.setAttribute('aria-expanded', 'true');
@@ -1465,7 +1491,7 @@ $('you').addEventListener('click', () => { if (!auth.name) return; const r = $('
 document.addEventListener('mousedown', (e) => { if ($('namepop') && !e.target.closest('#namepop')) closeNamePop(); });
 
 // ---------- side panel: tasks, locks, files ----------
-S.tf = 'open'; S.openTask = null; S.goalOpen = {}; S.showDone = {};
+S.tf = 'open'; S.openTask = null; S.openGoal = null; S.goalOpen = {}; S.showDone = {}; S.showFinished = false;
 const ORDER = { blocked: 0, doing: 1, todo: 2, done: 3 };
 // what checked the work before it merged, and anything it's waiting on someone's OK for
 const TASK_STATE = { doing: 'Working on it', blocked: 'Stuck', done: 'Done' };
@@ -1480,28 +1506,50 @@ function checkBits(t, short) {
   else if (c.review === 'ok') out.push('<span class="ck good" title="Reviewed by Sonnet">Reviewed</span>');
   return out.join('');
 }
+// old titles as people typed them, made readable: "Kelly: sync git" loses the name (the owner is shown anyway),
+// "(goal 7ae24bf0)" and other parentheses go, "FIX THE 2D STEP ANIMATION" stops shouting, "Dont" gets its apostrophe
+const SHOUT_KEEP = /^(?:\d\w*|[A-Z]{1,3}\d*)$/, SHOUT_WORDS = /^(THE|AND|FOR|NOT|ALL|ADD|USE|GET|SET|RUN|NEW|OLD|TOP|FIX|BUG|OUT|OFF|TWO|ONE|KEY|TAB|ON|TO|OF|IN|IT|IS|AT|BY|OR|A|AN|MY|NO|UP)$/;
+function tidyTitle(t) {
+  t = String(t || '');
+  const names = people().map(p => p.name).filter(Boolean).map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  if (names.length) t = t.replace(new RegExp(`^(${names.join('|')})\\s*:\\s*`, 'i'), '');
+  t = t.replace(/\s*\([^)]*(\)|$)/g, '').replace(/,?\s*(continuing|for|from|on top of)?\s*(goal|task|request|commit)\s+[0-9a-f]{7,40}\b/gi, '').replace(/\s+(?=[0-9a-f]*\d)[0-9a-f]{7,40}\b/g, '');
+  // three or more capitalised words in a row read as shouting; acronyms like MCP or 2D stay
+  t = t.replace(/\b[A-Z0-9][A-Z0-9'-]*(?:\s+[A-Z0-9][A-Z0-9'-]*)+\b/g, (run) => /[A-Z]{4}/.test(run) ? run.split(/\s+/).map(w => SHOUT_KEEP.test(w) && !SHOUT_WORDS.test(w) ? w : w.toLowerCase()).join(' ') : run)
+    .replace(/\b(THE|AND|FOR|NOT|ALL)\b(?=\s+[a-z])/g, (w) => w.toLowerCase());
+  t = t.replace(/\b(do|does|did|is|are|was|were|ca|wo|could|would|should|have|has)nt\b/gi, (w, a) => a + "n't");
+  t = t.replace(/\s{2,}/g, ' ').replace(/[\s,:;-]+$/, '').trim();
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
 // a task or request as the team should read it: past "From Kelly (…):", "Re:", "[TAG]" and "NON-DEMO, do not
 // start before …" to the actual ask (the same cleanup the server does for new ones); the tag becomes a label
 function titleParts(raw) {
   const text = String(raw || '');
   const tag = ((/^\s*\[([^\]]{1,20})\]/.exec(text) || [])[1] || (/^\s*([A-Z][A-Z0-9-]{2,20})\s*[,:—–]/.exec(text) || [])[1] || '').trim();
+  const handed = /^\s*from\b/i.test(text);
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   let t = lines.shift() || '';
-  for (let k = 0; k < 6; k++) {
+  for (let k = 0; k < 8; k++) {
     const before = t;
-    t = t.replace(/^from [\w .'-]{1,40}?(\s*\([^)]{0,100}\))?\s*[:,—–-]\s*/i, '')
+    t = t.replace(/^from [\w .'-]{1,40}?(\s*\([^)]{0,400}\))?\s*[:,.;—–-]\s*/i, '')
       .replace(/^[\w .'-]{1,30} asked (her|his|their|my|your) claude to [^:]{0,40}:\s*/i, '')
       .replace(/^(re|fwd?|task|request|todo|note)\s*:\s*/i, '')
       .replace(/^\[[^\]]{1,30}\]\s*/, '')
       .replace(/^[A-Z][A-Z0-9-]{2,20}\s*[,:—–-]\s*/, '')
+      .replace(/^(task|part|step)\s*\d+\s*[,:.)-]\s*|^(\(?\d+[.)]|[-*•])\s+/i, '')
       .replace(/^(do not|don'?t) start (before|until)[^.;]*[.;]\s*/i, '')
       .replace(/^finish request [0-9a-f]{6,10}\s*\(["“]?([^"”)]+)["”]?\)[.:]?\s*/i, '$1. ');
+    // what a Claude passing work on says about who asked: "Fei asked. …", "Fei asked me to pass this on: …"
+    if (handed) t = t.replace(/^[\w '-]{1,30}? asked( me)?( to [^.:;]{0,160})?\s*[.:;,]\s*/i, '');
+    // an intro to a list ("two things for Kelly's Claude:", "Fei's decisions:") is named by its first item
+    if ((!t.trim() || /:\s*$/.test(t)) && lines.length && /^(\(?\d+[.)]|[-*•]|(task|part|step)\s*\d)/i.test(lines[0])) t = lines.shift();
     if (!t.trim() && lines.length) t = lines.shift();
     if (t === before) break;
   }
   const end = t.search(/[.?!;](\s|$)/);
   if (end > 12) t = t.slice(0, end);
-  return { title: shortTitle(t, 64) || shortTitle(text, 64), tag: tag && !/^(RE|FWD|TODO|NOTE)$/i.test(tag) ? tag : '' };
+  t = tidyTitle(t);
+  return { title: shortTitle(t, 64) || shortTitle(tidyTitle(text), 64), tag: tag && !/^(RE|FWD|TODO|NOTE)$/i.test(tag) ? tag : '' };
 }
 // the first of these that still says something once cleaned (a stored title can be cut off right after
 // its preamble; the request's full text then has the real ask)
@@ -1515,6 +1563,12 @@ function bestTitle(...texts) {
   }
   return first || { title: '', tag: '' };
 }
+function goalTitle(g) {
+  const r = bestTitle(g.title, g.text);
+  const m = /^([^:]{3,32}):\s+(.{6,})$/.exec(r.title);
+  return m && m[1].split(' ').length <= 4 ? { ...r, title: m[1], sub: m[2].charAt(0).toUpperCase() + m[2].slice(1) } : r;
+}
+const agoShort = (t) => { const s = Math.max(0, Math.round((Date.now() - t) / 1000)); return s < 3600 ? Math.max(1, Math.round(s / 60)) + 'm' : s < 86400 ? Math.round(s / 3600) + 'h' : Math.round(s / 86400) + 'd'; };
 const tagChip = (tag) => tag ? `<span class="ttag">${esc(tag)}</span>` : '';
 // why a stuck task is stuck, in one line (its latest note, without huddle's prefixes)
 function stuckReason(t) {
@@ -1528,16 +1582,23 @@ function taskRow(t, b, groupTag) {
   const { title, tag: tg } = bestTitle(t.title, t.detail);
   const tag = tg && tg !== groupTag ? tg : '';
   const why = t.status === 'blocked' ? stuckReason(t) : '';
-  return `<button class="trow ${t.status}" data-task="${esc(t.id)}" aria-expanded="${open}">
+  // the second line only says what isn't obvious from the dot: working, stuck, waiting, needs an OK
+  const meta = t.status === 'done' ? '' : [
+    t.status === 'doing' ? `<span class="st doing">Working on it</span>` : t.status === 'blocked' && !why ? `<span class="st blocked">Stuck</span>` : '',
+    waits.length && t.status === 'todo' ? '<span>Waiting on another task</span>' : '',
+    t.status === 'doing' && (t.updated || t.at) ? `<span title="last change">${esc(ago(t.updated || t.at))}</span>` : '',
+    checkBits(t, true),
+  ].filter(Boolean).join('');
+  return `<button class="trow ${t.status}" data-task="${esc(t.id)}" aria-expanded="${open}" title="${esc(title)}">
       <span class="dot ${t.status}" aria-hidden="true"></span>
-      <span class="tmain"><span class="tt">${tagChip(tag)}${esc(title)}</span>${why ? `<span class="twhy">${esc(why)}</span>` : ''}
-        <span class="tmeta">${t.owner ? avatar(t.owner, true) + `<span class="who">${esc(t.owner)}</span>` : '<span class="who">Nobody yet</span>'}${TASK_STATE[t.status] ? `<span class="st ${t.status}">${TASK_STATE[t.status]}</span>` : ''}${waits.length && t.status === 'todo' ? '<span>Waiting on another task</span>' : ''}${t.status !== 'done' && (t.updated || t.at) ? `<span class="faint" title="last change">${esc(ago(t.updated || t.at))}</span>` : ''}${checkBits(t, true)}</span></span>
+      <span class="tmain"><span class="tt">${tagChip(tag)}${esc(title)}</span>${why ? `<span class="twhy">${esc(why)}</span>` : ''}${meta ? `<span class="tmeta">${meta}</span>` : ''}</span>
+      <span class="towner">${t.owner ? `${avatar(t.owner, true)}<span>${esc(t.owner)}</span>` : '<span class="faint">Unassigned</span>'}</span>
     </button>
     ${t.status === 'blocked' || open ? `<div class="tacts">${t.status !== 'done' ? `<button class="small" data-taskdo="todo" data-tid="${esc(t.id)}">Run again</button><button class="small" data-taskdo="done" data-tid="${esc(t.id)}">Mark done</button>` : `<button class="small" data-taskdo="todo" data-tid="${esc(t.id)}">Reopen</button>`}</div>` : ''}
     ${open ? `<div class="tdetail">
-      <div class="small muted">${statusWord(t.status)}${t.effort ? ' · ' + EFFORT_WORD[t.effort] + ' job' : ''} · from ${esc(t.by)} ${ago(t.at)}${checkBits(t) ? ' · ' : ''}<span class="tmeta" style="display:inline-flex">${checkBits(t)}</span></div>
-      ${t.detail && t.detail.trim() !== t.title.trim() ? `<p>${esc(t.detail)}</p>` : ''}
-      ${waits.length ? `<p><b>Waiting for:</b> ${waits.map(x => esc(x.title)).join('; ')}</p>` : ''}
+      <div class="small muted">${statusWord(t.status)}${t.effort ? ' · ' + EFFORT_WORD[t.effort] + ' job' : ''} · asked by ${esc(t.by)} ${ago(t.at)}${checkBits(t) ? ' · ' : ''}<span class="tmeta" style="display:inline-flex">${checkBits(t)}</span></div>
+      ${t.detail && t.detail.trim() !== t.title.trim() ? `<p>${esc(t.detail)}</p>` : title !== t.title ? `<p class="muted">${esc(t.title)}</p>` : ''}
+      ${waits.length ? `<p><b>Waiting for:</b> ${waits.map(x => esc(bestTitle(x.title).title)).join('; ')}</p>` : ''}
       ${note ? `<p><b>Latest note</b> <span class="faint">(${esc(note.by)}, ${ago(note.at)})</span>: ${esc(note.text)}</p>` : ''}
       ${t.owner ? `<button class="link small" data-person-filter="${esc(t.owner)}">See ${esc(t.owner)}'s work</button>` : ''}
     </div>` : ''}`;
@@ -1583,34 +1644,44 @@ function renderSide() {
   const b = S.board;
   const mine = myName();
   let goals = b ? b.goals.slice().reverse() : [];
-  if (S.tf === 'open') goals = goals.filter(g => g.status !== 'done');
   if (S.tf === 'mine') goals = goals.filter(g => b.tasks.some(t => t.goalId === g.id && t.owner === mine));
-  // stuck work first, then work in progress, then what's waiting, then finished
-  const rank = (g) => { const ts = b.tasks.filter(t => t.goalId === g.id); return ts.some(t => t.status === 'blocked') ? 0 : ts.some(t => t.status === 'doing') ? 1 : g.status === 'done' ? 3 : 2; };
-  goals = goals.map((g, i) => [g, i]).sort((x, y) => rank(x[0]) - rank(y[0]) || x[1] - y[1]).map(x => x[0]).slice(0, 15);
-  const filt = `<div class="tfilter">${[['open', 'Open'], ['mine', 'Mine'], ['all', 'All']].map(([k, l]) => `<button data-tf="${k}" class="${S.tf === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
-  const body = goals.map((g, i) => {
+  // stuck work first, then work in progress, then what's waiting
+  const rank = (g) => { const ts = b.tasks.filter(t => t.goalId === g.id); return ts.some(t => t.status === 'blocked') ? 0 : ts.some(t => t.status === 'doing') ? 1 : 2; };
+  const live = goals.filter(g => g.status !== 'done').map((g, i) => [g, i]).sort((x, y) => rank(x[0]) - rank(y[0]) || x[1] - y[1]).map(x => x[0]).slice(0, 15);
+  const finished = goals.filter(g => g.status === 'done').slice(0, 30);
+  const filt = `<div class="tfilter">${[['open', 'Everyone'], ['mine', 'Mine']].map(([k, l]) => `<button data-tf="${k}" class="${S.tf === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+  const body = live.map((g, i) => {
     let ts = b.tasks.filter(t => t.goalId === g.id);
     if (S.tf === 'mine') ts = ts.filter(t => t.owner === mine);
     ts.sort((x, y) => ORDER[x.status] - ORDER[y.status]);
     const all = b.tasks.filter(t => t.goalId === g.id);
     const done = all.filter(t => t.status === 'done').length;
-    const isOpen = S.goalOpen[g.id] ?? (g.status !== 'done' && i < 4);
+    const isOpen = S.goalOpen[g.id] ?? i < 4;
     const doneTs = ts.filter(t => t.status === 'done'), liveTs = ts.filter(t => t.status !== 'done');
     const showDone = S.showDone[g.id] || !liveTs.length;
     // a request that is one task is shown as that task, not as a heading with a copy of it underneath
     if (all.length === 1 && ts.length === 1) return `<div class="goal single">${taskRow(ts[0], b)}</div>`;
-    if (!all.length) { const { title, tag } = bestTitle(g.title, g.text); return `<div class="goal single"><div class="trow todo"><span class="dot todo" aria-hidden="true"></span><span class="tmain"><span class="tt">${tagChip(tag)}${esc(title)}</span><span class="tmeta"><span>${g.status === 'planning' ? 'Being split up' : 'Waiting for a Claude'}</span><span>from ${esc(g.byName)}</span></span></span></div></div>`; }
-    const gp = bestTitle(g.title, g.text);
+    if (!all.length) { const { title, tag } = bestTitle(g.title, g.text); return `<div class="goal single"><div class="trow todo"><span class="dot todo" aria-hidden="true"></span><span class="tmain"><span class="tt">${tagChip(tag)}${esc(title)}</span><span class="tmeta"><span>${g.status === 'planning' ? 'Being split into tasks' : 'Waiting for a Claude'}</span></span></span><span class="towner">${avatar(g.byName, true)}<span>${esc(g.byName)}</span></span></div></div>`; }
+    const gp = goalTitle(g);
     return `<details class="goal" data-goal="${esc(g.id)}" ${isOpen ? 'open' : ''}>
-      <summary><div class="gtitle"><svg class="chev" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 3l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="gt" title="${esc(g.text.slice(0, 600))}">${tagChip(gp.tag)}${esc(gp.title)}</span></div>
-        <div class="gmeta"><span class="num">${all.length ? (done === all.length ? 'All done' : `${done} of ${all.length} done`) : g.status === 'planning' ? 'Being split up' : 'Waiting for a Claude'}</span>${all.length ? `<span class="progress" aria-hidden="true"><span style="width:${Math.round(100 * done / all.length)}%"></span></span>` : ''}</div></summary>
+      <summary><div class="gtitle"><svg class="chev" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 3l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="gt" title="${esc(g.text.slice(0, 600))}">${tagChip(gp.tag)}${esc(gp.title)}${gp.sub ? `<span class="gsub">${esc(gp.sub)}</span>` : ''}</span></div>
+        <div class="gmeta"><span class="progress" aria-hidden="true"><span style="width:${Math.round(100 * done / all.length)}%"></span></span><span class="num">${done} of ${all.length} done</span></div></summary>
       <div class="tlist">${liveTs.map(t => taskRow(t, b, gp.tag)).join('')}
         ${doneTs.length ? (showDone ? doneTs.map(t => taskRow(t, b, gp.tag)).join('') : `<button class="link showdone" data-showdone="${esc(g.id)}">Show ${doneTs.length} done</button>`) : ''}
-        ${!ts.length && all.length ? '<div class="quiet">None of these are yours.</div>' : ''}</div>
+        ${!ts.length ? '<div class="quiet">None of these are yours.</div>' : ''}</div>
     </details>`;
   }).join('');
-  $('tasks').innerHTML = filt + (body || `<div class="quiet">${S.tf === 'mine' ? 'No tasks assigned to you.' : S.tf === 'open' ? 'No open tasks.' : 'No tasks yet.'}</div>`);
+  // finished requests: one line each, newest first, folded away unless asked for
+  const fin = finished.length ? `<details class="finished" ${S.showFinished ? 'open' : ''}><summary><svg class="chev" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 3l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Finished <span class="count">${finished.length}</span></summary>
+    <div class="flist">${finished.map(g => {
+      const all = b.tasks.filter(t => t.goalId === g.id);
+      const owners = [...new Set(all.map(t => t.owner).filter(Boolean))];
+      const t1 = all.length === 1 ? all[0] : null;
+      const { title } = t1 ? bestTitle(t1.title, t1.detail) : goalTitle(g);
+      const at = Math.max(g.at, ...all.map(t => t.updated || t.at));
+      return `<button class="frow" ${t1 ? `data-task="${esc(t1.id)}"` : `data-fgoal="${esc(g.id)}"`} title="${esc(title)}"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.3l2.3 2.2 4.7-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="ft">${esc(title)}</span>${all.length > 1 ? `<span class="fn">${all.length} tasks</span>` : ''}<span class="fav">${owners.slice(0, 3).map(o => avatar(o, true)).join('')}</span><span class="fa">${esc(agoShort(at))}</span></button>${t1 && S.openTask === t1.id ? `<div class="fdetail">${taskRow(t1, b)}</div>` : ''}${!t1 && S.openGoal === g.id ? `<div class="fdetail tlist">${all.map(t => taskRow(t, b)).join('')}</div>` : ''}`;
+    }).join('')}</div></details>` : '';
+  $('tasks').innerHTML = filt + (body || `<div class="quiet">${S.tf === 'mine' ? 'Nothing of yours is in progress.' : 'Nothing in progress.'}</div>`) + fin;
   const locks = Object.values(S.locks);
   $('lockcount').textContent = locks.length ? locks.length : '';
   $('locks').innerHTML = locks.map(l => `<button class="row-item" data-file="${esc(l.path)}" data-branch="${esc(l.branch || '')}">${avatar(l.holderName, true)}<span class="grow"><span class="path">${esc(l.path)}${l.dir ? ' <span class="faint">(whole folder)</span>' : ''}</span><br><span class="small muted">${esc(l.holderName)} · ${ago(l.since)}${l.branch ? ' · ' + esc(l.branch) : ''}</span></span><span aria-label="locked">🔒</span></button>`).join('')
@@ -1628,7 +1699,11 @@ document.addEventListener('click', async (e) => {
   await api('task-update', { id: b.dataset.tid, status, note: status === 'done' ? `${myName()} marked it done from the dashboard` : `${myName()} asked for it to run again` }).catch(() => {});
   await loadBoard().catch(() => {});
 }, true);
-document.addEventListener('toggle', (e) => { if (e.target.matches && e.target.matches('details.goal')) S.goalOpen[e.target.dataset.goal] = e.target.open; }, true);
+document.addEventListener('toggle', (e) => {
+  if (!e.target.matches) return;
+  if (e.target.matches('details.goal')) S.goalOpen[e.target.dataset.goal] = e.target.open;
+  if (e.target.matches('details.finished')) S.showFinished = e.target.open;
+}, true);
 
 // ---------- clicks that work anywhere ----------
 document.addEventListener('click', (e) => {
@@ -1644,6 +1719,8 @@ document.addEventListener('click', (e) => {
   if (tf) { S.tf = tf.dataset.tf; return renderSide(); }
   const row = t.closest('[data-task]');
   if (row) { S.openTask = S.openTask === row.dataset.task ? null : row.dataset.task; return renderSide(); }
+  const fg = t.closest('[data-fgoal]');
+  if (fg) { S.openGoal = S.openGoal === fg.dataset.fgoal ? null : fg.dataset.fgoal; return renderSide(); }
   const sd = t.closest('[data-showdone]');
   if (sd) { S.showDone[sd.dataset.showdone] = true; return renderSide(); }
   const pf = t.closest('[data-person-filter]');
@@ -1944,6 +2021,9 @@ $('to').addEventListener('change', updateHint);
 const grow = () => { const t = $('text'); t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 240) + 'px'; };
 $('text').addEventListener('input', grow);
 $('text').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $('composer').requestSubmit(); } });
+const isQuickQuestion = (text) => text.length <= 160 && !/\n/.test(text.trim()) &&
+  (/\?\s*$/.test(text) || /^(are|is|did|do|does|have|has|was|were|what|why|how|when|where|which|who|status|any update)\b/i.test(text)) &&
+  !/^(can|could|would|will) (you|u)\b/i.test(text);
 $('composer').onsubmit = async (e) => {
   e.preventDefault();
   const text = $('text').value.trim();
@@ -1956,6 +2036,15 @@ $('composer').onsubmit = async (e) => {
       await api('message', { to: to.slice(1), text });
       $('text').value = ''; grow();
       $('sendmsg').textContent = `Sent to ${sessionName(to.slice(1))}.`;
+      setTimeout(() => { $('sendmsg').textContent = ''; }, 4000);
+      $('sendbtn').disabled = false;
+      return;
+    }
+    // "are you done?" to someone's Claude is a question for it, not a task for the board
+    if (to && isQuickQuestion(text)) {
+      await api('message', { to, text });
+      $('text').value = ''; grow();
+      $('sendmsg').textContent = `Asked ${to === myName() ? 'your Claude' : claudeOf(to)}. The answer will show up here.`;
       setTimeout(() => { $('sendmsg').textContent = ''; }, 4000);
       $('sendbtn').disabled = false;
       return;

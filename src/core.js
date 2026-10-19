@@ -94,17 +94,23 @@ function shortInviteCode() {
 function requestTitle(text) {
   // look past what a Claude passing work on puts first: "From Kelly (Kelly asked her Claude to send this):",
   // "Re:", "[NON-DEMO]", "NON-DEMO, do not start before …", "Finish request 1a2b3c4d ("the real ask")"
+  const handed = /^\s*from\b/i.test(String(text || ''));
   const lines = String(text || '').split('\n').map(l => l.trim()).filter(Boolean);
   let t = lines.shift() || '';
-  for (let k = 0; k < 6; k++) {
+  for (let k = 0; k < 8; k++) {
     const before = t;
-    t = t.replace(/^from [\w .'-]{1,40}?(\s*\([^)]{0,100}\))?\s*[:,—–-]\s*/i, '')
+    t = t.replace(/^from [\w .'-]{1,40}?(\s*\([^)]{0,400}\))?\s*[:,.;—–-]\s*/i, '')
       .replace(/^[\w .'-]{1,30} asked (her|his|their|my|your) claude to [^:]{0,40}:\s*/i, '')
       .replace(/^(re|fwd?|task|request|todo|note)\s*:\s*/i, '')
       .replace(/^\[[^\]]{1,30}\]\s*/, '')
       .replace(/^[A-Z][A-Z0-9-]{2,20}\s*[,:—–-]\s*/, '')
       .replace(/^(do not|don'?t) start (before|until)[^.;]*[.;]\s*/i, '')
+      .replace(/^(task|part|step)\s*\d+\s*[,:.)-]\s*|^(\(?\d+[.)]|[-*•])\s+/i, '')
       .replace(/^finish request [0-9a-f]{6,10}\s*\(["“]?([^"”)]+)["”]?\)[.:]?\s*/i, '$1. ');
+    // "Fei asked. …", "Fei asked me to pass this on: …" from a Claude passing work on
+    if (handed) t = t.replace(/^[\w '-]{1,30}? asked( me)?( to [^.:;]{0,160})?\s*[.:;,]\s*/i, '');
+    // an intro to a list ("Fei's decisions:") is named by its first item
+    if ((!t.trim() || /:\s*$/.test(t)) && lines.length && /^(\(?\d+[.)]|[-*•]|(task|part|step)\s*\d)/i.test(lines[0])) t = lines.shift();
     if (!t.trim() && lines.length) t = lines.shift();
     if (t === before) break;
   }
@@ -112,6 +118,7 @@ function requestTitle(text) {
     .replace(/^(can|could|would|will) (you|u)\s+(please\s+)?|^please\s+|^i (want|need|would like) (you )?to\s+|^(let'?s|go ahead and)\s+/i, '');
   const end = t.search(/[.?!;](\s|$)/);
   if (end > 12) t = t.slice(0, end);
+  t = t.replace(/\s*\([^)]*(\)|$)/g, '').replace(/,?\s*(continuing|for|from|on top of)?\s*(goal|task|request|commit)\s+[0-9a-f]{7,40}\b/gi, '').trim();
   if (t.length > 60) t = t.slice(0, 60).replace(/\s+\S*$/, '') + '…';
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
