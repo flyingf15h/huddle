@@ -863,7 +863,15 @@ const routes = {
       if (taken) throw httpError(409, `"${n}" is already someone on this team; pick another name`);
       change.aiName = n || null;
     }
-    if (!Object.keys(change).length) throw httpError(400, 'nothing to change: give autopilot or aiName');
+    // how the team sees them: a display name (spaces and all) and a small profile picture
+    if (b.displayName !== undefined) change.displayName = String(b.displayName || '').replace(/[<>\n\r\t]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40) || null;
+    if (b.avatar !== undefined) {
+      const img = String(b.avatar || '');
+      if (img && !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(img)) throw httpError(400, 'the picture has to be a PNG, JPEG or WebP image');
+      if (img.length > 60000) throw httpError(413, 'that picture is too big; pick a smaller one');
+      change.avatar = img || null;
+    }
+    if (!Object.keys(change).length) throw httpError(400, 'nothing to change: give autopilot, aiName, displayName or avatar');
     p.settings[a.name] = { ...(p.settings[a.name] || {}), ...change, at: now() };
     if (change.autopilot) audit(p, a.name, 'mode', `background work: ${change.autopilot}`);
     p.emit('setting', { name: a.name, settings: p.settings[a.name] });

@@ -165,7 +165,7 @@ header .grow { flex: 1; }
 .menu .namefield { padding: 6px 10px 10px; }
 .menu .namefield label { font-size: 12.5px; color: var(--muted); font-weight: 600; display: block; margin-bottom: 5px; }
 .menu .namefield input { width: 100%; }
-#namepop { position: fixed; z-index: 50; background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-lg); padding: 14px; width: 270px; }
+#namepop { position: fixed; z-index: 50; background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-lg); padding: 14px; width: 310px; }
 #namepop label { display: block; font-size: 12.5px; color: var(--muted); margin: 0 0 5px; }
 #namepop input + label { margin-top: 10px; }
 #namepop .perr:empty { display: none; } #namepop .perr { margin-top: 8px; }
@@ -196,6 +196,13 @@ header .grow { flex: 1; }
 .person .live { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
 .av { flex: none; width: 30px; height: 30px; border-radius: 8px; display: inline-grid; place-items: center; font-weight: 600; font-size: 13px; position: relative; box-shadow: inset 0 0 0 1px rgba(160, 48, 92, .14); }
 .av.sm { width: 22px; height: 22px; font-size: 10.5px; border-radius: 6px; }
+.av.has-img { background: var(--sunk); overflow: hidden; }
+.av.has-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.av.big { width: 52px; height: 52px; font-size: 20px; border-radius: 14px; }
+.pichead { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+.picbtns { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.filebtn { cursor: pointer; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); padding: 4px 10px; font-size: 13px; font-weight: 500; background: var(--raised); }
+.filebtn:hover { background: var(--sunk); }
 .av.busy::after { content: ''; position: absolute; inset: -3px; border-radius: 10px; border: 2px solid var(--pop); animation: busy 1.6s ease-in-out infinite; }
 @keyframes busy { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
 
@@ -688,10 +695,7 @@ dialog { background: var(--glass); backdrop-filter: blur(22px) saturate(1.3); bo
       <div class="lrow"><button class="primary" id="lgo">Open project</button></div>
     </section>
     <section class="hcard">
-      <h2>Try huddle</h2>
-      <p class="muted">A demo project with a simulated team: two people on Claude Code and one on Codex, working on a small online store. Nothing in it touches real code.</p>
-      <div class="lrow" style="justify-content:flex-start"><button id="ldemo">Open a demo project</button></div>
-      <h2 style="margin-top:18px">Start your own</h2>
+      <h2>Start your own</h2>
       <p class="muted">In your project's folder, run:</p>
       <div class="cmd"><code>npx -y github:flyingf15h/huddle new</code></div>
     </section>
@@ -1059,7 +1063,13 @@ const api = (ep, body) => fetch(`/api/p/${encodeURIComponent(auth.project)}/${ep
 // light pinks, each with its own deep letter colour, so people are still easy to tell apart
 const PALETTE = [['#fbd3e0', '#8f2350'], ['#ffd6dc', '#94283f'], ['#f3d3ea', '#7a2a63'], ['#fcdccf', '#8c3a2a'], ['#f8c6d8', '#7d1f47'], ['#efd5f2', '#6f2a7a'], ['#fde4ec', '#a0305c'], ['#f6d0d6', '#7f2a36']];
 const color = (name) => { let h = 2166136261; for (const c of String(name)) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return PALETTE[(h >>> 0) % PALETTE.length]; };
-const avatar = (name, sm, busy) => { const [bg, fg] = color(name); return `<span class="av${sm ? ' sm' : ''}${busy ? ' busy' : ''}" style="background:${bg};color:${fg}" aria-hidden="true">${esc(String(name || '?')[0].toUpperCase())}</span>`; };
+// a person's picture if they set one, else their initial on their colour
+const avatar = (name, sm, busy) => {
+  const st = (typeof S !== 'undefined' && S.settings && S.settings[name]) || {};
+  if (st.avatar) return `<span class="av has-img${sm ? ' sm' : ''}${busy ? ' busy' : ''}" aria-hidden="true"><img src="${esc(st.avatar)}" alt=""></span>`;
+  const [bg, fg] = color(name);
+  return `<span class="av${sm ? ' sm' : ''}${busy ? ' busy' : ''}" style="background:${bg};color:${fg}" aria-hidden="true">${esc(String(st.displayName || name || '?')[0].toUpperCase())}</span>`;
+};
 
 // ---------- words ----------
 // a request or task as a short title: the first ask in its first line, without "can you" and friends
@@ -1192,7 +1202,7 @@ const NOTE_ICON = {
 const noteIc = (k) => `<span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${NOTE_ICON[k]}</svg></span>`;
 let turn = null, lastDay = '', noteRun = null;
 function noteHtml(e) {
-  const who = `<b>${esc(e.who)}</b>`;
+  const who = `<b>${esc(dn(e.who))}</b>`;
   const fileBtn = (p, b) => `<button class="link" data-file="${esc(p)}" data-branch="${esc(b || '')}">${esc(p)}</button>`;
   switch (e.kind) {
     case 'join': return `<div class="note">${noteIc('join')}<span>${who} ${e.agentKind === 'autopilot' ? 'turned on autopilot' : 'opened ' + toolOf(e.who)}</span></div>`;
@@ -1275,7 +1285,7 @@ function appendEntry(e, feed) {
   // Claude's steps and reply stay under the request it started on in the background
   const sameRun = bot && !ctx && turn && turn.key.startsWith('c:' + e.who + '|') && e.at - turn.at <= 10 * 60 * 1000;
   if (!sameRun && (!turn || turn.key !== key || e.at - turn.at > 10 * 60 * 1000)) {
-    const name = bot ? claudeOf(e.who) : e.who;
+    const name = bot ? claudeOf(e.who) : dn(e.who);
     feed.insertAdjacentHTML('beforeend', `<div class="turn${bot ? ' isbot' : ''}${e.kind === 'msg' && ctx === 'messaged you' ? ' toyou' : ''}">${bot ? claudeAv() : avatar(e.who)}<div class="tbody"><div class="thead"><b>${esc(name)}</b>${bot ? '<span class="bottag">' + toolOf(e.who) + '</span>' : ''}${ctx ? `<span class="ctx">${esc(ctx)}</span>` : ''}<time title="${esc(fullDate(e.at))}">${clock(e.at)}</time></div><div class="items"></div></div></div>`);
     turn = { el: feed.lastElementChild, key, at: e.at, last: null, ul: null };
   }
@@ -1386,7 +1396,9 @@ function aiName(n) { return (S.settings[n] && S.settings[n].aiName) || ''; }
 // Claude Code or Codex: whichever that person's huddle said it runs
 function toolOf(n) { return S.settings[n] && S.settings[n].tool === 'codex' ? 'Codex' : 'Claude'; }
 const myTool = () => toolOf(myName());
-function claudeOf(n) { return aiName(n) || `${n}'s ${toolOf(n)}`; }
+// what to call a person: the display name they chose, else their username
+function dn(n) { return (S.settings[n] && S.settings[n].displayName) || n; }
+function claudeOf(n) { return aiName(n) || `${dn(n)}'s ${toolOf(n)}`; }
 function lastOf(name) { for (let i = S.entries.length - 1; i >= 0; i--) if (S.entries[i].who === name) return S.entries[i]; return null; }
 function nowDoing(name) {
   const e = lastOf(name);
@@ -1465,7 +1477,7 @@ function renderTeam() {
     return `<div class="prow">${ask}<button class="person${S.who === p.name ? ' sel' : ''}${p.online ? '' : ' away'}" data-person="${esc(p.name)}" title="${S.who === p.name ? 'Show everyone' : 'Show only ' + esc(p.name) + "'s activity"}${p.name === myName() ? ' · right-click to rename' : ''}">
       <span class="pav">${avatar(p.name, false, busy)}<i class="pres ${p.online ? (p.runner === 'full' ? 'auto' : 'on') : 'off'}"></i></span>
       <span class="pbody">
-        <span class="top"><span class="name">${esc(p.name)}${p.name === myName() ? ' <span class="faint" style="font-weight:500">(you)</span>' : ''}</span>${use ? `<span class="use">${use}</span>` : ''}</span>
+        <span class="top"><span class="name">${esc(dn(p.name))}${p.name === myName() ? ' <span class="faint" style="font-weight:500">(you)</span>' : ''}</span>${use ? `<span class="use">${use}</span>` : ''}</span>
         ${c.main ? `<span class="doing">${esc(c.main)}</span>` : ''}
         <span class="live">${esc(c.live)}${t ? ` · ${t} task${t === 1 ? '' : 's'} open` : ''}</span>
       </span>
@@ -1574,27 +1586,69 @@ async function saveAiName(v) {
   renderTeam();
 }
 function closeNamePop() { const p = $('namepop'); if (p) p.remove(); }
+// a picture, cropped to a square and shrunk to 128 px so it stays small on the server
+function shrinkImage(file) {
+  return new Promise((resolve, reject) => {
+    if (!/^image\//.test(file.type)) return reject(new Error('pick an image file'));
+    const img = new Image();
+    img.onload = () => {
+      const size = 128, c = document.createElement('canvas');
+      c.width = c.height = size;
+      const side = Math.min(img.width, img.height);
+      c.getContext('2d').drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, size, size);
+      URL.revokeObjectURL(img.src);
+      let out = c.toDataURL('image/webp', 0.85);
+      if (!out.startsWith('data:image/webp')) out = c.toDataURL('image/jpeg', 0.85);
+      resolve(out);
+    };
+    img.onerror = () => reject(new Error("couldn't read that image"));
+    img.src = URL.createObjectURL(file);
+  });
+}
 function openNamePop(x, y) {
   closeNamePop();
   const withClaude = hasClaude(myName());
+  const mine = S.settings[myName()] || {};
+  let picture = mine.avatar || null;
   const pop = document.createElement('form');
   pop.id = 'namepop';
-  pop.innerHTML = `<label for="namepopMe">Your name</label>
+  pop.innerHTML = `<div class="pichead"><span id="namepopPic"></span><span class="picbtns"><label class="filebtn">Upload photo<input type="file" id="namepopFile" accept="image/*" hidden></label><button type="button" class="link small" id="namepopNoPic" ${picture ? '' : 'hidden'}>Remove</button></span></div>
+    <label for="namepopDisplay">Display name</label>
+    <input id="namepopDisplay" maxlength="40" value="${esc(mine.displayName || '')}" placeholder="${esc(myName())}" autocomplete="name">
+    <label for="namepopMe">Username <span class="faint" style="font-weight:400">· what teammates use to send you work</span></label>
     <input id="namepopMe" maxlength="40" value="${esc(myName())}" autocomplete="off">
     ${withClaude ? `<label for="namepopAi">Your ${myTool()}'s name</label>
-    <input id="namepopAi" maxlength="32" placeholder="${esc(myName())}'s ${myTool()}" value="${esc(aiName(myName()))}" autocomplete="off">` : ''}
+    <input id="namepopAi" maxlength="32" placeholder="${esc(dn(myName()))}'s ${myTool()}" value="${esc(aiName(myName()))}" autocomplete="off">` : ''}
     <div class="perr err small" role="alert"></div>
     <div class="row"><button type="button" data-cancel>Cancel</button><button type="submit" class="primary">Save</button></div>`;
   document.body.appendChild(pop);
+  const showPic = () => {
+    const [bg, fg] = color(myName());
+    const letter = esc(String($('namepopDisplay').value.trim() || myName())[0].toUpperCase());
+    $('namepopPic').innerHTML = picture ? `<span class="av has-img big"><img src="${esc(picture)}" alt="Your picture"></span>` : `<span class="av big" style="background:${bg};color:${fg}">${letter}</span>`;
+    $('namepopNoPic').hidden = !picture;
+  };
+  showPic();
   pop.style.left = Math.max(8, Math.min(x, innerWidth - pop.offsetWidth - 8)) + 'px';
-  pop.style.top = Math.max(8, Math.min(y, innerHeight - pop.offsetHeight - 8)) + 'px';
-  const me = $('namepopMe'), ai = $('namepopAi');
-  me.focus(); me.select();
+  pop.style.top = Math.max(8, Math.min(y - pop.offsetHeight + 40, innerHeight - pop.offsetHeight - 8)) + 'px';
+  const me = $('namepopMe'), ai = $('namepopAi'), disp = $('namepopDisplay');
+  const err = pop.querySelector('.perr');
+  disp.focus();
+  disp.addEventListener('input', showPic);
+  $('namepopFile').onchange = async (ev) => {
+    const f = ev.target.files[0];
+    if (!f) return;
+    try { picture = await shrinkImage(f); err.textContent = ''; showPic(); } catch (e) { err.textContent = e.message; }
+  };
+  $('namepopNoPic').onclick = () => { picture = null; showPic(); };
   pop.onsubmit = async (ev) => {
     ev.preventDefault();
-    const err = pop.querySelector('.perr');
     err.textContent = '';
     try {
+      const change = {};
+      if (disp.value.trim() !== (mine.displayName || '')) change.displayName = disp.value.trim();
+      if ((picture || null) !== (mine.avatar || null)) change.avatar = picture || '';
+      if (Object.keys(change).length) { const r = await api('setting', change); S.settings[myName()] = r.settings; showMe(); renderTeam(); renderSide(); renderFeed(); }
       if (ai && ai.value.trim() !== aiName(myName())) await saveAiName(ai.value.trim());
       const n = me.value.trim().replace(/\s+/g, '-');
       if (n && n !== myName()) {
@@ -1721,7 +1775,7 @@ function taskRow(t, b, groupTag) {
   return `<button class="trow ${t.status}" data-task="${esc(t.id)}" aria-expanded="${open}" title="${esc(title)}">
       <span class="dot ${t.status}" aria-hidden="true"></span>
       <span class="tmain"><span class="tt">${tagChip(tag)}${esc(title)}</span>${why ? `<span class="twhy">${esc(why)}</span>` : ''}${meta ? `<span class="tmeta">${meta}</span>` : ''}</span>
-      <span class="towner">${t.owner ? `${avatar(t.owner, true)}<span>${esc(t.owner)}</span>` : '<span class="faint">Unassigned</span>'}</span>
+      <span class="towner">${t.owner ? `${avatar(t.owner, true)}<span>${esc(dn(t.owner))}</span>` : '<span class="faint">Unassigned</span>'}</span>
     </button>
     ${t.status === 'blocked' || open ? `<div class="tacts">${t.status !== 'done' ? `<button class="small" data-taskdo="todo" data-tid="${esc(t.id)}">Run again</button><button class="small" data-taskdo="done" data-tid="${esc(t.id)}">Mark done</button>` : `<button class="small" data-taskdo="todo" data-tid="${esc(t.id)}">Reopen</button>`}</div>` : ''}
     ${open ? `<div class="tdetail">
@@ -1952,7 +2006,7 @@ async function loadStats() {
       const old = !builds.length || Math.max(...builds) < newest - 60000;
       return { name: n, why: old ? "their huddle is too old to report usage; they need to run huddle update" : "they haven't finished a prompt in this project since usage counting started" };
     });
-  const missingHtml = missing.length ? `<div class="panel" style="margin-top:16px"><h3>No usage from</h3><div class="plist">${missing.map(m => `<div class="srow">${avatar(m.name, true)}<span class="grow"><b>${esc(m.name)}</b><span class="sub">${esc(m.why)}</span></span></div>`).join('')}</div></div>` : '';
+  const missingHtml = missing.length ? `<div class="panel" style="margin-top:16px"><h3>No usage from</h3><div class="plist">${missing.map(m => `<div class="srow">${avatar(m.name, true)}<span class="grow"><b>${esc(dn(m.name))}</b>${dn(m.name) !== m.name ? ` <span class="muted">@${esc(m.name)}</span>` : ''}<span class="sub">${esc(m.why)}</span></span></div>`).join('')}</div></div>` : '';
   if (!people.length) {
     el.innerHTML = '<div class="empty"><h3>No usage data yet</h3><p style="margin:0 auto;max-width:460px">Usage is counted at the end of each prompt by teammates running a current version of huddle.</p></div>' + missingHtml;
     return;
@@ -1972,7 +2026,7 @@ async function loadStats() {
       <tbody>${people.map(({ name, s, own, all }) => {
         const m = topModel(s);
         return `<tr>
-          <td><span class="who">${avatar(name, true)}<span>${esc(name)}<span class="sub">${m ? esc(m[0]) : 'no model usage yet'} · ${esc(ago(s.last))}</span></span></span></td>
+          <td><span class="who">${avatar(name, true)}<span>${esc(dn(name))}<span class="sub">${m ? esc(m[0]) : 'no model usage yet'} · ${esc(ago(s.last))}</span></span></span></td>
           <td>${s.conversations}</td>
           <td>${fmtDur(own)}</td>
           <td>${fmtNum(s.turns)}</td>
@@ -2339,8 +2393,8 @@ function askName() { $('nameinput').value = auth.name; $('dlg-name').showModal()
 function showMe() {
   $('pnameText').textContent = prettyProject(auth.project);
   document.title = `${prettyProject(auth.project)} · huddle`;
-  $('you').innerHTML = auth.name ? `${avatar(auth.name, true)}<span>${esc(auth.name)}</span>` : '';
-  $('you').title = 'Change your name or your Claude\'s name';
+  $('you').innerHTML = auth.name ? `${avatar(auth.name, true)}<span>${esc(dn(auth.name))}</span>` : '';
+  $('you').title = 'Your profile: display name, picture and username';
 }
 // the project name in the header switches between every project this browser has opened
 $('pname').onclick = () => {
@@ -2384,6 +2438,8 @@ function showLogin(msg) {
   renderHome().catch(() => {});
   githubLogin().catch(() => {});
 }
+// another project's pictures and display names, for drawing its card on the home screen
+function withSettings(settings, fn) { const keep = S.settings; S.settings = settings || {}; try { return fn(); } finally { S.settings = keep; } }
 function goHome() { store.del('huddle.last'); history.replaceState(null, '', location.pathname); location.reload(); }
 async function renderHome() {
   const names = Object.keys(known);
@@ -2398,7 +2454,7 @@ async function renderHome() {
     return `<button class="pcard" data-open="${esc(n)}">
       <span class="pt">${avatar(prettyProject(n), true)}<span>${esc(prettyProject(n))}</span>${demo ? '<span class="pill acc">Demo</span>' : ''}</span>
       <span class="pm">${!info ? (info === null ? '<span class="err">Your access to this project ended</span>' : 'Loading…') : `<span>${online.length ? `<b style="color:var(--ok)">${online.length} online</b>` : 'Nobody online'}</span><span>${open} open task${open === 1 ? '' : 's'}</span>${stuck ? `<span style="color:var(--bad)">${stuck} stuck</span>` : ''}`}</span>
-      <span class="avs">${team.slice(0, 6).map(t => avatar(t, true)).join('')}</span>
+      <span class="avs">${withSettings(info && info.state.settings, () => team.slice(0, 6).map(t => avatar(t, true)).join(''))}</span>
       <span class="pforget" role="button" tabindex="0" data-forget="${esc(n)}" title="Remove from this list" aria-label="Remove ${esc(prettyProject(n))} from this list">×</span>
     </button>`;
   };
@@ -2438,12 +2494,6 @@ async function githubLogin() {
       || '<p class="small muted" style="margin:0">No projects are linked to this GitHub account yet. Open one with its invite, then link GitHub in Team &amp; settings.</p>');
   for (const b of document.querySelectorAll('[data-ghproj]')) b.onclick = () => { auth = { ...auth, project: b.dataset.ghproj, token: 'github', name: b.dataset.ghname }; start(); };
 }
-$('ldemo').onclick = async () => {
-  const b = $('ldemo');
-  b.disabled = true;
-  if (!auth.name && $('lname').value.trim()) auth.name = $('lname').value.trim().replace(/\s+/g, '-');
-  try { await openDemo((t) => { b.textContent = t; }); } catch (e) { b.disabled = false; b.textContent = 'Try a demo project'; $('lerr').textContent = "Couldn't make the demo: " + e.message; }
-};
 $('linvite').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('lgo').click(); });
 $('lgo').onclick = async () => {
   const typed = $('linvite').value.trim();
@@ -2506,7 +2556,7 @@ function renderHealth() {
       : '<span class="pill ok" style="font-size:13px">Everything is working</span><span class="muted">Nobody is stuck, everyone is up to date, and nothing failed in the last day.</span>'}</div>
       ${todo.map(x => `<div class="srow"><span class="dot ${x.sev === 'bad' ? 'blocked' : x.sev === 'warn' ? 'doing' : 'todo'}" aria-hidden="true"></span><span class="grow">${x.text}</span></div>`).join('')}</div>
     <div class="panel"><h3>Teammates</h3><p class="pdesc"><b>Background work</b>: whether their agent picks up requests and tasks on its own while they're away. <b>huddle</b>: whether their copy is the newest one on the team.</p>
-      <div class="plist">${list.map(p => `<div class="srow">${avatar(p.name, true)}<span class="grow"><b>${esc(p.name)}</b><span class="sub">${esc(p.tool === 'Codex' ? 'Codex' : 'Claude Code')} · ${p.online ? 'online now' : 'last seen ' + esc(ago(p.lastSeen))}</span></span>
+      <div class="plist">${list.map(p => `<div class="srow">${avatar(p.name, true)}<span class="grow"><b>${esc(dn(p.name))}</b><span class="sub">${esc(p.tool === 'Codex' ? 'Codex' : 'Claude Code')} · ${p.online ? 'online now' : 'last seen ' + esc(ago(p.lastSeen))}</span></span>
           <span class="small muted hide-sm">Background work</span>${runnerWord(p)}
           <span class="small muted hide-sm">huddle</span>${outdated(p) ? '<span class="pill warn">Needs update</span>' : '<span class="pill ok">Up to date</span>'}</div>`).join('') || '<div class="srow muted">Nobody has opened an agent in this project yet.</div>'}</div></div>
     <div class="panel"><h3>Errors in the last day</h3><p class="pdesc">Reported automatically when something breaks on a teammate's computer: an agent crashing, a huddle hook failing, a Slack or Discord alert not arriving.</p>
@@ -2558,7 +2608,7 @@ async function teamTab() {
   return `<div class="panel"><h3>People</h3><p class="pdesc">Removing someone stops their access at once, including any agent sessions they have open.</p>
     <div class="plist">${members.map(m => `<div class="srow">${avatar(m.name, true)}<span class="grow"><b>${esc(m.name)}</b>${m.name === S.me.name ? ' <span class="muted">(you)</span>' : ''}<span class="sub">${m.github ? 'GitHub ' + esc(m.github) + ' · ' : ''}${m.lastSeen ? 'active ' + esc(ago(m.lastSeen)) : 'not seen yet'}</span></span>
       ${isOwner() ? `<select data-role="${esc(m.name)}" aria-label="Role for ${esc(m.name)}">${['owner', 'member', 'viewer'].map(r => `<option value="${r}" ${m.role === r ? 'selected' : ''}>${ROLE_TEXT[r]}</option>`).join('')}</select>
-        ${m.name !== S.me.name ? `<button class="ghost" data-remove="${esc(m.name)}">Remove</button>` : ''}` : `<span class="pill">${ROLE_TEXT[m.role]}</span>`}</div>`).join('')}</div></div>
+        ${m.name !== S.me.name ? `<button class="ghost" data-remove="${esc(m.name)}">Remove</button>` : ''}` : `<span class="pill">${ROLE_TEXT[m.role]}</span>`}${m.name === S.me.name ? '<button class="ghost" data-act="profile">Edit profile</button>' : ''}</div>`).join('')}</div></div>
     ${isOwner() ? `<div class="panel"><h3>Open invites</h3><p class="pdesc">Each personal invite works for one person (unless you made it for more) and expires after a week.</p>
       <div class="plist">${inv.invites.length ? inv.invites.map(i => `<div class="srow"><span class="pill">${ROLE_TEXT[i.role]}</span><span class="grow">${i.maxUses - i.uses} use${i.maxUses - i.uses === 1 ? '' : 's'} left<span class="sub">made by ${esc(i.by)} ${esc(ago(i.at))} · expires ${esc(new Date(i.expires).toLocaleDateString())}</span></span><button class="ghost" data-revoke="${esc(i.id)}">Take back</button></div>`).join('')
         : '<div class="srow muted">No open invites. Make one with Invite people.</div>'}</div></div>
@@ -2661,6 +2711,7 @@ function wireSettings() {
       auth.token = r.token; known[auth.project] = r.token; store.set('huddle.projects', JSON.stringify(known));
       await loadMe(); renderSettings();
     });
+    if (act === 'profile') { const r = t.getBoundingClientRect(); return openNamePop(r.left - 200, r.bottom + 260); }
     if (act === 'link-github') return run(async () => { await api('link-github', {}); renderSettings(); });
     if (act === 'leave') {
       if (!confirm(`Leave ${prettyProject(auth.project)}?`)) return;

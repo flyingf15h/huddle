@@ -60,7 +60,11 @@ const ok = (m) => console.log('✓ ' + m);
     const st = await ana('GET', 'state');
     assert.ok(st.agents.some(a => a.name === 'bob' && a.status === 'fixing the parser'));
     assert.ok(!st.agents.some(a => a.name === 'mallory'));
-    ok('personal invites become personal tokens, once, and a token always speaks as its own person');
+    const prof = await bob('POST', 'setting', { agent: agent('bob'), displayName: 'Bob  Smith', avatar: 'data:image/png;base64,iVBORw0KGgo=' });
+    assert.deepStrictEqual([prof.settings.displayName, prof.settings.avatar.slice(0, 15)], ['Bob Smith', 'data:image/png;']);
+    assert.strictEqual((await bob('POST', 'setting', { agent: agent('bob'), avatar: 'javascript:alert(1)' })).status, 400);
+    assert.strictEqual((await bob('POST', 'setting', { agent: agent('bob'), avatar: 'data:image/png;base64,' + 'A'.repeat(70000) })).status, 413);
+    ok('personal invites become personal tokens, once, a token always speaks as its own person, and people set a display name and picture');
 
     const vinv = await ana('POST', 'member-invite', { agent: agent('ana'), role: 'viewer' });
     const vic = as((await call(null, 'POST', 'redeem', { code: vinv.code, name: 'vic' }, P)).token);
