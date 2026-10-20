@@ -4,6 +4,7 @@ import { S, go, myName, myTool, dn, keys, auth } from '../lib/state.js';
 import { useS } from '../lib/store.js';
 import { ago, shortTitle } from '../lib/words.js';
 import { titleOf, decide, stuckReason } from '../lib/tasks.js';
+import Icon from './Icon.jsx';
 import Avatar from './Avatar.jsx';
 
 export default function SidePanel() {
@@ -63,7 +64,7 @@ export default function SidePanel() {
       {!live.length && <div className="quiet">Nothing in progress.</div>}
       <h2>Being edited now <span className="count">{locks.length || ''}</span></h2>
       {locks.map(l => (
-        <button key={(l.branch || '') + l.path} className="row-item" data-nav onClick={() => (S.fileOpen = { path: l.path, branch: l.branch || null })}><Avatar name={l.holderName} sm /><span className="grow"><span className="path">{l.path}{l.dir && <> <span className="faint">(whole folder)</span></>}</span><br /><span className="small muted">{l.holderName} · {ago(l.since)}{l.branch ? ' · ' + l.branch : ''}</span></span><span aria-label="locked">🔒</span></button>
+        <button key={(l.branch || '') + l.path} className="row-item" data-nav onClick={() => (S.fileOpen = { path: l.path, branch: l.branch || null })}><Avatar name={l.holderName} sm /><span className="grow"><span className="path">{l.path}{l.dir && <> <span className="faint">(whole folder)</span></>}</span><br /><span className="small muted">{l.holderName} · {ago(l.since)}{l.branch ? ' · ' + l.branch : ''}</span></span><span className="lockic" aria-label="locked"><Icon name="lock" size={13} /></span></button>
       ))}
       {!locks.length && <div className="quiet">No files are locked.</div>}
       <h2>Recently changed</h2>

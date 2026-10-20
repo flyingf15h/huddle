@@ -635,7 +635,7 @@ const handlers = {
       st.data.newConversation = true;
     }
     st.save();
-    // the status line's "📬 new" count is what arrived since the person last prompted
+    // the status line's "● new" count is what arrived since the person last prompted
     try {
       fs.writeFileSync(path.join(cfg.root, CONFIG_DIR, 'seen.json'), JSON.stringify({ at: Date.now() }));
       fs.rmSync(path.join(cfg.root, CONFIG_DIR, 'statusline.json'), { force: true });

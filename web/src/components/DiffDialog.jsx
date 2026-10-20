@@ -58,7 +58,7 @@ export default function DiffDialog() {
           <>
             <div className="difffiles" role="listbox" aria-label="Files">
               {files.map((x, i) => { const m = (meta.files || []).find(y => y.path === x.path) || {}; return (
-                <button key={x.path} role="option" aria-selected={i === sel} className={i === sel ? 'on' : ''} onClick={() => { setSel(i); setAt(null); }}><span className="mono">{x.path}</span><span className="small"><span className="dadd">+{m.add ?? x.lines.filter(l => l.kind === 'add').length}</span> <span className="ddel">−{m.del ?? x.lines.filter(l => l.kind === 'del').length}</span>{mine(x.path).length > 0 && ` · ${mine(x.path).length} 💬`}</span></button>); })}
+                <button key={x.path} role="option" aria-selected={i === sel} className={i === sel ? 'on' : ''} onClick={() => { setSel(i); setAt(null); }}><span className="mono">{x.path}</span><span className="small"><span className="dadd">+{m.add ?? x.lines.filter(l => l.kind === 'add').length}</span> <span className="ddel">−{m.del ?? x.lines.filter(l => l.kind === 'del').length}</span>{mine(x.path).length > 0 && ` · ${mine(x.path).length} comment${mine(x.path).length === 1 ? '' : 's'}`}</span></button>); })}
             </div>
             <div className="diffmain">
               {meta.truncated && <p className="small muted" style={{ margin: 8 }}>This diff was cut short because it is large.</p>}
@@ -66,7 +66,7 @@ export default function DiffDialog() {
                 <div key={i}>
                   <div className={'ln ' + l.kind} onClick={() => l.kind !== 'hunk' && l.n && (setAt(l.n), setDraft(''))} title={l.n ? 'Click to comment on this line' : ''}>
                     <span>{l.kind === 'hunk' ? '' : l.n || ''}</span><span>{l.kind === 'add' ? '+ ' : l.kind === 'del' ? '− ' : l.kind === 'hunk' ? '' : '  '}{l.text || ' '}</span></div>
-                  {mine(f.path).filter(c => c.line === l.n && l.n).map((c, j) => <div className="dcomment" key={j}>💬 {c.text} <button className="link small" onClick={() => setComments(comments.filter(x => x !== c))}>remove</button></div>)}
+                  {mine(f.path).filter(c => c.line === l.n && l.n).map((c, j) => <div className="dcomment" key={j}>{c.text} <button className="link small" onClick={() => setComments(comments.filter(x => x !== c))}>remove</button></div>)}
                   {at === l.n && l.n && <div className="dcomment edit"><textarea autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={`Comment on line ${at}`} aria-label="Comment" onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) addComment(); }} /><div className="row"><button className="primary" disabled={!draft.trim()} onClick={addComment}>Add comment</button><button onClick={() => setAt(null)}>Cancel</button></div></div>}
                 </div>))}</pre>}
             </div>

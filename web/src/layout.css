@@ -127,3 +127,5 @@ main[data-main] { min-height: 0; }
 .ttile.on .tname { font-weight: 600; }
 .clickaway { position: fixed; inset: 0; z-index: 54; background: transparent; border: 0; padding: 0; cursor: default; }
 .clickaway:hover { background: transparent; }
+.lockic { display: inline-flex; vertical-align: -2px; color: var(--muted); }
+.livebar svg, .lockic svg { vertical-align: -2px; }

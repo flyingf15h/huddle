@@ -439,7 +439,7 @@ function installHooks(root, dir, projectRoot) {
   add('Stop', null, 'stop');
   add('SessionEnd', null, 'session-end');
   // a status line that shows this folder is in a huddle, unless the person already has their own
-  // (refreshed every 10 s even while idle, so "📬 new message" shows up without a prompt)
+  // (refreshed every 10 s even while idle, so "● new message" shows up without a prompt)
   if (!s.statusLine && !globalStatusLine()) s.statusLine = { type: 'command', command: cliCmd(dir, 'statusline', projectRoot), padding: 0, refreshInterval: 10 };
   // let the agent use huddle's own tools without a permission prompt each time
   s.permissions = s.permissions || {};
@@ -868,7 +868,7 @@ async function cmdStatusline() {
   const who = c.others.length ? `${c.others.join(', ')} online` : 'nobody else online';
   const mode = { requests: 'takes requests', full: 'active', off: 'requests wait' }[c.mode];
   const yellow = (t) => `\x1b[1;33m${t}\x1b[0m`;
-  const mail = [c.unread ? `📬 ${c.unread} new message${c.unread === 1 ? '' : 's'}` : '',
+  const mail = [c.unread ? `● ${c.unread} new message${c.unread === 1 ? '' : 's'}` : '',
     c.requests ? `${c.requests} request${c.requests === 1 ? '' : 's'} for your Claude` : ''].filter(Boolean).join(' · ');
   process.stdout.write(`${green('●')} huddle · ${cfg.project.replace(/-[0-9a-f]{6,8}$/, '')} ${dim('·')} ${who} ${dim('·')} ${mode}` +
     (mail ? ` ${dim('·')} ${yellow(mail)}` : ''));
@@ -1138,7 +1138,7 @@ async function cmdStatus() {
   const dupes = [...lower.values()].filter(v => v.length > 1);
   if (dupes.length) console.log(`\n${dupes.map(v => v.join(' / ')).join(', ')} look like the same person: huddle tidy merges them`);
   console.log('\nlocks:' + (s.locks.length ? '' : ' none'));
-  for (const l of s.locks) console.log(`  🔒 ${l.path}${l.dir ? ' (whole folder)' : ''}  ${l.holderName}, ${ago(l.since)}${l.note ? ' — ' + l.note : ''}`);
+  for (const l of s.locks) console.log(`  ■ ${l.path}${l.dir ? ' (whole folder)' : ''}  ${l.holderName}, ${ago(l.since)}${l.note ? ' — ' + l.note : ''}`);
   const recent = s.files.filter(f => f.size).sort((a, b) => b.at - a.at).slice(0, 8);
   if (recent.length) console.log('\nrecent edits:');
   for (const f of recent) console.log(`  ${f.path} v${f.version} by ${f.byName}, ${ago(f.at)}`);
@@ -1215,12 +1215,12 @@ async function cmdWatch() {
       join: () => `${ev.agent.name} joined`,
       leave: () => `${ev.agent.name} went offline`,
       status: () => `${ev.agent.name}: ${ev.agent.status}`,
-      lock: () => `🔒 ${ev.lock.holderName} locked ${ev.lock.path}`,
-      unlock: () => `🔓 ${ev.holderName} released ${ev.path}${ev.reason === 'stale' ? ' (timed out)' : ''}`,
+      lock: () => `■ ${ev.lock.holderName} locked ${ev.lock.path}`,
+      unlock: () => `□ ${ev.holderName} released ${ev.path}${ev.reason === 'stale' ? ' (timed out)' : ''}`,
       file: () => `✎ ${ev.file.byName} edited ${ev.file.path} (v${ev.file.version})`,
-      message: () => `💬 ${ev.message.fromName}${ev.message.to ? ' → ' + ev.message.to : ''}: ${ev.message.text}`,
-      activity: () => ev.items.map(it => `🤖 ${ev.agent.name}: ${it.kind === 'prompt' ? '❯ ' + it.text : it.kind === 'tool' ? '→ ' + it.text : it.kind === 'end' ? '(done)' : it.text}`.replace(/\n/g, '\n      ')).join('\n' + t() + '  '),
-      shared: () => `📚 ${ev.byName} ${ev.action === 'delete' ? 'deleted' : ev.action === 'add' ? 'added' : 'updated'} ${ev.kind === 'doc' ? 'PROJECT.md' : ev.kind + ' ' + (ev.title || ev.name)}`,
+      message: () => `» ${ev.message.fromName}${ev.message.to ? ' → ' + ev.message.to : ''}: ${ev.message.text}`,
+      activity: () => ev.items.map(it => `· ${ev.agent.name}: ${it.kind === 'prompt' ? '❯ ' + it.text : it.kind === 'tool' ? '→ ' + it.text : it.kind === 'end' ? '(done)' : it.text}`.replace(/\n/g, '\n      ')).join('\n' + t() + '  '),
+      shared: () => `+ ${ev.byName} ${ev.action === 'delete' ? 'deleted' : ev.action === 'add' ? 'added' : 'updated'} ${ev.kind === 'doc' ? 'PROJECT.md' : ev.kind + ' ' + (ev.title || ev.name)}`,
     }[ev.type];
     if (line) console.log(`${t()}  ${line()}`);
   };
