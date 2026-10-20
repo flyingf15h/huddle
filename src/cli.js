@@ -38,6 +38,7 @@ Talk to the whole team of Claudes:
   huddle ask "build X"          give every agent a goal; one plans it, all of them work it
   huddle ask "fix Y" --to alex  hand a task straight to alex's Claude
   huddle board                  goals, tasks, who owns what
+  huddle worker <invite> --repo URL   an always-on teammate for a server (see docs/worker.md)
   huddle autopilot on|requests|off
                                 what YOUR Claude does with work from the team (uses your
                                 Claude subscription; runs claude -p in this folder):
@@ -1044,6 +1045,31 @@ ${mode === 'off' ? '' : 'It runs while you have Claude open in this folder, or w
   await ap.runAutopilot(cfg, flags);
 }
 
+// An always-on teammate for a server or container: joins with an invite (cloning the repo first if asked)
+// and runs autopilot in the foreground, so schedules, GitHub issues and Slack requests get worked on
+// while everyone's laptops are closed.
+async function cmdWorker({ pos, flags }) {
+  const dir = path.resolve(flags.dir || process.env.HUDDLE_WORKER_DIR || process.cwd());
+  const inv = pos.join(' ') || process.env.HUDDLE_INVITE || '';
+  const repo = flags.repo || process.env.HUDDLE_REPO || '';
+  if (!fs.existsSync(path.join(dir, CONFIG_DIR, 'config.json'))) {
+    need(inv, 'usage: huddle worker <invite> [--repo URL] [--dir DIR] [--name worker] [--agent claude|codex|cursor]   (or set HUDDLE_INVITE and HUDDLE_REPO)');
+    if (repo && !fs.existsSync(path.join(dir, '.git'))) {
+      fs.mkdirSync(dir, { recursive: true });
+      const r = spawnSync('git', ['clone', repo, dir], { stdio: 'inherit' });
+      need(r.status === 0, `Couldn't clone ${repo}.`);
+    }
+    need(fs.existsSync(dir), `${dir} doesn't exist. Give --repo or --dir.`);
+    await cmdJoin({ pos: [inv], flags: { name: 'worker', ...flags, dir } });
+  }
+  process.chdir(dir);
+  process.env.HUDDLE_ROOT = dir;
+  const cfg = configured();
+  await humanClient('human').post('setting', { autopilot: 'on' }).catch(() => {});
+  console.log(`worker: ${cfg.name} is on duty in ${dir}. Press Ctrl+C to stop.`);
+  await require('./autopilot').runAutopilot(cfg, { ...flags, mode: 'on' });
+}
+
 function cmdLeave() {
   const cfg = configured();
   const file = settingsPath(cfg.root);
@@ -1468,7 +1494,7 @@ async function main() {
     lock: cmdLock, unlock: cmdUnlock, watch: cmdWatch, invite: cmdInvite, open: cmdOpen, approve: cmdApprove, tests: cmdTests, _summarize: cmdSummarize,
     project: cmdProject, sharing: cmdSharing, 'ai-name': cmdAiName, update: cmdUpdate, permissions: cmdPermissions, tidy: cmdTidy, handoff: cmdHandoff, handoffs: cmdHandoff,
     sync: cmdSync, branches: cmdBranches, branch: cmdBranch, publish: cmdPublish, fetch: cmdFetch, merge: cmdMerge,
-    ask: cmdAsk, board: cmdBoard, autopilot: cmdAutopilot, unpublish: cmdUnpublish, forget: cmdForget, 'same-person': cmdSamePerson, link: cmdLink, unlink: cmdUnlink, statusline: cmdStatusline, memory: cmdMemory, memories: cmdMemory, skill: cmdSkill, skills: cmdSkill,
+    ask: cmdAsk, board: cmdBoard, autopilot: cmdAutopilot, worker: cmdWorker, unpublish: cmdUnpublish, forget: cmdForget, 'same-person': cmdSamePerson, link: cmdLink, unlink: cmdUnlink, statusline: cmdStatusline, memory: cmdMemory, memories: cmdMemory, skill: cmdSkill, skills: cmdSkill,
     hook: () => require('./hooks').runHook(args.pos[0], args.flags),
     members: cmdMembers, member: cmdMembers, policy: cmdPolicy, notify: cmdNotify, audit: cmdAudit, problems: cmdProblems, delivery: cmdDelivery,
     search: cmdSearch, notes: cmdNotes, notifications: cmdNotes, cost: cmdCost, costs: cmdCost, conflicts: cmdConflicts, export: cmdExport,

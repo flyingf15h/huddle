@@ -1,0 +1,16 @@
+# systemd unit: copy to ~/.config/systemd/user/, set the invite and repo, then
+#   systemctl --user enable --now huddle-worker
+[Unit]
+Description=huddle always-on teammate
+After=network-online.target
+
+[Service]
+Environment=HUDDLE_INVITE=PASTE_INVITE_HERE
+Environment=HUDDLE_REPO=git@github.com:you/your-repo.git
+Environment=HUDDLE_WORKER_DIR=%h/huddle-worker
+ExecStart=/usr/bin/env huddle worker
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
