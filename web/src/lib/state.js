@@ -37,7 +37,7 @@ export const S = reactive({
   filter: 'all', who: null,      // activity feed filter and person
   openTask: null,                // task shown in the details panel (Tasks view and side panel)
   search: false, shortcuts: false, invite: false, help: false, drawer: false, profile: false,
-  demo: false, fatal: '', contact: null, settingsTab: null, askTo: null, fileOpen: null, codeOpen: null, briefOpen: null, feedJump: null, catchup: '', demoStatus: '',
+  demo: false, fatal: '', contact: null, settingsTab: null, askTo: null, fileOpen: null, codeOpen: null, briefOpen: null, feedJump: null, catchup: '', demoStatus: '', digestShow: null, digests: [], digestRecipient: false,
 });
 
 // the name I go by in this project, after any merge ("Fei" -> "tszfei")
@@ -218,6 +218,25 @@ export const loadNotes = async () => {
   const r = await api('notes?name=' + encodeURIComponent(auth.name)).catch(() => null);
   if (r) { S.notes = r.notes; S.notePrefs = r.prefs; S.noteKinds = r.kinds; S.contact = r.contact || null; }
 };
+// ---------- the daily digest ----------
+const digestSeenKey = () => 'huddle.digestSeen.' + auth.project;
+export const markDigestSeen = (id) => { if (id) store.set(digestSeenKey(), id); };
+export async function loadDigests() {
+  const r = await api('digests');
+  S.digests = r.digests; S.digestRecipient = r.recipient;
+  return r;
+}
+export async function openDigest(id) {
+  if (!S.digests.some(d => d.id === id)) await loadDigests().catch(() => {});
+  const d = S.digests.find(x => x.id === id);
+  if (d) S.digestShow = d;
+}
+// a pop-up the first time someone opens the project after a new digest, when the owner chose pop-ups
+export async function checkDigest() {
+  const r = await loadDigests();
+  const latest = r.digests[r.digests.length - 1];
+  if (r.settings.enabled && r.settings.popup && r.recipient && latest && store.get(digestSeenKey()) !== latest.id) S.digestShow = latest;
+}
 export const loadConflicts = async () => { S.conflicts = (await api('conflicts').catch(() => ({ conflicts: [] }))).conflicts; };
 
 function applySnapshot(s) {
@@ -247,6 +266,7 @@ function onEvent(ev) {
     case 'project-setting': S.projectSettings = ev.settings || {}; break;
     case 'problem': S.problems = [...S.problems, ev.problem].slice(-100); break;
     case 'conflicts': loadConflicts(); break;
+    case 'digest': if (S.digestRecipient || S.me.role === 'owner') loadDigests().catch(() => {}); break;
     case 'note': if (ev.to === myName()) { S.notes = [...S.notes, ev.note].slice(-80); toast(ev.note); } break;
     case 'notes-read': if (ev.to === myName()) loadNotes(); break;
     case 'members':
@@ -257,7 +277,7 @@ function onEvent(ev) {
     case 'merge': location.reload(); return;
     case 'forget': if (!ev.name) { location.reload(); return; } for (const [id, x] of Object.entries(S.agents)) if (x.name === ev.name) delete S.agents[id]; break;
   }
-  if (!['leave', 'status', 'usage', 'approval', 'project-setting', 'problem', 'members', 'note', 'notes-read', 'conflicts'].includes(ev.type)) addEntries(fromEvent(ev));
+  if (!['leave', 'status', 'usage', 'approval', 'project-setting', 'problem', 'members', 'note', 'notes-read', 'conflicts', 'digest'].includes(ev.type)) addEntries(fromEvent(ev));
   for (const fn of listeners) { try { fn(ev); } catch {} }
 }
 
@@ -392,6 +412,7 @@ export async function startProject() {
   loadShared().catch(() => {});
   loadNotes();
   loadConflicts();
+  checkDigest().catch(() => {});
   // back from signing in to link the account to this project
   if (/[#&](gh|acct)=link/.test(location.hash) && S.account.user) api('link-account', {}).catch(() => {});
   catchUp();

@@ -190,7 +190,7 @@ class Project {
     this.limits = { ...DEFAULT_LIMITS };
   }
   toJSON() {
-    const { waiters, dirty, changedFiles, sharedChanged, activityChanged, boardChanged, isConnected, limits, outbox, auditChanged, problemsChanged, repoCache, ...rest } = this;
+    const { waiters, dirty, changedFiles, sharedChanged, activityChanged, boardChanged, isConnected, limits, outbox, auditChanged, problemsChanged, repoCache, _nd, ...rest } = this;
     return rest;
   }
   // events after `since`, or null if they've been dropped and the client must resync
@@ -314,6 +314,7 @@ class Project {
     handOn(this);
     X.applyRetention(this);
     X.flushMail(this);
+    X.maybeDigest(this);
   }
 }
 
@@ -1305,7 +1306,7 @@ const MAX_AUDIT = 500;
 const MAX_PROBLEMS = 100;
 const OWNER_ROUTES = new Set(['POST member-role', 'POST member-remove', 'POST invite-revoke', 'GET invites', 'POST project-setting',
   'POST notify-set', 'POST notify-test', 'POST policy', 'POST merge-person', 'POST tidy', 'POST forget-agent',
-  'POST cost-settings', 'POST retention', 'POST delete-project', 'POST repo-connect', 'POST repo-disconnect', 'GET export']);
+  'POST cost-settings', 'POST digest-settings', 'POST digest-now', 'POST retention', 'POST delete-project', 'POST repo-connect', 'POST repo-disconnect', 'GET export']);
 // a viewer reads everything (dashboard, feed, code) and changes nothing
 const VIEWER_POSTS = new Set(['hello', 'inbox', 'link-github', 'link-account', 'redeem', 'leave', 'notes-read', 'note-prefs', 'erase-me']);
 // GitHub's webhook proves itself with a signature the route checks; a personal invite is its own proof

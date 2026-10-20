@@ -1,6 +1,6 @@
 // The bell: this person's notifications from the server (the same list email and desktop alerts come from).
 import { useState } from 'react';
-import { S, go, readNotes } from '../lib/state.js';
+import { S, go, readNotes, openDigest } from '../lib/state.js';
 import { useS } from '../lib/store.js';
 import { useEscape } from '../lib/hooks.js';
 import { ago, store } from '../lib/words.js';
@@ -15,6 +15,7 @@ export default function Notifications({ close }) {
     readNotes([n.id]); close();
     const l = n.link || {};
     if (l.url) window.open(l.url, '_blank', 'noopener');
+    else if (l.digest) openDigest(l.digest);
     else go(l.view || 'activity', l.task ? { task: l.task } : {});
   };
   const setDnd = (v) => { setDndState(v); store.set('huddle.dnd', v ? '1' : '0'); };

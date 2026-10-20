@@ -25,6 +25,7 @@ const NOTE_KINDS = {
   conflict: { label: 'Merge conflicts with your branch', email: true, desktop: true },
   ci: { label: 'Checks failing on your pull requests', email: true, desktop: true },
   budget: { label: 'Budget alerts (owners)', email: true, desktop: false },
+  digest: { label: 'Daily digest', email: true, desktop: false },
 };
 
 module.exports = function features(h) {
@@ -43,7 +44,7 @@ module.exports = function features(h) {
   }
   // tell one person about something; their notification list, then email (batched) and the desktop
   // alert their own huddle shows, as they chose
-  function notePerson(p, to, kind, title, body, link) {
+  function notePerson(p, to, kind, title, body, link, opts = {}) {
     if (!to || !NOTE_KINDS[kind]) return null;
     to = h.canonicalName(p, to);
     p.notes = p.notes || {};
@@ -55,7 +56,7 @@ module.exports = function features(h) {
     n.desktop = !!prefs.desktop;
     p.emit('note', { to, note: n });
     const contact = (p.contacts || {})[to];
-    if (prefs.email && contact && contact.email && contact.emailNotes !== false) {
+    if (prefs.email && opts.email !== false && contact && contact.email && contact.emailNotes !== false) {
       p.mailQueue = p.mailQueue || {};
       (p.mailQueue[to] = p.mailQueue[to] || []).push(n);
     }
@@ -141,6 +142,129 @@ module.exports = function features(h) {
     out.tasks = p.board.tasks.filter(t => t.usage && t.usage.tokens).map(t => ({ id: t.id, title: t.title, owner: t.owner, status: t.status, cost: t.usage.cost, tokens: t.usage.tokens, goalId: t.goalId }))
       .sort((a, b) => b.cost - a.cost).slice(0, 100);
     return out;
+  }
+
+
+  // ---------- the daily digest ----------
+  // Once a day (at the owner's chosen hour, in their time zone) the project writes a short summary of
+  // what its agents did, what's stuck and what it cost, and sends it to the owners or to everyone, by
+  // email, as a pop-up in the dashboard, or both. A day with nothing to report sends nothing.
+  const DIGEST_DEFAULT = { enabled: false, to: 'owners', email: true, popup: true, hour: 8, tz: 'UTC', weekdaysOnly: true };
+  const digestCfg = (p) => ({ ...DIGEST_DEFAULT, ...((p.projectSettings || {}).digest || {}) });
+  const fmts = new Map();
+  function localParts(t, tz) {
+    try {
+      let f = fmts.get(tz);
+      if (!f) { f = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23', weekday: 'short' }); fmts.set(tz, f); }
+      const o = Object.fromEntries(f.formatToParts(new Date(t)).map(x => [x.type, x.value]));
+      return { date: `${o.year}-${o.month}-${o.day}`, hour: Number(o.hour), weekday: o.weekday };
+    } catch { return tz === 'UTC' ? { date: new Date(t).toISOString().slice(0, 10), hour: new Date(t).getUTCHours(), weekday: 'Mon' } : localParts(t, 'UTC'); }
+  }
+  const validTz = (tz) => { try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return true; } catch { return false; } };
+  function digestDueAt(p, t) {
+    const c = digestCfg(p);
+    if (!c.enabled) return false;
+    const lp = localParts(t, c.tz);
+    if (c.weekdaysOnly && (lp.weekday === 'Sat' || lp.weekday === 'Sun')) return false;
+    return lp.hour >= c.hour && (p.digestState || {}).lastDate !== lp.date;
+  }
+  // when the next one is due (the Worker sets an alarm for it); null when it's off
+  function nextDigestAt(p) {
+    const c = digestCfg(p);
+    if (!c.enabled) return null;
+    const key = JSON.stringify([c, (p.digestState || {}).lastDate]);
+    if (p._nd && p._nd.key === key && p._nd.at > now()) return p._nd.at;
+    let at = null;
+    for (let t = now(); t < now() + 9 * 86400000; t += 15 * 60000) if (digestDueAt(p, t)) { at = t; break; }
+    p._nd = { key, at };
+    return at;
+  }
+  function digestRecipients(p) {
+    const c = digestCfg(p);
+    if (c.to === 'everyone' || !hasOwner(p)) return people(p);
+    return Object.entries(p.members || {}).filter(([, m]) => m.role === 'owner').map(([n]) => n);
+  }
+  const cumulativeCost = (p) => Object.fromEntries(Object.entries(p.stats || {}).map(([n, st]) => [n, pricing.costOfModels(st.models, (p.projectSettings || {}).prices).total]));
+
+  function buildDigest(p, until = now()) {
+    const st = p.digestState || {};
+    const since = Math.max(st.at || 0, until - 48 * 3600000) || until - 24 * 3600000;
+    const title = (t) => t.title;
+    const done = p.board.tasks.filter(t => t.status === 'done' && (t.updated || t.at) >= since);
+    const newGoals = p.board.goals.filter(g => g.at >= since);
+    const stuck = p.board.tasks.filter(t => t.status === 'blocked');
+    const doing = p.board.tasks.filter(t => t.status === 'doing');
+    const prs = p.board.tasks.filter(t => t.checks && t.checks.pr && (t.updated || t.at) >= since);
+    const conflicts = Object.values(p.conflicts || {}).reduce((n, c) => n + c.items.length, 0);
+    const problems = (p.problems || []).filter(x => x.at >= since);
+    const approvals = p.liveApprovals();
+    const now_ = cumulativeCost(p), before = st.cost || {};
+    const costBy = Object.entries(now_).map(([n, v]) => [n, Math.max(0, v - (before[n] || 0))]).filter(([, v]) => v >= 0.005).sort((a, b) => b[1] - a[1]);
+    const cost = costBy.reduce((t, [, v]) => t + v, 0);
+    const active = [...new Set([...p.activity.filter(a => a.at >= since).map(a => a.name), ...done.map(t => t.owner).filter(Boolean)])];
+    const budget = (p.projectSettings || {}).budget;
+    const month = monthSpend(p);
+    const sections = [];
+    if (stuck.length || approvals.length || problems.length || conflicts) {
+      const items = [
+        ...stuck.map(t => ({ text: `“${title(t)}” is stuck${t.owner ? ` (${t.owner})` : ''}${t.notes && t.notes.length ? ': ' + clip(t.notes[t.notes.length - 1].text, 140) : ''}` })),
+        ...approvals.slice(0, 5).map(x => ({ text: `${x.owner}'s agent is waiting for an OK to run ${clip(x.command, 80)}` })),
+        ...(conflicts ? [{ text: `${conflicts} branch conflict${conflicts === 1 ? '' : 's'} between teammates` }] : []),
+        ...(problems.length ? [{ text: `${problems.length} error${problems.length === 1 ? ' was' : 's were'} reported from teammates' computers` }] : []),
+      ];
+      sections.push({ title: 'Needs a person', tone: 'bad', items });
+    }
+    if (done.length) sections.push({ title: 'Finished', tone: 'ok', items: done.slice(0, 10).map(t => ({ text: `${title(t)}${t.owner ? ` (${t.owner})` : ''}${t.checks && t.checks.tests === 'passed' ? ', tests pass' : ''}` })).concat(done.length > 10 ? [{ text: `and ${done.length - 10} more` }] : []) });
+    if (doing.length) sections.push({ title: 'In progress', items: doing.slice(0, 6).map(t => ({ text: `${title(t)}${t.owner ? ` (${t.owner})` : ''}` })) });
+    if (prs.length) sections.push({ title: 'Pull requests', items: prs.slice(0, 6).map(t => ({ text: `${title(t)}: ${t.checks.prState || 'open'}${t.checks.ci ? `, checks ${t.checks.ci}` : ''}` })) });
+    if (cost > 0 || (budget && month > 0)) {
+      const items = costBy.slice(0, 6).map(([n, v]) => ({ text: `${n}: ${money(v)}` }));
+      if (budget) items.push({ text: `This month so far: ${money(month)} of a ${money(budget.monthly)} budget (${Math.round(month / budget.monthly * 100)}%)` });
+      else items.push({ text: `This month so far: ${money(month)}` });
+      sections.push({ title: `Agent usage, about ${money(cost)} at API prices`, items });
+    }
+    const bits = [done.length && `${done.length} task${done.length === 1 ? '' : 's'} finished`, newGoals.length && `${newGoals.length} new request${newGoals.length === 1 ? '' : 's'}`, stuck.length && `${stuck.length} stuck`, cost >= 0.005 && `${money(cost)} of agent usage`].filter(Boolean);
+    const quiet = !done.length && !newGoals.length && !stuck.length && cost < 0.005 && !problems.length && !conflicts;
+    return { id: id(), at: until, since, project: prettyProject(p), quiet,
+      headline: bits.length ? bits.join(', ') : 'A quiet day: nothing finished, nothing stuck.',
+      stats: { done: done.length, newRequests: newGoals.length, stuck: stuck.length, inProgress: doing.length, cost, month, budget: budget || null, active }, sections, _cost: now_ };
+  }
+  const money = (n) => (n < 0.01 && n > 0 ? '<$0.01' : '$' + Number(n || 0).toFixed(n < 10 ? 2 : 0));
+  const stripDigest = ({ _cost, ...d }) => d;
+
+  function digestEmail(p, d) {
+    const link = p.origin ? `${p.origin}/app#p=${encodeURIComponent(p.name)}` : '';
+    const esc = (x) => String(x).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const day = new Date(d.at).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: digestCfg(p).tz });
+    const text = `${d.project}, ${day}\n${d.headline}\n\n` + d.sections.map(s => `${s.title}\n${s.items.map(i => '  - ' + i.text).join('\n')}`).join('\n\n') + (link ? `\n\nOpen the project: ${link}` : '') + '\n\nChange what you get in the project\'s notification settings.';
+    const html = `<div style="font:15px/1.55 system-ui,sans-serif;color:#171717;max-width:560px"><p style="margin:0 0 2px;color:#626268;font-size:13px">${esc(d.project)} · ${esc(day)}</p><h2 style="margin:0 0 14px;font-size:20px;letter-spacing:-.01em">${esc(d.headline)}</h2>` +
+      d.sections.map(s => `<h3 style="margin:18px 0 6px;font-size:14px;color:${s.tone === 'bad' ? '#cf222e' : s.tone === 'ok' ? '#1a7f4b' : '#171717'}">${esc(s.title)}</h3><ul style="margin:0;padding-left:18px;color:#3d3d42">${s.items.map(i => `<li>${esc(i.text)}</li>`).join('')}</ul>`).join('') +
+      (link ? `<p style="margin-top:22px"><a href="${esc(link)}" style="background:#171717;color:#fff;padding:9px 14px;border-radius:7px;text-decoration:none;font-weight:600">Open ${esc(d.project)}</a></p>` : '') +
+      `<p style="color:#8b8b93;font-size:12px;margin-top:20px">You can turn this off in the project's notification settings.</p></div>`;
+    return { subject: `[${d.project}] ${d.headline}`, text, html };
+  }
+  function deliverDigest(p, d) {
+    const c = digestCfg(p), to = digestRecipients(p);
+    const sent = { email: 0, popup: 0, people: to.length };
+    p.digests = p.digests || [];
+    p.digests.push(stripDigest(d));
+    if (p.digests.length > 30) p.digests.splice(0, p.digests.length - 30);
+    const mail = c.email ? digestEmail(p, d) : null;
+    for (const who of to) {
+      if (c.popup) { notePerson(p, who, 'digest', `Daily digest: ${d.headline}`, d.sections.slice(0, 2).map(s => s.title).join(' · '), { digest: d.id }, { email: false }); sent.popup++; }
+      const contact = (p.contacts || {})[who];
+      if (mail && contact && contact.email && prefsOf(p, who).digest.email !== false) { (p.outbox = p.outbox || []).push({ email: { to: contact.email, ...mail } }); sent.email++; }
+    }
+    p.digestState = { at: d.at, lastDate: localParts(d.at, c.tz).date, cost: d._cost };
+    p.emit('digest', { id: d.id, popup: c.popup });
+    p.dirty = true;
+    return sent;
+  }
+  function maybeDigest(p) {
+    if (!digestDueAt(p, now())) return;
+    const d = buildDigest(p);
+    if (d.quiet) { p.digestState = { at: d.at, lastDate: localParts(d.at, digestCfg(p).tz).date, cost: d._cost }; p.emit('digest', { quiet: true }); return; }
+    deliverDigest(p, d);
   }
 
   // ---------- search ----------
@@ -342,7 +466,7 @@ module.exports = function features(h) {
 
   // ---------- routes ----------
   return {
-    NOTE_KINDS, notePerson, flushMail, applyRetention, chargeUsage, prefsOf, monthSpend,
+    NOTE_KINDS, notePerson, flushMail, applyRetention, chargeUsage, prefsOf, monthSpend, maybeDigest, nextDigestAt,
     routes: {
       // my notifications: newest last
       'GET notes': (p, b, q, ctx) => {
@@ -461,6 +585,40 @@ module.exports = function features(h) {
         audit(p, a.name, 'settings', `cost settings: ${ps.budget ? `budget $${ps.budget.monthly}/month, alert at ${ps.budget.alertPct}%` : 'no budget'}${ps.prices && Object.keys(ps.prices).length ? `; custom prices for ${Object.keys(ps.prices).join(', ')}` : ''}`);
         p.emit('project-setting', { settings: ps, byName: a.name });
         return { ok: true, settings: ps };
+      },
+
+
+      // ---- the daily digest ----
+      'GET digests': (p, b, q, ctx) => {
+        const me = (ctx.auth || {}).name, cfg = digestCfg(p);
+        const recipient = (ctx.auth || {}).role === 'owner' || (!!me && digestRecipients(p).includes(me));
+        return { settings: cfg, recipient, recipients: digestRecipients(p).length, everyone: people(p).length, digests: recipient ? (p.digests || []).slice(-14) : [] };
+      },
+      'POST digest-settings': (p, b) => {
+        const a = p.touch(b.agent);
+        const cur = digestCfg(p), next = { ...cur };
+        if (b.enabled !== undefined) next.enabled = !!b.enabled;
+        if (b.to !== undefined) { if (!['owners', 'everyone'].includes(b.to)) throw httpError(400, 'send to owners or everyone'); next.to = b.to; }
+        if (b.email !== undefined) next.email = !!b.email;
+        if (b.popup !== undefined) next.popup = !!b.popup;
+        if (b.weekdaysOnly !== undefined) next.weekdaysOnly = !!b.weekdaysOnly;
+        if (b.hour !== undefined) { const h = Number(b.hour); if (!Number.isInteger(h) || h < 0 || h > 23) throw httpError(400, 'hour must be 0 to 23'); next.hour = h; }
+        if (b.tz !== undefined) { if (!validTz(String(b.tz))) throw httpError(400, 'unknown time zone'); next.tz = String(b.tz); }
+        if (next.enabled && !next.email && !next.popup) throw httpError(400, 'choose email, a dashboard pop-up, or both');
+        p.projectSettings = { ...(p.projectSettings || {}), digest: next };
+        p._nd = null;
+        audit(p, a.name, 'settings', next.enabled ? `daily digest on: to ${next.to}, ${[next.email && 'email', next.popup && 'pop-up'].filter(Boolean).join(' and ')}, at ${next.hour}:00 ${next.tz}${next.weekdaysOnly ? ', weekdays' : ''}` : 'daily digest off');
+        p.emit('project-setting', { settings: p.projectSettings, byName: a.name });
+        return { ok: true, settings: next };
+      },
+      // a preview only the owner sees, or send today's digest to its recipients right now
+      'POST digest-now': (p, b) => {
+        const a = p.touch(b.agent);
+        const d = buildDigest(p);
+        if (!b.deliver) return { ok: true, preview: true, digest: stripDigest(d) };
+        const sent = deliverDigest(p, d);
+        audit(p, a.name, 'settings', `sent the daily digest now to ${sent.people} ${sent.people === 1 ? 'person' : 'people'}`);
+        return { ok: true, digest: stripDigest(d), sent };
       },
 
       // ---- the project's data ----

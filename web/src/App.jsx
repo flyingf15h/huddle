@@ -18,6 +18,7 @@ import NameDialog from './components/NameDialog.jsx';
 import Profile from './components/Profile.jsx';
 import InviteDialog from './components/InviteDialog.jsx';
 import Help from './components/Help.jsx';
+import DigestDialog from './components/DigestDialog.jsx';
 import Activity from './views/Activity.jsx';
 import Tasks from './views/Tasks.jsx';
 import Code from './views/Code.jsx';
@@ -79,6 +80,7 @@ export default function App() {
       {S.search && <Search />}
       {S.shortcuts && <Shortcuts />}
       <Help />
+      <DigestDialog />
       <Toasts />
     </>
   );

@@ -237,7 +237,10 @@ export class HuddleProject extends DurableObject {
 
   // locks need sweeping while they exist; otherwise just come back to clean up an abandoned project
   async schedule() {
-    const want = this.busy() ? now() + SWEEP_MS : this.p.lastActive + IDLE_DELETE_MS;
+    let want = this.busy() ? now() + SWEEP_MS : this.p.lastActive + IDLE_DELETE_MS;
+    // the daily digest has its own time
+    const nd = core.features.nextDigestAt(this.p);
+    if (nd) want = Math.min(want, nd + 1000);
     const cur = await this.ctx.storage.getAlarm();
     if (!cur || cur > want + 1000 || (want - cur > 24 * 3600 * 1000)) await this.ctx.storage.setAlarm(want);
   }

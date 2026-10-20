@@ -162,6 +162,42 @@ const ok = (m) => console.log('✓ ' + m);
     assert.ok(fix.task.direct && fix.task.owner === 'bob' && /src\/pay\.js/.test(fix.task.detail));
     ok("conflicts between branches reach both people, and one click hands the merge to the branch owner's agent");
 
+    // ---------- the daily digest ----------
+    assert.strictEqual((await call(null, 'POST', 'digest-settings', { agent: agent('bob'), enabled: true }, bobTok)).status, 403);
+    assert.strictEqual((await call(null, 'POST', 'digest-settings', { agent: agent('ana'), enabled: true, hour: 30 }, A)).status, 400);
+    assert.strictEqual((await call(null, 'POST', 'digest-settings', { agent: agent('ana'), enabled: true, tz: 'Mars/Base' }, A)).status, 400);
+    assert.strictEqual((await call(null, 'POST', 'digest-settings', { agent: agent('ana'), enabled: true, email: false, popup: false }, A)).status, 400);
+    const ds = await call(null, 'POST', 'digest-settings', { agent: agent('ana'), enabled: true, to: 'owners', email: true, popup: true, hour: 8, tz: 'America/Toronto', weekdaysOnly: false }, A);
+    assert.strictEqual(ds.settings.tz, 'America/Toronto');
+    const gd0 = await call(null, 'GET', 'digests', null, bobTok);
+    assert.deepStrictEqual([gd0.recipient, gd0.digests.length], [false, 0], 'members are not recipients when it goes to owners');
+    const prev = await call(null, 'POST', 'digest-now', { agent: agent('ana') }, A);
+    assert.ok(prev.preview && /task|stuck|usage|request/.test(prev.digest.headline), prev.digest.headline);
+    assert.ok(prev.digest.sections.some(x => /Needs a person/.test(x.title)), 'the stuck task shows as needing a person');
+    assert.strictEqual((await call(null, 'GET', 'digests', null, A)).digests.length, 0, 'a preview is not kept');
+    const mailBefore = mail.length;
+    const sent1 = await call(null, 'POST', 'digest-now', { agent: agent('ana'), deliver: true }, A);
+    assert.deepStrictEqual([sent1.sent.people, sent1.sent.popup], [1, 1]);
+    assert.ok((await call(null, 'GET', 'notes', null, A)).notes.some(n => n.kind === 'digest' && n.link.digest === sent1.digest.id));
+    assert.ok(!(await call(null, 'GET', 'notes', null, bobTok)).notes.some(n => n.kind === 'digest'), 'owners only');
+    let until2 = Date.now() + 5000;
+    while (!mail.slice(mailBefore).some(m => /ana@example/.test(m.to)) && Date.now() < until2) await new Promise(r => setTimeout(r, 100));
+    const dm = mail.slice(mailBefore).filter(m => !/sign-in/.test(m.subject));
+    assert.ok(dm.length === 1 && dm[0].to === 'ana@example.com' && /\[prod\]/.test(dm[0].subject) && /Needs a person/.test(dm[0].text), JSON.stringify(dm.map(m => m.subject)));
+    // to everyone, by pop-up only: bob gets it in the dashboard and no email
+    await call(null, 'POST', 'digest-settings', { agent: agent('ana'), to: 'everyone', email: false, popup: true }, A);
+    const digestMails = () => mail.filter(m => /Needs a person|Daily digest/.test(m.text) || /\[prod\] .*(finished|stuck|usage|request)/.test(m.subject)).length;
+    const mailMid = digestMails();
+    const sent2 = await call(null, 'POST', 'digest-now', { agent: agent('ana'), deliver: true }, A);
+    assert.ok(sent2.sent.people >= 2 && sent2.sent.email === 0);
+    assert.ok((await call(null, 'GET', 'notes', null, bobTok)).notes.some(n => n.kind === 'digest'));
+    assert.strictEqual((await call(null, 'GET', 'digests', null, bobTok)).digests.length, 2);
+    await new Promise(r => setTimeout(r, 600));
+    assert.strictEqual(digestMails(), mailMid, 'no digest email when it is pop-up only');
+    // switched off: nothing is due
+    await call(null, 'POST', 'digest-settings', { agent: agent('ana'), enabled: false }, A);
+    ok('the daily digest goes to owners or everyone, by email, pop-up or both, can be previewed, and skips email for pop-up only');
+
     // ---------- data ----------
     const ex = await call(null, 'GET', 'export', null, A);
     const flat = JSON.stringify(ex);

@@ -5,6 +5,7 @@ import { useS } from '../lib/store.js';
 import { ago, store } from '../lib/words.js';
 import Avatar from '../components/Avatar.jsx';
 import Icon from '../components/Icon.jsx';
+import DigestSettings from '../components/DigestSettings.jsx';
 
 const TABS = [['team', 'Team & access'], ['rules', 'Rules'], ['integrations', 'Integrations'], ['notify', 'Notifications'], ['data', 'Data & privacy'], ['audit', 'Audit log']];
 const ROLE = { owner: 'Owner', member: 'Member', viewer: 'Viewer' };
@@ -173,6 +174,7 @@ export default function Settings() {
 
         {tab === 'notify' && (
           <>
+            <DigestSettings />
             <div className="panel"><h3>What you're told about</h3><p className="pdesc">Your own settings. Everything shows in the bell; choose what also goes to your email{S.contact && S.contact.email ? ` (${S.contact.email})` : ''} and your desktop. Several emails close together are sent as one.</p>
               {!(S.contact && S.contact.email) && <div className="srow" style={{ borderTop: '1px solid var(--line)' }}><span className="grow muted">No email linked. Sign in on the home screen, then link your account under Team &amp; access.</span></div>}
               <div className="plist">{Object.entries(S.noteKinds).map(([k, d]) => { const pr = S.notePrefs[k] || {}; return (

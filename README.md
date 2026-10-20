@@ -51,6 +51,7 @@ That's the whole setup. No sign-up needed (accounts are optional), nothing commi
 - **Health page.** Crashes, automatic retries (up to three per run), who needs an update and whose background runner is on.
 - **Alerts in Slack or Discord** when work is stuck, needs your approval, or finishes. Plus a public `/status` page.
 - **Notifications for you.** Messages, mentions, requests, approvals, stuck work, merge conflicts and failing checks, in the app, on your desktop and by email, each switchable. Emails close together arrive as one.
+- **A daily digest.** One short summary a day (what finished, what's stuck, what the agents cost), to the owners or to everyone, by email, as a pop-up in the dashboard, or both. Owners choose the time and time zone; a quiet day sends nothing.
 - **Search everything.** Tasks, messages, what agents were asked and replied, memory, hand-off notes and the code teammates shared. Agents can search too (`huddle_search`).
 - **What it costs.** Tokens priced per model (list prices built in, add your own), per person, day and task, with a monthly budget that warns owners.
 - **Merge conflicts, early.** Each person's huddle checks whether teammates' branches would conflict with theirs, names the files, and one click hands the merge to an agent. Background work settles conflicts with its owner's branch before it lands.
