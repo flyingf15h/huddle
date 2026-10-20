@@ -205,6 +205,16 @@ You hear about messages and requests sent to your Claude right away: while a Cla
 
 Board tasks close themselves: a commit whose message says `closes <task id>` (or `[<task id>]`) marks that task done, and when your Claude starts on something new it's reminded of tasks it still has in progress.
 
+## Reviewing, scheduling and always-on teammates
+
+- **Diff review.** Each background task's changes can be read in the dashboard (Tasks, then Review changes): comment on lines, approve, ask for changes (the agent runs the task again with your comments) or merge work left on a branch.
+- **Second opinion.** If the team uses more than one kind of agent (say Claude and Codex), the review of a change comes from a different vendor than the one that wrote it, when that command line is on the computer doing the work. Switch it off under Rules.
+- **Conflict-aware planning.** Tasks that touch the same files wait for each other instead of colliding, and the task says why it is waiting.
+- **Schedules and GitHub.** Start a request on a timer (Settings, Integrations), or label a GitHub issue or comment `/huddle` to turn it into one.
+- **Cost alerts.** Owners hear about a spike in a day's cost, a month on course to pass the budget, or one expensive task. Usage shows the forecast.
+- **Slack.** `/huddle status`, `/huddle @ana fix the cart test`, and Approve or Decline buttons, set up in Settings, Integrations.
+- **Workers.** `huddle worker <invite> --repo URL` keeps an always-on teammate on a server; see docs/worker.md.
+
 ## Accounts, roles and access
 
 A new project has one shared invite: whoever has it is in. For a team you'd rather manage, the owner sets up accounts:

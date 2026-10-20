@@ -349,7 +349,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
   const skip = new Set();
   const running = new Map(); // task or goal id -> what it's doing
   const replied = new Set(), answeredAt = []; // message ids answered, and when (a cap per hour)
-  let usage = null, projectSettings = {};      // this person's window use; the team's test and review settings
+  let usage = null, projectSettings = {}, teamSettings = {};      // this person's window use; the team's test and review settings
   const later = (id) => { skip.add(id); setTimeout(() => { skip.delete(id); work(); }, 3 * 60 * 1000).unref(); };
   let pumping = false, again = false, mode = DEFAULT_MODE, stopped = false;
 
@@ -411,7 +411,16 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     };
     run('agent');
   });
-  const runOnce = (prompt, opts = {}) => tool === 'cursor' ? runCursor(prompt, opts) : tool === 'codex' ? runCodex(prompt, opts) : new Promise((resolve) => {
+  // a different vendor's reviewer, when the team uses more than one kind of agent and this computer has
+  // another one's command line: 'codex', 'cursor' or 'claude', or null
+  const BIN = { claude: ['claude'], codex: ['codex'], cursor: ['agent', 'cursor-agent'] };
+  const onPath = (name) => require('child_process').spawnSync(process.platform === 'win32' ? 'where' : 'which', [name], { stdio: 'ignore' }).status === 0;
+  const otherVendor = () => {
+    if (projectSettings.crossReview === false) return null;
+    const used = new Set(Object.values(teamSettings || {}).map(s => (s && s.tool) || 'claude'));
+    return ['claude', 'codex', 'cursor'].find(v => v !== tool && used.has(v) && BIN[v].some(onPath)) || null;
+  };
+  const runOnce = (prompt, opts = {}) => (opts.as || tool) === 'cursor' ? runCursor(prompt, opts) : (opts.as || tool) === 'codex' ? runCodex(prompt, opts) : new Promise((resolve) => {
     const { cwd = cfg.root, session, mcpRoot, model, allow = [], readOnly = false, shown = '', taskId } = opts;
     // in its own worktree (on its own branch) a Claude can also bring in and rearrange history freely:
     // nothing reaches the person's branch until it has been reviewed, tested and merged by huddle
@@ -436,6 +445,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     child.on('close', code => resolve({ code, out: text, err }));
   });
   // each run is its own Claude Code session, started for this one job and ended when it's done (claude -p exits)
+  const VENDOR_NAME = { claude: 'Claude', codex: 'Codex', cursor: 'Cursor' };
   const runClaude = async (prompt, opts) => {
     const res = await runOnce(prompt, opts);
     if (res.missing) await reportProblem('missing', `${toolName} isn't installed or isn't on PATH on ${me}'s computer, so background work can't run there`, res.err);
@@ -460,7 +470,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     mode = flags.mode ? normMode(flags.mode) : await getMode(client).catch(() => mode);
     const st = await client.get('state').catch(() => null);
     if (st && adoptName(cfg, st.aliases)) { log(`now called ${cfg.name}`); me = cfg.name; }
-    if (st) { usage = (st.usage || {})[me] || null; projectSettings = st.projectSettings || {}; }
+    if (st) { usage = (st.usage || {})[me] || null; projectSettings = st.projectSettings || {}; teamSettings = st.settings || {}; }
     await client.post('hello', { runner: mode, tool }).catch(() => {});
     return mode;
   }
@@ -526,8 +536,12 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     const cmd = projectSettings.testCommand || detectTests(c.dir);
     const testAllow = cmd ? [`Bash(${cmd})`, `Bash(${cmd}:*)`] : [];
     if (projectSettings.review !== false) {
-      log(`reviewing ${t.id} with Sonnet`);
-      const r = await runClaude(reviewPrompt(t, c.base), { taskId: t.id, cwd: c.dir, session: 'review-' + t.id, mcpRoot: c.dir, model: 'sonnet', readOnly: true, shown: `Review the work on: ${t.title}` });
+      // a second opinion from another vendor's agent, when there is one to ask
+      const other = otherVendor();
+      log(`reviewing ${t.id} with ${other ? VENDOR_NAME[other] : 'Sonnet'}`);
+      let r = await runClaude(reviewPrompt(t, c.base), { taskId: t.id, cwd: c.dir, session: 'review-' + t.id, mcpRoot: c.dir, model: 'sonnet', readOnly: true, shown: `Review the work on: ${t.title}`, ...(other ? { as: other } : {}) });
+      if (other && r.code !== 0) { log(`${VENDOR_NAME[other]} could not review; asking ${toolName} instead`); r = await runClaude(reviewPrompt(t, c.base), { taskId: t.id, cwd: c.dir, session: 'review-' + t.id, mcpRoot: c.dir, model: 'sonnet', readOnly: true, shown: `Review the work on: ${t.title}` }); }
+      else if (other) out.reviewer = VENDOR_NAME[other];
       const at = r.out.search(/VERDICT:\s*CHANGES/i);
       if (at >= 0) {
         await runClaude(fixPrompt(t, 'A reviewer found these problems', r.out.slice(at)), { taskId: t.id, cwd: c.dir, session: 'fix-' + t.id, mcpRoot: c.dir, model: 'sonnet', allow: testAllow, shown: `Fix what the review found in: ${t.title}` });

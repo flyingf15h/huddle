@@ -763,6 +763,7 @@ const routes = {
     p.projectSettings = p.projectSettings || {};
     if (b.testCommand !== undefined) p.projectSettings.testCommand = String(b.testCommand || '').trim().slice(0, 300) || null;
     if (b.review !== undefined) p.projectSettings.review = b.review !== false;
+    if (b.crossReview !== undefined) p.projectSettings.crossReview = b.crossReview !== false;
     // false: only personal invites work; the shared token everyone first joined with stops working
     if (b.sharedToken !== undefined) {
       if (b.sharedToken === false && !hasOwner(p)) throw httpError(409, 'set up accounts before switching the shared invite off');
@@ -771,7 +772,7 @@ const routes = {
     if (b.membersCanInvite !== undefined) p.projectSettings.membersCanInvite = b.membersCanInvite !== false;
     // how finished background work arrives: merged into the person's branch, or as a GitHub pull request
     if (b.delivery !== undefined) p.projectSettings.delivery = b.delivery === 'pr' ? 'pr' : 'merge';
-    const said = { testCommand: (v) => v ? `test command: ${v}` : 'test command: guessed', review: (v) => `review before merging: ${v === false ? 'off' : 'on'}`,
+    const said = { testCommand: (v) => v ? `test command: ${v}` : 'test command: guessed', crossReview: (v) => `review by another vendor: ${v === false ? 'off' : 'on'}`, review: (v) => `review before merging: ${v === false ? 'off' : 'on'}`,
       sharedToken: (v) => v === false ? 'switched the shared invite off' : 'switched the shared invite on', membersCanInvite: (v) => `members can invite: ${v === false ? 'no' : 'yes'}`,
       delivery: (v) => v === 'pr' ? 'finished work opens a pull request' : "finished work merges into its person's branch" };
     audit(p, a.name, 'settings', Object.keys(b).filter(k => said[k]).map(k => said[k](b[k])).join('; '));

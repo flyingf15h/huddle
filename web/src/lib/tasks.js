@@ -16,8 +16,8 @@ export function checks(t) {
   if (S.approvals.some(x => x.taskId === t.id)) out.push({ text: `Needs ${t.owner === myName() ? 'your' : t.owner + "'s"} OK`, tone: 'wait' });
   if (c.tests === 'passed') out.push({ text: 'Tests pass', tone: 'good', title: c.testCommand });
   if (c.tests === 'failed') out.push({ text: 'Tests failed', tone: 'bad', title: c.testOutput });
-  if (c.review === 'fixed') out.push({ text: 'Review fixed', tone: '', title: 'A second agent found problems and they were fixed' });
-  else if (c.review === 'ok') out.push({ text: 'Reviewed', tone: 'good' });
+  if (c.review === 'fixed') out.push({ text: c.reviewer ? `Review by ${c.reviewer} fixed` : 'Review fixed', tone: '', title: 'A second agent found problems and they were fixed' });
+  else if (c.review === 'ok') out.push({ text: c.reviewer ? `Reviewed by ${c.reviewer}` : 'Reviewed', tone: 'good' });
   if (c.conflicts === 'resolved') out.push({ text: 'Conflicts resolved', tone: 'good' });
   if (c.conflicts === 'unresolved') out.push({ text: 'Conflicts left', tone: 'bad' });
   if (c.ci === 'failing') out.push({ text: 'CI failing', tone: 'bad' });

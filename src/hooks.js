@@ -267,7 +267,8 @@ function newActivity(input, st, level) {
 function newUsage(input, st) {
   const file = input.transcript_path;
   let size;
-  try { size = fs.statSync(file).size; } catch { return {}; }
+  // a brand-new conversation has no transcript file yet when its first prompt starts: count from its first line
+  try { size = fs.statSync(file).size; } catch { if (st.data.usageFile !== file) { st.data.usageFile = file; st.data.usageOffset = 0; } return {}; }
   if (st.data.usageFile !== file || st.data.usageOffset > size) { st.data.usageFile = file; st.data.usageOffset = size; return {}; }
   if (size === st.data.usageOffset) return {};
   const fd = fs.openSync(file, 'r');

@@ -110,6 +110,7 @@ const denied = (r) => r && r.hookSpecificOutput && r.hookSpecificOutput.permissi
     ok("Codex's replies, token use and plan windows reach the team like Claude's");
 
     // the project's never-allowed commands, in both agents' own sessions
+    await api('project-setting', { agent: boss, crossReview: false });
     await api('policy', { agent: boss, deny: ['git push'] });
     cora.hook('prompt', { prompt: 'ship', transcript_path: transcript });
     dan.hook('prompt', { prompt: 'ship' });
