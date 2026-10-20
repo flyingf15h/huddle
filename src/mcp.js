@@ -49,6 +49,8 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: { title: { type: 'string', description: 'short, specific, e.g. "tests need DATABASE_URL set"' }, text: { type: 'string', description: 'the fact, plus why it matters' } }, required: ['title', 'text'] } },
   { name: 'huddle_recall', description: 'Search the shared team memory. Omit query to list everything.',
     inputSchema: { type: 'object', properties: { query: { type: 'string' } } } },
+  { name: 'huddle_search', description: "Search the team's history: requests and tasks, messages, what other agents were asked and replied, memory, hand-off notes and teammates' shared code. Use it to find past decisions (\"what did we decide about refunds\") or who worked on something.",
+    inputSchema: { type: 'object', properties: { query: { type: 'string' }, kinds: { type: 'string', description: 'optional, comma-separated: tasks, messages, activity, knowledge, code' } }, required: ['query'] } },
   { name: 'huddle_forget', description: 'Delete a shared memory that turned out wrong or outdated (by id or exact title).',
     inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } },
   { name: 'huddle_save_skill', description: "Share a skill with every agent: a reusable procedure installed into everyone's .claude/skills/. Same name updates it.",
@@ -111,7 +113,7 @@ function runMcp() {
   const log = (msg) => process.stderr.write(`[huddle] ${msg}\n`);
   if (client) {
     const key = cfg.clone ? null : ownerKey(cfg);
-    client.post('hello', { build: build(), tool: process.env.HUDDLE_AGENT === 'codex' || cfg.agent === 'codex' ? 'codex' : 'claude', ...(key ? { keyHash: sha(key) } : {}) }).catch(e => log(e.message));
+    client.post('hello', { build: build(), tool: ['codex', 'cursor'].includes(process.env.HUDDLE_AGENT) ? process.env.HUDDLE_AGENT : ['codex', 'cursor'].includes(cfg.agent) ? cfg.agent : 'claude', ...(key ? { keyHash: sha(key) } : {}) }).catch(e => log(e.message));
     // an open sync socket already keeps us online on the hosted server
     const beat = setInterval(() => { if (!(sync && sync.wsOpen)) client.post('hello', {}).catch(() => {}); }, 45000);
     beat.unref();
@@ -279,6 +281,11 @@ function runMcp() {
         const hits = sh.memories.filter(m => words.every(w => (m.title + ' ' + m.text).toLowerCase().includes(w)));
         if (!hits.length) return words.length ? 'no matching memories' : 'shared memory is empty';
         return hits.map(m => `[${m.id}] ${m.title} (${m.byName}, ${ago(m.at)})\n${m.text}`).join('\n\n');
+      }
+      case 'huddle_search': {
+        const r = await client.get('search', { q: String(a.query || ''), limit: 25, ...(a.kinds ? { kinds: a.kinds } : {}) });
+        if (!r.results.length) return `nothing in the project mentions "${a.query}"`;
+        return r.results.map(x => `${x.kind}: ${x.title}${x.who ? ` (${x.who}, ${ago(x.at)})` : ''}\n  ${x.snippet}`).join('\n') + (r.total > r.results.length ? `\n… ${r.total - r.results.length} more; narrow the query` : '');
       }
       case 'huddle_forget':
         await client.post('forget', { id: a.id });

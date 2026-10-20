@@ -1,0 +1,38 @@
+<script>
+  // One stroke icon set for the whole dashboard (24px grid, drawn with currentColor).
+  let { name, size = 18 } = $props();
+  const P = {
+    activity: '<path d="M4 6.5h16M4 12h16M4 17.5h10"/>',
+    tasks: '<path d="M9 6.5h11M9 12h11M9 17.5h11"/><path d="M3.5 6.5l1.2 1.2L7 5.4M3.5 12l1.2 1.2L7 10.9"/><circle cx="5" cy="17.5" r="1.3"/>',
+    code: '<path d="M8.5 7.5L4 12l4.5 4.5M15.5 7.5L20 12l-4.5 4.5"/>',
+    brief: '<path d="M5 4.5h10.5L19 8v11.5H5z"/><path d="M8.5 11h7M8.5 14.5h7M8.5 8h4"/>',
+    usage: '<path d="M5 19.5V11M10 19.5V5M15 19.5v-6M20 19.5V8.5"/>',
+    health: '<path d="M3 12h4l2.5-6 5 12 2.5-6h4"/>',
+    settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+    bell: '<path d="M6 9.5a6 6 0 0 1 12 0c0 4.2 1.4 6 2.2 6.9H3.8C4.6 15.5 6 13.7 6 9.5z"/><path d="M10 19.6a2.2 2.2 0 0 0 4 0"/>',
+    belloff: '<path d="M6 9.5a6 6 0 0 1 12 0c0 4.2 1.4 6 2.2 6.9H3.8C4.6 15.5 6 13.7 6 9.5z"/><path d="M10 19.6a2.2 2.2 0 0 0 4 0"/><path d="M3.5 3.5l17 17"/>',
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>',
+    moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>',
+    help: '<circle cx="12" cy="12" r="9"/><path d="M9.7 9.4a2.4 2.4 0 0 1 4.6.9c0 1.7-2.3 2.1-2.3 3.6"/><circle cx="12" cy="17.2" r=".7" fill="currentColor" stroke="none"/>',
+    search: '<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/>',
+    plus: '<path d="M12 5.5v13M5.5 12h13"/>',
+    menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+    chevron: '<path d="M7 9.5l5 5 5-5"/>',
+    close: '<path d="M6 6l12 12M18 6L6 18"/>',
+    lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+    unlock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/>',
+    join: '<path d="M15 19v-1.5a3.5 3.5 0 0 0-3.5-3.5h-4A3.5 3.5 0 0 0 4 17.5V19"/><circle cx="9.5" cy="8" r="3.5"/><path d="M19 8v6M16 11h6"/>',
+    file: '<path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3z"/>',
+    git: '<circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 8v8M18 10c0 4-6 3-10.5 6.5"/>',
+    knowledge: '<path d="M5 4.5h10.5L19 8v11.5H5z"/><path d="M8.5 11h7M8.5 14.5h7"/>',
+    approve: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+    task: '<path d="M9 6.5h11M9 12h11M9 17.5h11"/><path d="M4 6.5h.01M4 12h.01M4 17.5h.01"/>',
+    handoff: '<path d="M6 4.5h12v15H6z"/><path d="M9 9h6M9 12.5h6M9 16h3"/>',
+    github: '<path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/>',
+    mail: '<rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="M4 7l8 6 8-6"/>',
+    send: '<path d="M4 12l16-8-6 16-2.5-6.5z"/><path d="M11.5 13.5L20 4"/>',
+    conflict: '<path d="M6 4v6a6 6 0 0 0 6 6h0a6 6 0 0 1 6 6"/><path d="M18 4v6a6 6 0 0 1-6 6"/><circle cx="6" cy="4" r="1.6"/><circle cx="18" cy="4" r="1.6"/>',
+    keyboard: '<rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>',
+  };
+</script>
+<svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{@html P[name] || ''}</svg>

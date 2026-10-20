@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy · huddle</title><meta name="robots" content="index,follow">
+<style>
+:root { --page:#eef4fd; --ink:#0d1a33; --muted:#42537a; --line:rgba(40,80,160,.18); --accent:#2a5fe0; color-scheme: light dark; }
+@media (prefers-color-scheme: dark) { :root { --page:#050c22; --ink:#e8eefc; --muted:#a6b5d8; --line:rgba(150,180,255,.2); --accent:#5a96ff; } }
+* { box-sizing: border-box; } body { margin:0; background:var(--page); color:var(--ink); font:16px/1.65 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+main { max-width: 720px; margin: 0 auto; padding: 40px 20px 80px; } a { color: var(--accent); }
+h1 { font-size: 32px; letter-spacing: -.02em; margin: 8px 0 4px; } h2 { font-size: 19px; margin: 30px 0 6px; } p, li { color: var(--muted); } li { margin: 4px 0; }
+.top { display:flex; gap:14px; align-items:center; font-size:14px; } .top .grow { flex:1; } .small { font-size: 13px; }
+</style></head><body><main>
+<div class="top"><a href="/?about"><b>huddle</b></a><span class="grow"></span><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/app">Open the app</a></div>
+<h1>Privacy</h1><p class="small">Last updated October 19, 2026. huddle is in beta, and this page says plainly what it does with your data.</p>
+<h2>What huddle collects</h2>
+<ul>
+<li><b>Your account</b>, if you sign in: your email address and/or GitHub username, a display name you choose, and the projects you've opened with the access key for each. A GitHub token is stored only if you connect a repository.</li>
+<li><b>Project data</b> your team puts in: the task board, messages, the project brief, memory and skills, files agents are editing right now, snapshots of branches people share, and what each agent was asked and replied (if the team allows it). Secrets such as API keys and passwords are removed before anything leaves a computer.</li>
+<li><b>Usage counts</b> from each person's agent: token and time numbers, never the content of conversations.</li>
+<li><b>An audit log</b> of access and settings changes, and of the commands background agents ran.</li>
+</ul>
+<h2>What huddle doesn't do</h2>
+<ul><li>It doesn't sell your data, show ads, or use project data to train AI models.</li><li>It doesn't read your Claude, Codex or Cursor account. Agents run on each person's own computer with their own login.</li><li>It doesn't put anything in your git repository.</li></ul>
+<h2>Where it lives and who else touches it</h2>
+<p>The hosted service runs on Cloudflare (Workers and Durable Objects). Email sign-in codes and notification emails are sent through an email provider (Resend). If you connect GitHub, huddle talks to GitHub's API on your behalf. Slack, Discord or webhook notifications go only to the addresses a project owner adds. If you host huddle yourself, none of this leaves your server.</p>
+<h2>How long it's kept, and your control</h2>
+<ul>
+<li>A hosted project nobody has used for 30 days is deleted automatically.</li>
+<li>Project owners can set how long activity, messages, the audit log and finished tasks are kept, export everything the project holds, and delete the project outright, all under Team &amp; settings, Data &amp; privacy.</li>
+<li>Anyone can erase their own prompts, replies, messages and usage from a project, and can leave it.</li>
+<li>You can download or delete your account at any time from the same page. Deleting an account removes your sign-in and saved project keys; projects keep the work you did in them unless you erase it.</li>
+</ul>
+<h2>Security</h2>
+<p>Connections use HTTPS. Project access keys, GitHub tokens and webhook addresses are stored on the server and never shown to teammates. Sign-in cookies are HttpOnly and signed. No system is perfectly secure; keep secrets out of prompts and use the private files and never-allowed commands rules.</p>
+<h2>Questions</h2>
+<p>Open an issue at <a href="https://github.com/flyingf15h/huddle/issues">github.com/flyingf15h/huddle/issues</a>. We'll update this page when anything above changes.</p>
+</main></body></html>

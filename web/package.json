@@ -1,0 +1,16 @@
+{
+  "name": "huddle-dashboard",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "ship": "vite build && cp dist/index.html ../src/dashboard.html"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^5.1.1",
+    "svelte": "^5.57.2",
+    "vite": "^6.4.4",
+    "vite-plugin-singlefile": "^2.3.4"
+  }
+}

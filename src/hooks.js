@@ -11,11 +11,12 @@ const board = require('./board');
 const { requestTitle } = require('./core');
 const policy = require('./policy');
 const codex = require('./codex');
+const cursor = require('./cursor');
 
 // Claude Code edits with these; Codex edits with apply_patch (one patch can touch several files)
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'apply_patch']);
 // which coding agent ran this hook: set by the hook command (--agent codex) or the MCP server's env
-const agentKind = () => (process.env.HUDDLE_AGENT === 'codex' ? 'codex' : 'claude');
+const agentKind = () => (['codex', 'cursor'].includes(process.env.HUDDLE_AGENT) ? process.env.HUDDLE_AGENT : 'claude');
 const INBOX_EVERY_MS = 10 * 1000;
 
 function withNotice(text, obj) { return { ...(obj || {}), systemMessage: text }; }
@@ -317,7 +318,7 @@ async function shareStats(input, client, cfg, st) {
   st.save();
   if (st.data.codexLimits) { await client.post('usage', st.data.codexLimits).catch(() => {}); delete st.data.codexLimits; st.save(); }
   if (!started && !Object.keys(usage).length) return;
-  await client.post('stats', { conversation, turns: started ? 1 : 0, activeMs, usage, request: process.env.HUDDLE_AUTOPILOT === '1' });
+  await client.post('stats', { conversation, turns: started ? 1 : 0, activeMs, usage, request: process.env.HUDDLE_AUTOPILOT === '1', task: process.env.HUDDLE_TASK || undefined });
 }
 
 // A prompt starting with "private:" (or "#private") keeps that whole turn, its
@@ -545,7 +546,7 @@ const handlers = {
     st.data.sessionHead = st.data.commitsSeen = gitx.isRepo(cfg.root) ? gitx.head(cfg.root) : null;
     st.data.edited = [];
     st.save();
-    if (gitx.isRepo(cfg.root)) gitx.fetchAll(client, cfg.root).catch(() => {});
+    if (gitx.isRepo(cfg.root)) await Promise.race([gitx.fetchAll(client, cfg.root).then(() => gitx.reportConflicts(client, cfg.root)).catch(() => {}), new Promise(r => setTimeout(r, 4000))]);
     // shown to the person in their terminal, so they can see this session is in the huddle
     const others = [...new Set(s.agents.filter(a => a.online && a.name !== client.agent.name && a.kind !== 'human').map(a => a.name))];
     const mode = ((s.settings || {})[client.agent.name] || {}).autopilot || 'full';
@@ -611,7 +612,7 @@ const handlers = {
       }
     }
     // Codex's tool calls come from here rather than its transcript
-    const extra = agentKind() === 'codex' && sharingLevel(cfg) !== 'off' && !sessionState(cfg, client.agent).data.private
+    const extra = agentKind() !== 'claude' && !input.noStep && sharingLevel(cfg) !== 'off' && !sessionState(cfg, client.agent).data.private
       ? [{ kind: 'tool', tool: input.tool_name === 'exec_command' ? 'Bash' : input.tool_name, text: policy.redact(toolSummary(input.tool_name === 'exec_command' ? 'Bash' : input.tool_name, input.tool_input || {}, input.cwd)) }] : [];
     const pending = pendingActivity(input, cfg, sessionState(cfg, client.agent));
     const mail = await inbox(client, cfg, [...pending, ...extra]);
@@ -706,12 +707,36 @@ const handlers = {
   },
 };
 
+// Cursor names its events differently and expects other answers: translate both ways around the
+// same handlers. Its replies arrive in afterAgentResponse and go out with the stop hook; what huddle
+// wants to tell the agent when a prompt is submitted waits for the next tool result.
+async function runCursorHook(event, input) {
+  const cfg = loadConfig(cursor.rootOf(input));
+  if (!cfg) return out(event === 'beforeSubmitPrompt' ? { continue: true } : {});
+  if (input.conversation_id) process.env.HUDDLE_SESSION = 'cursor-' + input.conversation_id;
+  const client = new Client(cfg, { ...identity(cfg), branch: cfg.clone ? cfg.clone.branch : gitx.currentBranch(cfg.root) });
+  const st = sessionState(cfg, client.agent);
+  if (event === 'afterAgentResponse') { st.data.cursorReply = String(input.text || '').trim().slice(0, 8000); st.save(); return out({}); }
+  const [name, cin] = cursor.toClaude(event, input);
+  if (!name) return out({});
+  if (name === 'stop') { cin.last_assistant_message = st.data.cursorReply || ''; delete st.data.cursorReply; st.save(); }
+  let res = null;
+  try { res = await handlers[name](cin, client, cfg); }
+  catch (e) { await reportProblem(cfg, name, e).catch(() => {}); res = event === 'preToolUse' && cfg.failClosed ? deny(`huddle server unavailable, so edits are blocked (failClosed is on): ${e.message}`) : null; }
+  const st2 = sessionState(cfg, client.agent);
+  let pending = '';
+  if (event === 'beforeSubmitPrompt') { const t = cursor.fromClaude('postToolUse', res, '').additional_context; if (t) { st2.data.cursorPending = t; st2.save(); } }
+  if (event === 'postToolUse' && st2.data.cursorPending) { pending = st2.data.cursorPending; delete st2.data.cursorPending; st2.save(); }
+  out(cursor.fromClaude(event, res, pending));
+}
+
 async function runHook(event, flags = {}) {
   if (flags.agent) process.env.HUDDLE_AGENT = flags.agent;
   let raw = '';
   for await (const c of process.stdin) raw += c;
   let input = {};
   try { input = JSON.parse(raw || '{}'); } catch {}
+  if (agentKind() === 'cursor') return runCursorHook(event, input);
   // Codex gives a SessionEnd hook three seconds at most: publishing, the hand-off note and releasing
   // locks carry on in a process of its own
   if (event === 'session-end' && agentKind() === 'codex' && !flags.detached) {
@@ -747,7 +772,7 @@ async function reportProblem(cfg, event, e) {
   sent[key] = Date.now();
   try { fs.writeFileSync(file, JSON.stringify(sent)); } catch {}
   const client = new Client(cfg, identity(cfg));
-  await client.post('problem', { kind: 'hook', message: `the ${event} hook failed (${agentKind() === 'codex' ? 'Codex' : 'Claude Code'}): ${e.message}`, detail: String(e.stack || '').slice(0, 1500) });
+  await client.post('problem', { kind: 'hook', message: `the ${event} hook failed (${{ codex: 'Codex', cursor: 'Cursor' }[agentKind()] || 'Claude Code'}): ${e.message}`, detail: String(e.stack || '').slice(0, 1500) });
 }
 
 module.exports = { runHook, handlers, sha, targetsOf, sharingLevel };

@@ -9,5 +9,6 @@
     "bindings": [{ "name": "PROJECTS", "class_name": "HuddleProject" }]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["HuddleProject"] }],
+  "assets": { "directory": "../public", "binding": "ASSETS", "run_worker_first": true },
   "observability": { "enabled": true }
 }

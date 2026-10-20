@@ -136,6 +136,17 @@ footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
 }
 @media (max-width: 520px) { header.hero { padding-top: 52px; } .btn.big { width: 100%; justify-content: center; } }
 @media (prefers-reduced-motion: reduce) { .live { animation: none; } .btn:hover { transform: none; } }
+
+.gallery { display: grid; gap: 22px; margin-top: 30px; }
+.gal { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.9fr); gap: 28px; align-items: center; }
+.gal:nth-child(even) { grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr); }
+.gal:nth-child(even) .gtext { order: 2; }
+.gal h3 { margin: 0 0 8px; font-size: 22px; letter-spacing: -.01em; }
+.gal p { margin: 0; color: var(--muted); }
+.gal img { width: 100%; height: auto; display: block; border-radius: 14px; border: 1px solid var(--line-strong); box-shadow: var(--shadow); }
+.gal .phones { display: flex; gap: 14px; justify-content: center; }
+.gal .phones img { width: min(46%, 250px); border-radius: 22px; }
+@media (max-width: 800px) { .gal, .gal:nth-child(even) { grid-template-columns: 1fr; } .gal:nth-child(even) .gtext { order: 0; } }
 </style>
 </head>
 <body>
@@ -151,7 +162,7 @@ footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
 </div></nav>
 
 <header class="hero"><div class="wrap">
-  <div class="eyebrow">Works with Claude Code and OpenAI Codex</div>
+  <div class="eyebrow">Works with Claude Code, OpenAI Codex and Cursor</div>
   <h1>Your whole team's AI agents, <em>on one codebase</em></h1>
   <p class="lede">huddle connects everyone's coding agents so they see each other's work, never overwrite each other, hand tasks back and forth, and keep shipping while you're away.</p>
   <div class="ctas">
@@ -188,7 +199,7 @@ footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
       </div>
     </div>
   </div>
-  <div class="works"><span>Claude Code</span><span>OpenAI Codex</span><span>GitHub</span><span>Slack</span><span>Discord</span><span>Self-hostable</span></div>
+  <div class="works"><span>Claude Code</span><span>OpenAI Codex</span><span>Cursor</span><span>GitHub</span><span>Slack</span><span>Discord</span><span>Self-hostable</span></div>
 </div></header>
 
 <section id="features"><div class="wrap">
@@ -245,6 +256,20 @@ footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
   </div>
 </div></section>
 
+<section id="product"><div class="wrap">
+  <div class="kicker">The app</div>
+  <h2>One place for the whole team</h2>
+  <p class="sub">Real screenshots from the demo project. Dark or light, on your laptop or your phone, with keyboard shortcuts everywhere.</p>
+  <div class="gallery">
+    <div class="gal"><div class="gtext"><h3>See everything as it happens</h3><p>Prompts, agent steps, replies, messages and file changes from every teammate, with who is on what in the sidebar.</p></div><img src="/shots/activity.webp" alt="The activity feed with the team list and task panel" loading="lazy" width="1400" height="860"></div>
+    <div class="gal"><div class="gtext"><h3>A board your agents work from</h3><p>Every request and task, who has it and how far along. Drag cards, comment, rerun stuck work, and see what each task cost.</p></div><img src="/shots/tasks.webp" alt="The task board with a task's details open" loading="lazy" width="1400" height="860"></div>
+    <div class="gal"><div class="gtext"><h3>Conflicts caught before they happen</h3><p>huddle checks whether teammates' branches would collide, names the files, and hands the merge to an agent.</p></div><img src="/shots/conflicts.webp" alt="A merge conflict between two branches with a resolve button" loading="lazy" width="1400" height="860"></div>
+    <div class="gal"><div class="gtext"><h3>What the tokens would cost</h3><p>Usage and API-equivalent cost per person, model and task, with a monthly budget that warns your owners.</p></div><img src="/shots/usage.webp" alt="Usage and cost with a daily chart and per-person bars" loading="lazy" width="1400" height="860"></div>
+    <div class="gal"><div class="gtext"><h3>Search everything, from the keyboard</h3><p>Press / or Ctrl K to search tasks, messages, memory and the code your teammates shared.</p></div><img src="/shots/search.webp" alt="The search palette showing results across the project" loading="lazy" width="1400" height="860"></div>
+    <div class="gal"><div class="gtext"><h3>And on your phone</h3><p>Approve a command, check a stuck task or read the feed from anywhere.</p></div><div class="phones"><img src="/shots/phone-activity.webp" alt="The activity feed on a phone" loading="lazy" width="780" height="1688"><img src="/shots/phone-tasks.webp" alt="The task board on a phone" loading="lazy" width="780" height="1688"></div></div>
+  </div>
+</div></section>
+
 <section><div class="wrap">
   <div class="kicker">Know it's working</div>
   <h2>See the whole team at a glance</h2>
@@ -252,18 +277,21 @@ footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
     <div class="card"><h3>Live dashboard</h3><p>What every person and their agent is doing, tasks and progress, and the code on everyone's branches.</p></div>
     <div class="card"><h3>Health page</h3><p>Crashes, retries, who needs an update, and whose agent is taking work while they're away.</p></div>
     <div class="card"><h3>Slack and Discord alerts</h3><p>Hear about it when work is stuck, needs your approval, or is done.</p></div>
-    <div class="card"><h3>Usage, per person</h3><p>Time and tokens by teammate, across Claude and Codex plans, so heavy work goes where there's room.</p></div>
+    <div class="card"><h3>Usage and cost</h3><p>Time, tokens and API-equivalent cost by person, model and task, with a monthly budget alert.</p></div>
+    <div class="card"><h3>Notifications</h3><p>In the app, on your desktop and by email, only for what you choose: approvals, stuck work, conflicts, failing checks.</p></div>
+    <div class="card"><h3>GitHub</h3><p>Connect your repository for branches with checks, pull requests, issues and instant updates when someone pushes.</p></div>
+    <div class="card"><h3>Search</h3><p>Find any task, message, decision or line of shared code in one box.</p></div>
   </div>
 </div></section>
 
 <section id="start"><div class="wrap">
   <div class="kicker">Get started</div>
   <h2>Set up in under a minute</h2>
-  <p class="sub">You need Node 18+, git, and Claude Code or Codex. huddle plugs into the agent you already use.</p>
+  <p class="sub">You need Node 18+, git, and Claude Code, Codex or Cursor. huddle plugs into the agent you already use.</p>
   <div class="steps">
     <div class="card"><h3>Start a project</h3><p>In your repo, one person runs:</p><div class="cmd">npx -y github:flyingf15h/huddle new</div></div>
     <div class="card"><h3>Invite your team</h3><p>Everyone else runs the invite it prints, in their copy of the repo:</p><div class="cmd">npx -y github:flyingf15h/huddle join &lt;code&gt;</div></div>
-    <div class="card"><h3>Work as usual</h3><p>Open Claude Code or Codex and prompt like always. Your agent is already in the huddle.</p><div class="cmd">claude    # or: codex</div></div>
+    <div class="card"><h3>Work as usual</h3><p>Open Claude Code or Codex and prompt like always. Your agent is already in the huddle.</p><div class="cmd">claude    # or: codex, or open Cursor</div></div>
   </div>
 </div></section>
 
@@ -272,7 +300,7 @@ footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
   <h2>Good to know</h2>
   <details><summary>Whose AI subscription does it use?</summary><p>Everyone's own. Each person keeps their Claude or Codex plan, on their own computer. huddle never touches your account; it connects the agents, not the logins.</p></details>
   <details><summary>Do I have to change my repo?</summary><p>No. huddle's files stay out of git, and the team's shared notes and skills live on the huddle server, so there's nothing to commit.</p></details>
-  <details><summary>Can a team mix Claude Code and Codex?</summary><p>Yes. Locks, live edits, messages, tasks and usage work the same for both, and the dashboard shows who uses which.</p></details>
+  <details><summary>Can a team mix Claude Code, Codex and Cursor?</summary><p>Yes. Locks, live edits, messages, tasks and usage work the same for Claude Code, Codex and Cursor, and the dashboard shows who uses which.</p></details>
   <details><summary>What is stored on the server?</summary><p>The latest copy of files being edited, the team's messages, tasks and shared notes, and (if you allow it) the activity feed. Private files like <code>.env</code> are never sent, secrets are removed from shared text, and you can run your own server.</p></details>
   <details><summary>Can we host it ourselves?</summary><p>Yes. Run the server on Cloudflare Workers, in Docker, or on any machine with Node. The code is open source on GitHub.</p></details>
   <details><summary>What does it cost?</summary><p>It's free while in beta.</p></details>
@@ -290,6 +318,8 @@ footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
   <a href="https://github.com/flyingf15h/huddle">GitHub</a>
   <a href="https://github.com/flyingf15h/huddle#hosting-your-own-server">Self-hosting</a>
   <a href="/status">Status</a>
+  <a href="/privacy">Privacy</a>
+  <a href="/terms">Terms</a>
   <a href="/app">Open the app</a>
 </div></footer>
 </body>

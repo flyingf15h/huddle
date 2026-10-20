@@ -31,6 +31,7 @@ const { needsAPerson } = require('./core');
 const gitx = require('./git');
 const policy = require('./policy');
 const codex = require('./codex');
+const cursor = require('./cursor');
 const APP_DIR = path.join(__dirname, '..');
 const q = (s) => process.platform === 'win32' ? `"${s}"` : `'${String(s).replace(/'/g, `'\\''`)}'`;
 
@@ -164,6 +165,12 @@ function reviewPrompt(t, base) {
   return `You are reviewing work another Claude just finished for the task "${t.title}".${t.detail ? `\nThe task: ${t.detail.slice(0, 1500)}` : ''}
 Look at the change with \`git diff ${base}..HEAD\` (and read surrounding code as needed). Check for real problems only: bugs, crashes, broken callers, parts of the task that are missing, security holes. Ignore style and taste.
 Don't edit anything. End with exactly one line "VERDICT: OK" if it's fine, or "VERDICT: CHANGES" followed by a short numbered list of concrete problems (file:line and what's wrong).`;
+}
+function resolvePrompt(t, person, files) {
+  return `You are finishing the task "${t.title}" in this repository. While you worked, ${person} moved on, and merging their branch into yours stopped with conflicts in:
+${files.map(f => '- ' + f).join('\n')}
+
+The merge is in progress. For each file: read both sides of every conflict (\`git diff\`, and \`git log --merge -p -- <file>\` for why each side changed), keep what both sides meant to do, and remove every conflict marker. Don't drop the other side's work to make your own fit. Run the project's tests if you can. Then \`git add\` the files and \`git commit --no-edit\`. End with one line per file saying how you settled it.`;
 }
 function fixPrompt(t, what, detail, cmd) {
   return `You are finishing the task "${t.title}" in this repository. ${what}:
@@ -310,8 +317,8 @@ async function getMode(client) {
 // log: status lines; out: Claude's own output (null to discard).
 function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
   let me = cfg.name;
-  const tool = cfg.agent === 'codex' ? 'codex' : 'claude';
-  const toolName = tool === 'codex' ? 'Codex' : 'Claude';
+  const tool = ['codex', 'cursor'].includes(cfg.agent) ? cfg.agent : 'claude';
+  const toolName = { codex: 'Codex', cursor: 'Cursor' }[tool] || 'Claude';
   // auto, like the person's own sessions: Claude Code's safety check approves what's safe and refuses what's
   // risky. Accounts without auto mode fall back to acceptEdits (edits plus the allowed commands).
   let permission = flags['permission-mode'] || cfg.autopilotPermissionMode || 'auto';
@@ -330,7 +337,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
   const pol = () => projectSettings.policy || { allow: [], deny: [] };
   // Codex: `codex exec` in its sandbox (edits in the worktree, no network), with the person's approvals,
   // the project's allow list and its never-allowed list as a rules file in the worktree
-  const runCodex = (prompt, { cwd = cfg.root, session, mcpRoot, model, allow = [], readOnly = false, shown = '' } = {}) => new Promise((resolve) => {
+  const runCodex = (prompt, { cwd = cfg.root, session, mcpRoot, model, allow = [], readOnly = false, shown = '', taskId } = {}) => new Promise((resolve) => {
     const lastFile = codex.tmpFile('last.txt');
     // (a project that keeps .codex/ in git gets nothing written there: it would end up in the commit)
     if (cwd !== cfg.root && !gitx.git(cwd, ['ls-files', '--', '.codex']).out.trim()) {
@@ -345,7 +352,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     const gitDir = common.ok ? path.resolve(cwd, common.out.trim()) : null;
     const args = codex.execArgs({ dir: cwd, readOnly, model: model && model !== 'sonnet' ? model : (flags.model || cfg.autopilotModel || null), gitDir, lastFile, mcpRoot, cli: CLI });
     args.push(prompt);
-    const env = { ...process.env, HUDDLE_AUTOPILOT: '1', HUDDLE_AGENT: 'codex', HUDDLE_SHOWN: String(shown).slice(0, 4000), ...(session ? { HUDDLE_SESSION: session } : {}), ...(mcpRoot ? { HUDDLE_ROOT: mcpRoot } : {}) };
+    const env = { ...process.env, HUDDLE_AUTOPILOT: '1', HUDDLE_AGENT: 'codex', HUDDLE_SHOWN: String(shown).slice(0, 4000), ...(taskId ? { HUDDLE_TASK: taskId } : {}), ...(session ? { HUDDLE_SESSION: session } : {}), ...(mcpRoot ? { HUDDLE_ROOT: mcpRoot } : {}) };
     const child = spawn('codex', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env, shell: process.platform === 'win32' });
     let text = '', err = '';
     child.stdout.on('data', d => { text += d; if (out) out(String(d)); });
@@ -358,8 +365,33 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
       resolve({ code, out: last.trim() ? last : text, err, log: text });
     });
   });
-  const runOnce = (prompt, opts = {}) => tool === 'codex' ? runCodex(prompt, opts) : new Promise((resolve) => {
-    const { cwd = cfg.root, session, mcpRoot, model, allow = [], readOnly = false, shown = '' } = opts;
+  // Cursor: its command line (`agent -p --force`) in the worktree, with huddle's hooks and MCP server in
+  // .cursor/ there and the project's command rules as .cursor/cli.json permissions
+  const runCursor = (prompt, { cwd = cfg.root, session, mcpRoot, model, allow = [], readOnly = false, shown = '', taskId } = {}) => new Promise((resolve) => {
+    if (cwd !== cfg.root && !gitx.git(cwd, ['ls-files', '--', '.cursor']).out.trim()) {
+      try {
+        cursor.install(cwd, APP_DIR, cwd, (ev) => `${q(process.execPath)} ${q(path.join(APP_DIR, 'src', 'cli.js'))} hook ${ev} --agent cursor #huddle-hook`, 'huddle-hook');
+        const allowed = [...(pol().allow || []), ...extraAllow.map(a => a.replace(/^Bash\((.*?)(:\*)?\)$/, '$1')), ...allow.map(a => a.replace(/^Bash\((.*?)(:\*)?\)$/, '$1'))];
+        const perms = cursor.cliPermissions(allowed, pol().deny || []);
+        if (readOnly) perms.permissions.deny.push('Write(**)');
+        fs.writeFileSync(path.join(cwd, '.cursor', 'cli.json'), JSON.stringify(perms, null, 2));
+      } catch (e) { log('could not set up Cursor in the worktree: ' + e.message); }
+    }
+    const env = { ...process.env, HUDDLE_AUTOPILOT: '1', HUDDLE_AGENT: 'cursor', HUDDLE_SHOWN: String(shown).slice(0, 4000), ...(taskId ? { HUDDLE_TASK: taskId } : {}), ...(session ? { HUDDLE_SESSION: session } : {}), ...(mcpRoot ? { HUDDLE_ROOT: mcpRoot } : {}) };
+    const args = cursor.execArgs({ model: model && model !== 'sonnet' ? model : (flags.model || cfg.autopilotModel || null), prompt });
+    const run = (bin) => {
+      const child = spawn(bin, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env, shell: process.platform === 'win32' });
+      let text = '', err = '';
+      child.stdout.on('data', d => { text += d; if (out) out(String(d)); });
+      child.stderr.on('data', d => { err += d; if (out) out(String(d)); });
+      // the CLI used to be called cursor-agent
+      child.on('error', e => { if (e.code === 'ENOENT' && bin === 'agent') return run('cursor-agent'); resolve({ code: 127, out: text, err: 'could not start Cursor\'s command line: ' + e.message, missing: e.code === 'ENOENT' }); });
+      child.on('close', code => resolve({ code, out: text, err }));
+    };
+    run('agent');
+  });
+  const runOnce = (prompt, opts = {}) => tool === 'cursor' ? runCursor(prompt, opts) : tool === 'codex' ? runCodex(prompt, opts) : new Promise((resolve) => {
+    const { cwd = cfg.root, session, mcpRoot, model, allow = [], readOnly = false, shown = '', taskId } = opts;
     // in its own worktree (on its own branch) a Claude can also bring in and rearrange history freely:
     // nothing reaches the person's branch until it has been reviewed, tested and merged by huddle
     const own = cwd !== cfg.root ? ['fetch', 'merge', 'cherry-pick', 'rebase', 'pull', 'restore', 'checkout', 'switch', 'stash', 'reset', 'branch'].map(g => `Bash(git ${g}:*)`) : [];
@@ -374,7 +406,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     if (readOnly || never.length) args.push('--disallowedTools', ...(readOnly ? ['Edit', 'Write', 'MultiEdit', 'NotebookEdit'] : []), ...never);
     args.push('--allowedTools', ...allowed);
     // (the session's MCP server runs with HUDDLE_ROOT set to the person's folder; a clone has its own)
-    const env = { ...process.env, HUDDLE_AUTOPILOT: '1', HUDDLE_SHOWN: String(shown).slice(0, 4000), ...(session ? { HUDDLE_SESSION: session } : {}), ...(mcpRoot ? { HUDDLE_ROOT: mcpRoot } : {}) };
+    const env = { ...process.env, HUDDLE_AUTOPILOT: '1', HUDDLE_SHOWN: String(shown).slice(0, 4000), ...(taskId ? { HUDDLE_TASK: taskId } : {}), ...(session ? { HUDDLE_SESSION: session } : {}), ...(mcpRoot ? { HUDDLE_ROOT: mcpRoot } : {}) };
     const child = spawn('claude', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env });
     let text = '', err = '';
     child.stdout.on('data', d => { text += d; if (out) out(String(d)); });
@@ -397,7 +429,8 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
   async function reportProblem(kind, message, detail, taskId) {
     await client.post('problem', { kind, message, detail: String(detail || '').slice(-1500), taskId }).catch(() => {});
   }
-  const canRun = () => tool === 'codex' ? `Codex's sandbox: you can edit files in this worktree and run local commands (tests, builds, git), without network access. Anything outside that is refused${(pol().allow || []).length ? `, except what the project always allows: ${pol().allow.join(', ')}` : ''}`
+  const canRun = () => tool === 'cursor' ? `Cursor's command line with the permissions in .cursor/cli.json: git and local commands the project allows${(pol().allow || []).length ? ` (${pol().allow.join(', ')})` : ''}; anything else is refused`
+    : tool === 'codex' ? `Codex's sandbox: you can edit files in this worktree and run local commands (tests, builds, git), without network access. Anything outside that is refused${(pol().allow || []).length ? `, except what the project always allows: ${pol().allow.join(', ')}` : ''}`
     : permission === 'bypassPermissions' ? 'you may run any command'
     : permission === 'auto' ? `the same as in ${me}'s own sessions: Claude Code's auto mode lets safe commands through and refuses risky ones (deploys, publishing, deleting things outside this folder)`
     : `only git (status, diff, log, add, commit)${extraAllow.length ? ', ' + extraAllow.join(', ') : ''} and whatever the project's .claude/settings.json allows`;
@@ -473,10 +506,10 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     const testAllow = cmd ? [`Bash(${cmd})`, `Bash(${cmd}:*)`] : [];
     if (projectSettings.review !== false) {
       log(`reviewing ${t.id} with Sonnet`);
-      const r = await runClaude(reviewPrompt(t, c.base), { cwd: c.dir, session: 'review-' + t.id, mcpRoot: c.dir, model: 'sonnet', readOnly: true, shown: `Review the work on: ${t.title}` });
+      const r = await runClaude(reviewPrompt(t, c.base), { taskId: t.id, cwd: c.dir, session: 'review-' + t.id, mcpRoot: c.dir, model: 'sonnet', readOnly: true, shown: `Review the work on: ${t.title}` });
       const at = r.out.search(/VERDICT:\s*CHANGES/i);
       if (at >= 0) {
-        await runClaude(fixPrompt(t, 'A reviewer found these problems', r.out.slice(at)), { cwd: c.dir, session: 'fix-' + t.id, mcpRoot: c.dir, model: 'sonnet', allow: testAllow, shown: `Fix what the review found in: ${t.title}` });
+        await runClaude(fixPrompt(t, 'A reviewer found these problems', r.out.slice(at)), { taskId: t.id, cwd: c.dir, session: 'fix-' + t.id, mcpRoot: c.dir, model: 'sonnet', allow: testAllow, shown: `Fix what the review found in: ${t.title}` });
         commitClone(c, `fix review notes: ${t.title}`);
         out.review = 'fixed';
       } else out.review = /VERDICT:\s*OK/i.test(r.out) ? 'ok' : 'unclear';
@@ -485,7 +518,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     log(`testing ${t.id}: ${cmd}`);
     let r = await runShell(cmd, c.dir);
     if (r.code !== 0) {
-      await runClaude(fixPrompt(t, `The tests (\`${cmd}\`) fail after this work`, r.out, cmd), { cwd: c.dir, session: 'tests-' + t.id, mcpRoot: c.dir, model: 'sonnet', allow: testAllow, shown: `Fix the failing tests (${cmd}) in: ${t.title}` });
+      await runClaude(fixPrompt(t, `The tests (\`${cmd}\`) fail after this work`, r.out, cmd), { taskId: t.id, cwd: c.dir, session: 'tests-' + t.id, mcpRoot: c.dir, model: 'sonnet', allow: testAllow, shown: `Fix the failing tests (${cmd}) in: ${t.title}` });
       commitClone(c, `fix tests: ${t.title}`);
       r = await runShell(cmd, c.dir);
     }
@@ -499,6 +532,31 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     out.tests = before.code === 0 ? 'failed' : 'already failing';
     if (out.tests === 'failed') out.testOutput = r.out.slice(-600);
     return out;
+  }
+
+  // The person's branch moved while this ran, and the two would conflict: merge it into the worktree and let
+  // a Claude settle the conflicts there, so the work can still land cleanly. 'resolved' or 'unresolved'.
+  async function settleConflicts(t, c) {
+    if (!c.person) return null;
+    const theirs = gitx.git(cfg.root, ['rev-parse', '-q', '--verify', 'refs/heads/' + c.person]).out;
+    const ours = gitx.git(c.dir, ['rev-parse', 'HEAD']).out;
+    if (!theirs || gitx.git(c.dir, ['merge-base', '--is-ancestor', theirs, ours]).ok) return null;
+    if (gitx.git(c.dir, ['merge-tree', '--write-tree', '--name-only', '--no-messages', ours, theirs]).ok) return null;
+    const m = gitx.git(c.dir, ['merge', '--no-edit', '-m', `merge ${c.person} into ${t.title.slice(0, 50)}`, theirs]);
+    if (m.ok) return null;
+    const files = gitx.git(c.dir, ['diff', '--name-only', '--diff-filter=U']).out.split('\n').filter(Boolean);
+    if (!files.length) { gitx.git(c.dir, ['merge', '--abort']); return null; }
+    log(`${t.id}: settling conflicts with ${c.person} in ${files.join(', ')}`);
+    await runClaude(resolvePrompt(t, `${me}'s ${c.person}`, files), { taskId: t.id, cwd: c.dir, session: 'merge-' + t.id, mcpRoot: c.dir, shown: `Resolve merge conflicts in: ${t.title}` });
+    const left = gitx.git(c.dir, ['diff', '--name-only', '--diff-filter=U']).out.split('\n').filter(Boolean);
+    const markers = files.filter(f => { try { return /^(<{7}|>{7}) /m.test(fs.readFileSync(path.join(c.dir, f), 'utf8')); } catch { return false; } });
+    if (left.length || markers.length) {
+      gitx.git(c.dir, ['merge', '--abort']);
+      gitx.git(c.dir, ['reset', '-q', '--hard', ours]);
+      return 'unresolved';
+    }
+    if (gitx.git(c.dir, ['rev-parse', '-q', '--verify', 'MERGE_HEAD']).ok) { gitx.git(c.dir, ['add', '-A', '--', ...files]); gitx.git(c.dir, ['commit', '-q', '--no-edit']); }
+    return 'resolved';
   }
 
   // the task's files and folders, locked for this run before it starts; false (and nothing held)
@@ -536,7 +594,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     for (;;) {
       attempt++;
       res = await runClaude(taskPrompt(t, b, me, canRun(), await myAiName(client).catch(() => null), toolName),
-        { cwd: c ? c.dir : cfg.root, session: key + (attempt > 1 ? '-' + attempt : ''), mcpRoot: c ? c.dir : null, allow: (t.allow || []).map(x => `Bash(${x})`), shown: t.detail && t.detail.trim() ? t.detail : t.title });
+        { taskId: t.id, cwd: c ? c.dir : cfg.root, session: key + (attempt > 1 ? '-' + attempt : ''), mcpRoot: c ? c.dir : null, allow: (t.allow || []).map(x => `Bash(${x})`), shown: t.detail && t.detail.trim() ? t.detail : t.title });
       const crashed = res.code !== 0 && !LIMIT.test(res.out + res.err) && !res.missing;
       const already = crashed && ((await client.get('board').catch(() => ({ tasks: [] }))).tasks.find(x => x.id === t.id) || {}).status;
       if (!crashed || attempt >= 3 || already === 'done') break;
@@ -566,6 +624,10 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
         if (pr.url) { where = `pull request ${pr.url}`; log(`opened ${pr.url}`); checks = { ...(checks || {}), pr: pr.url, prState: 'open', merged: false }; }
         else { log('pull request: ' + pr.error); await reportProblem('pr', `couldn't open a pull request for "${t.title}": ${pr.error}`, '', t.id); pr = null; }
       }
+    }
+    if (c && !pr && (!checks || checks.tests !== 'failed')) {
+      const settled = await settleConflicts(t, c).catch(e => { log('conflicts: ' + e.message); return null; });
+      if (settled) checks = { ...(checks || {}), conflicts: settled };
     }
     if (c && !pr) {
       const l = landClone(cfg, c, t.title, { merge: !checks || checks.tests !== 'failed' });
@@ -628,6 +690,20 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     }
   }
 
+  let conflictTimer = null;
+  function checkConflictsSoon() {
+    if (conflictTimer || !gitx.isRepo(cfg.root)) return;
+    conflictTimer = setTimeout(async () => {
+      conflictTimer = null;
+      try {
+        await gitx.fetchAll(client, cfg.root);
+        const found = await gitx.reportConflicts(client, cfg.root);
+        if (found && found.length) log(`${found.length} branch${found.length === 1 ? '' : 'es'} would conflict with yours: ${found.map(x => x.other).join(', ')}`);
+      } catch (e) { log('conflict check: ' + e.message); }
+    }, 15000);
+    conflictTimer.unref && conflictTimer.unref();
+  }
+
   function start(id, what, job) {
     running.set(id, what);
     job().catch(e => log('autopilot: ' + e.message)).finally(() => { running.delete(id); work(); });
@@ -683,6 +759,8 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
         return start('msg-' + ev.message.id, 'answer', () => answer(ev.message));
       }
       if (ev.type === 'usage' && ev.name === me) usage = ev.usage;
+      // a teammate shared new commits: fetch them and say whether they'd conflict with this branch
+      if (ev.type === 'git' && ev.action === 'publish' && ev.ref && ev.ref.owner !== me) checkConflictsSoon();
       if (ev.type === 'project-setting') projectSettings = ev.settings || {};
       // approved: run it again with the command allowed
       if (ev.type === 'board' && ev.action === 'approve' && ev.task) skip.delete(ev.task.id);
@@ -735,7 +813,7 @@ function listenWs(client, since, onEvent) {
     let ws, opened = false, ping;
     try { ws = new WebSocket(`${client.base.replace(/^http/, 'ws')}/ws?${q}`); } catch { return resolve(false); }
     ws.onopen = () => { opened = true; ping = setInterval(() => { try { ws.send('ping'); } catch {} }, 30000); };
-    ws.onmessage = (m) => { if (m.data === 'pong') return; try { const ev = JSON.parse(m.data); if (['board', 'setting', 'message', 'usage', 'project-setting'].includes(ev.type)) onEvent(ev); } catch {} };
+    ws.onmessage = (m) => { if (m.data === 'pong') return; try { const ev = JSON.parse(m.data); if (['board', 'setting', 'message', 'usage', 'project-setting', 'git', 'note'].includes(ev.type)) onEvent(ev); } catch {} };
     ws.onclose = () => { clearInterval(ping); setTimeout(() => resolve(opened), opened ? 1000 : 0); };
     ws.onerror = () => {};
   });

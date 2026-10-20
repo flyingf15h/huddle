@@ -4,13 +4,29 @@
 // creating a project stores nothing until someone actually uses it.
 import { DurableObject } from 'cloudflare:workers';
 import core from '../../src/core.js';
-import gh from '../../src/github-auth.js';
+import accounts from '../../src/accounts.js';
 import statusPageMod from '../../src/status-page.js';
 import dashboard from '../../src/dashboard.html';
+import landing from '../../src/landing.html';
 
 const { Project, dispatch, authorize, takeOutbox, waitOn, httpError, now } = core;
 const { statusPage } = statusPageMod;
-const ghCfg = (env) => ({ clientId: env.GITHUB_CLIENT_ID, clientSecret: env.GITHUB_CLIENT_SECRET, secret: env.HUDDLE_SECRET });
+// accounts: email codes sent with Resend (RESEND_API_KEY, EMAIL_FROM) and GitHub OAuth (GITHUB_CLIENT_ID / _SECRET);
+// each account record lives in a small index instance of its own ("acct:user:<id>", "acct:email:<address>", …)
+function acctCfg(env) {
+  const send = accounts.mailer({ resendKey: env.RESEND_API_KEY, webhook: env.EMAIL_WEBHOOK, from: env.EMAIL_FROM });
+  const dev = env.EMAIL_DEV === '1';
+  return {
+    secret: env.HUDDLE_SECRET,
+    github: { clientId: env.GITHUB_CLIENT_ID, clientSecret: env.GITHUB_CLIENT_SECRET },
+    email: send || dev ? { send, dev } : null,
+    store: {
+      async get(k) { const v = await indexGet(env, 'acct:' + k); return v && Object.keys(v).length ? v : null; },
+      put: (k, v) => indexPut(env, 'acct:' + k, v),
+      del: (k) => indexDel(env, 'acct:' + k),
+    },
+  };
+}
 // the plain { status, headers, body } answers from github-auth.js as Responses (set-cookie may be a list)
 function reply(r) {
   const h = new Headers();
@@ -21,6 +37,7 @@ function reply(r) {
 const index = (env, key) => env.PROJECTS.get(env.PROJECTS.idFromName(key));
 async function indexGet(env, key) { return (await index(env, key).fetch(new Request('https://index/', { headers: { 'x-huddle-index': key } }))).json(); }
 async function indexPut(env, key, value) { await index(env, key).fetch(new Request('https://index/', { method: 'PUT', headers: { 'x-huddle-index': key }, body: JSON.stringify(value) })); }
+async function indexDel(env, key) { await index(env, key).fetch(new Request('https://index/', { method: 'DELETE', headers: { 'x-huddle-index': key } })); }
 
 // tighter than the self-hosted defaults: the free plan has 5 GB for everyone
 const LIMITS = { fileBytes: 1024 * 1024, files: 500, projectBytes: 10 * 1024 * 1024, sharedBytes: 1536 * 1024, gitBytes: 25 * 1024 * 1024 };
@@ -56,7 +73,11 @@ export default {
     const url = new URL(request.url);
     try {
       if (!env.HUDDLE_SECRET) throw httpError(500, 'server is missing HUDDLE_SECRET');
+      // the landing page at /, the app at /app (the landing page sends invite links and returning people on)
       if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
+        return new Response(landing, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+      }
+      if (request.method === 'GET' && (url.pathname === '/app' || url.pathname === '/app/')) {
         return new Response(dashboard, { headers: { 'content-type': 'text/html; charset=utf-8' } });
       }
       if (url.pathname === '/health') return json({ ok: true, open: true });
@@ -66,24 +87,28 @@ export default {
         let doCheck;
         try { await indexGet(env, 'status:probe'); doCheck = { name: 'Project storage (Durable Objects)', ok: true, ms: Date.now() - t0 }; }
         catch (e) { doCheck = { name: 'Project storage (Durable Objects)', ok: false, error: e.message }; }
-        return new Response(statusPage({ server: url.host, version: env.HUDDLE_VERSION || null, github: gh.configured(ghCfg(env)),
-          checks: [{ name: 'API', ok: true }, doCheck] }), { headers: { 'content-type': 'text/html; charset=utf-8' } });
+        return new Response(statusPage({ server: url.host, version: env.HUDDLE_VERSION || null, github: accounts.githubConfigured(acctCfg(env)),
+          email: accounts.emailConfigured(acctCfg(env)), checks: [{ name: 'API', ok: true }, doCheck] }), { headers: { 'content-type': 'text/html; charset=utf-8' } });
       }
-      if (url.pathname === '/auth/github/login') return reply(await gh.login(ghCfg(env), url.origin, url.searchParams.get('next') || '/'));
-      if (url.pathname === '/auth/github/callback') return reply(await gh.callback(ghCfg(env), url.origin, url, request.headers.get('cookie')));
-      if (url.pathname === '/auth/logout') return reply(gh.logout(url.origin));
-      if (url.pathname === '/auth/me') return json({ github: gh.configured(ghCfg(env)), user: await gh.session(ghCfg(env), request.headers.get('cookie')) });
-      if (url.pathname === '/api/me/projects') {
-        const who = await gh.session(ghCfg(env), request.headers.get('cookie'));
-        if (!who) throw httpError(401, 'sign in with GitHub first');
-        const list = (await indexGet(env, 'user:' + who.login.toLowerCase())).projects || [];
-        const out = [];
-        for (const name of list) {
-          const headers = new Headers({ 'x-huddle-project': name, 'x-huddle-cred': JSON.stringify({ kind: 'github', github: who.login }) });
-          const r = await env.PROJECTS.get(env.PROJECTS.idFromName(name)).fetch(new Request(`https://do/api/p/${name}/whoami`, { headers }));
-          if (r.ok) { const w = await r.json(); out.push({ project: name, name: w.name, role: w.role }); }
-        }
-        return json({ user: who, projects: out });
+      if (url.pathname.startsWith('/auth/') || url.pathname.startsWith('/api/me')) {
+        const body = request.method === 'POST' ? await request.json().catch(() => ({})) : {};
+        const r = await accounts.handle(acctCfg(env), url.origin, { method: request.method, url, cookie: request.headers.get('cookie'), body });
+        if (r) return reply(r);
+      }
+      // GitHub's webhook for a project's repository: the project checks the signature itself
+      const hook = url.pathname.match(/^\/api\/hooks\/github\/([\w.-]{1,64})$/);
+      if (hook && request.method === 'POST') {
+        const headers = new Headers(request.headers);
+        headers.set('x-huddle-project', hook[1]);
+        headers.set('x-huddle-cred', JSON.stringify({ kind: 'none' }));
+        headers.set('x-huddle-origin', url.origin);
+        headers.delete('x-huddle-index');
+        return env.PROJECTS.get(env.PROJECTS.idFromName(hook[1])).fetch(new Request(`https://do/api/p/${hook[1]}/github-webhook`, { method: 'POST', headers, body: await request.text() }));
+      }
+      // screenshots, privacy and terms pages, icons
+      if (request.method === 'GET' && env.ASSETS && !url.pathname.startsWith('/api/')) {
+        const a = await env.ASSETS.fetch(new Request(new URL(url.pathname.includes('.') ? url.pathname : url.pathname + '.html', url.origin)));
+        if (a.ok) return a;
       }
       if (url.pathname === '/api/new' && request.method === 'POST') {
         const body = await request.json().catch(() => ({}));
@@ -106,11 +131,10 @@ export default {
       const tok = givenToken(request, url);
       // what the caller holds: the project's shared token (checked here), a personal token (hm_…, checked by
       // the project), a GitHub session, or nothing (only good for turning a personal invite into a token)
-      const who = await gh.session(ghCfg(env), request.headers.get('cookie'));
-      const github = who ? who.login : undefined;
-      const cred = timingSafeEqual(tok, await projectToken(env, name)) ? { kind: 'project', github }
-        : tok.startsWith('hm_') ? { kind: 'member', token: tok, github }
-        : who ? { kind: 'github', github } : { kind: 'none' };
+      const who = accounts.credOf(await accounts.sessionUser(acctCfg(env), request.headers.get('cookie')).catch(() => null));
+      const cred = timingSafeEqual(tok, await projectToken(env, name)) ? { kind: 'project', ...(who || {}) }
+        : tok.startsWith('hm_') ? { kind: 'member', token: tok, ...(who || {}) }
+        : who ? { kind: 'user', ...who } : { kind: 'none' };
       if (cred.kind === 'none' && m[2] !== 'redeem') throw httpError(401, 'bad token or no such project');
       const stub = env.PROJECTS.get(env.PROJECTS.idFromName(name));
       const headers = new Headers(request.headers);
@@ -122,12 +146,6 @@ export default {
       // remember what a project's short invite stands for (written each time it's asked for, so it can't go missing)
       if (m[2] === 'invite-code' && res.ok) await indexPut(env, 'invite:' + (await res.clone().json()).code, { project: name });
       if (m[2] === 'member-invite' && res.ok) await indexPut(env, 'invite:' + (await res.clone().json()).inviteCode, { project: name, personal: true });
-      if (m[2] === 'link-github' && res.ok) {
-        const { linked } = await res.clone().json();
-        const key = 'user:' + linked.toLowerCase();
-        const cur = (await indexGet(env, key)).projects || [];
-        await indexPut(env, key, { projects: [...new Set([...cur, name])] });
-      }
       return res;
     } catch (e) {
       return json({ error: e.message }, e.code >= 400 && e.code < 600 ? e.code : 500);
@@ -170,6 +188,9 @@ export class HuddleProject extends DurableObject {
     this.saved = { seq: p.seq, reads: this.reads(), msgSeq: lastSeq(p.messages) };
     return p;
   }
+
+  // locks need sweeping, and batched emails need sending, a minute or two later
+  busy() { return Object.keys(this.p.locks).length > 0 || Object.values(this.p.mailQueue || {}).some(x => x.length); }
 
   reads() { return Object.values(this.p.agents).map(a => a.readSeq).join(','); }
 
@@ -216,7 +237,7 @@ export class HuddleProject extends DurableObject {
 
   // locks need sweeping while they exist; otherwise just come back to clean up an abandoned project
   async schedule() {
-    const want = Object.keys(this.p.locks).length ? now() + SWEEP_MS : this.p.lastActive + IDLE_DELETE_MS;
+    const want = this.busy() ? now() + SWEEP_MS : this.p.lastActive + IDLE_DELETE_MS;
     const cur = await this.ctx.storage.getAlarm();
     if (!cur || cur > want + 1000 || (want - cur > 24 * 3600 * 1000)) await this.ctx.storage.setAlarm(want);
   }
@@ -231,7 +252,7 @@ export class HuddleProject extends DurableObject {
     p.sweep();
     await this.save();
     this.flushOutbox(p);
-    if (Object.keys(p.locks).length) await this.ctx.storage.setAlarm(now() + SWEEP_MS);
+    if (this.busy()) await this.ctx.storage.setAlarm(now() + SWEEP_MS);
   }
 
   async fetch(request) {
@@ -239,6 +260,7 @@ export class HuddleProject extends DurableObject {
     const idxKey = request.headers.get('x-huddle-index');
     if (idxKey) {
       if (request.method === 'PUT') { await this.ctx.storage.put('invite', await request.json()); return json({ ok: true }); }
+      if (request.method === 'DELETE') { await this.ctx.storage.deleteAll(); return json({ ok: true }); }
       return json((await this.ctx.storage.get('invite')) || {});
     }
     const url = new URL(request.url);
@@ -251,18 +273,21 @@ export class HuddleProject extends DurableObject {
       try { cred = JSON.parse(request.headers.get('x-huddle-cred') || '{"kind":"none"}'); } catch {}
       if (request.headers.get('x-huddle-origin')) p.origin = request.headers.get('x-huddle-origin');
       if (ep === 'ws') return this.connect(request, url, p, authorize(p, cred));
-      let body = {};
+      let body = {}, raw = '';
       if (request.method === 'POST') {
-        const text = await request.text();
-        if (text.length > LIMITS.fileBytes * 2) throw httpError(413, 'body too large');
-        try { body = text ? JSON.parse(text) : {}; } catch { throw httpError(400, 'invalid JSON'); }
+        raw = await request.text();
+        if (raw.length > LIMITS.fileBytes * 2) throw httpError(413, 'body too large');
+        try { body = raw ? JSON.parse(raw) : {}; } catch { throw httpError(400, 'invalid JSON'); }
       }
       const store = this.ctx.storage;
       const ctx = {
+        request: { raw, header: (k) => request.headers.get(k) || '' },
+        deleteProject: async () => { for (const ws of this.ctx.getWebSockets()) { try { ws.close(4004, 'project deleted'); } catch {} } await store.deleteAll(); await store.deleteAlarm(); this.p = null; this.deleted = true; },
         waitFor: (pred, ms) => waitOn(p, pred, Math.min(ms, 60 * 1000)),
         blobs: { put: (k, v) => store.put('blob:' + k, v), get: async (k) => (await store.get('blob:' + k)) ?? null, del: (k) => store.delete('blob:' + k) },
       };
       const out = await dispatch(p, request.method, ep, body, url.searchParams, ctx, cred);
+      if (this.deleted) { this.deleted = false; return json(out); }
       await this.save();
       this.flushOutbox(p);
       return json(out);
@@ -273,8 +298,11 @@ export class HuddleProject extends DurableObject {
 
   // notifications the last request queued, sent after it's been answered
   flushOutbox(p) {
-    const out = takeOutbox(p);
-    if (!out.length) return;
+    const all = takeOutbox(p);
+    if (!all.length) return;
+    const mail = all.filter(o => o.email), out = all.filter(o => !o.email);
+    const cfg = acctCfg(this.env);
+    if (mail.length && cfg.email && cfg.email.send) this.ctx.waitUntil(Promise.all(mail.map(o => cfg.email.send(o.email).catch(() => {}))));
     this.ctx.waitUntil(Promise.all(out.map(o => fetch(o.url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(o.body) })
       .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); })
       .catch(e => { (p.problems = p.problems || []).push({ id: Math.random().toString(16).slice(2, 10), at: now(), name: 'huddle', kind: 'notify', message: `a notification could not be delivered: ${e.message}`, detail: '' }); p.problemsChanged = true; }))));

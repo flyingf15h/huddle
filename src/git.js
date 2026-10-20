@@ -215,6 +215,44 @@ function merge(root, ref) {
   return { ok: r.ok, conflicts, output: (r.out + '\n' + r.err).trim() };
 }
 
+// Which teammates' branches would conflict with ours if merged now, without touching the working
+// tree: git merge-tree (git 2.38+) does the merge in memory and lists the files that clash.
+function conflictsWith(root, refs, me) {
+  const h = head(root);
+  if (!h) return [];
+  const out = [];
+  for (const r of Object.values(refs || {})) {
+    if (r.owner === me.name && r.checkout === me.checkout) continue;
+    const ref = remoteRef(r.owner, r.branch);
+    const sha = git(root, ['rev-parse', '-q', '--verify', ref]).out;
+    if (!sha || sha === h) continue;
+    // already in ours, or ours is already in theirs: nothing to merge
+    if (git(root, ['merge-base', '--is-ancestor', sha, h]).ok || git(root, ['merge-base', '--is-ancestor', h, sha]).ok) continue;
+    const m = git(root, ['merge-tree', '--write-tree', '--name-only', '--no-messages', h, sha]);
+    if (m.ok) continue;                    // merges cleanly
+    if (m.status !== 1) return null;       // git too old for merge-tree --write-tree, or no common history
+    const files = m.out.split('\n').slice(1).map(x => x.trim()).filter(Boolean);
+    if (files.length) out.push({ other: `${r.owner}/${r.branch}`, files: [...new Set(files)].slice(0, 50), sha: h, otherSha: sha });
+  }
+  return out;
+}
+// tell the team, when what conflicts changed since we last said
+async function reportConflicts(client, root) {
+  if (!isRepo(root)) return null;
+  const st = await client.get('git');
+  const items = conflictsWith(root, st.refs, client.agent);
+  if (!items) return null;
+  const branch = currentBranch(root, 0);
+  if (!branch) return null;
+  const s = loadState(root);
+  const sig = JSON.stringify([branch, items.map(x => [x.other, x.files])]);
+  if (s.conflictsSent === sig && Date.now() - (s.conflictsAt || 0) < 6 * 3600 * 1000) return items;
+  await client.post('conflicts', { branch, sha: head(root), items });
+  s.conflictsSent = sig; s.conflictsAt = Date.now();
+  saveState(root, s);
+  return items;
+}
+
 // "alex" or "alex/feature": their branch with that name, else the one matching
 // ours, else their newest
 function resolveRef(refs, query, me) {
@@ -225,5 +263,5 @@ function resolveRef(refs, query, me) {
   return cands.find(x => x.branch === want) || (!want && (cands.find(x => x.branch === me.branch) || cands[0])) || null;
 }
 
-module.exports = { ensureExcluded, resolveRef, git, isRepo, head, hasCommit, dirty, currentBranch, publish, fetchAll, relation, counts, merge,
+module.exports = { conflictsWith, reportConflicts, ensureExcluded, resolveRef, git, isRepo, head, hasCommit, dirty, currentBranch, publish, fetchAll, relation, counts, merge,
   remoteRef, shortRef, subject, refSafe };

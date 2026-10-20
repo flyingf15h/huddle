@@ -50,7 +50,7 @@ function fileKey(branch, fp) { return branch ? `${branch}::${fp}` : fp; }
 // "Pip (tszfei's Claude)", or just "tszfei's Claude" when the person hasn't named it
 function aiLabel(settings, person) {
   const s = (settings || {})[person] || {};
-  const tool = s.tool === 'codex' ? 'Codex' : 'Claude';
+  const tool = s.tool === 'codex' ? 'Codex' : s.tool === 'cursor' ? 'Cursor' : 'Claude';
   return s.aiName ? `${s.aiName} (${person}'s ${tool})` : `${person}'s ${tool}`;
 }
 // lets people address someone's Claude by the name they gave it: "Pip" -> "tszfei"
@@ -190,7 +190,7 @@ class Project {
     this.limits = { ...DEFAULT_LIMITS };
   }
   toJSON() {
-    const { waiters, dirty, changedFiles, sharedChanged, activityChanged, boardChanged, isConnected, limits, outbox, auditChanged, problemsChanged, ...rest } = this;
+    const { waiters, dirty, changedFiles, sharedChanged, activityChanged, boardChanged, isConnected, limits, outbox, auditChanged, problemsChanged, repoCache, ...rest } = this;
     return rest;
   }
   // events after `since`, or null if they've been dropped and the client must resync
@@ -312,6 +312,8 @@ class Project {
       } else if (on) a.wasOnline = true;
     }
     handOn(this);
+    X.applyRetention(this);
+    X.flushMail(this);
   }
 }
 
@@ -351,7 +353,7 @@ const routes = {
     if (b.runner !== undefined) a.runner = ['off', 'requests', 'full'].includes(b.runner) ? b.runner : null;
     // Claude Code or Codex: remembered per person too, so the team knows whose is whose while they're away
     if (b.tool !== undefined && !a.clone && a.kind !== 'human') {
-      a.tool = b.tool === 'codex' ? 'codex' : 'claude';
+      a.tool = ['codex', 'cursor'].includes(b.tool) ? b.tool : 'claude';
       p.settings = p.settings || {};
       if ((p.settings[a.name] || {}).tool !== a.tool) { p.settings[a.name] = { ...(p.settings[a.name] || {}), tool: a.tool }; p.emit('setting', { name: a.name, settings: p.settings[a.name] }); }
     }
@@ -626,6 +628,11 @@ const routes = {
     p.messages.push(m);
     if (p.messages.length > MAX_MESSAGES) p.messages.splice(0, p.messages.length - MAX_MESSAGES);
     m.seq = p.emit('message', { message: m }).seq;
+    // the person it's for hears about it; a team message tells whoever it @mentions
+    const toName = m.to && !String(m.to).includes('#') ? m.to : m.to ? (p.agents[m.to] || {}).name : null;
+    if (toName && toName !== a.name && a.kind !== 'human') X.notePerson(p, toName, 'message', `${aiLabel(p.settings, a.name)} messaged you`, m.text, { view: 'activity' });
+    else if (toName && toName !== a.name) X.notePerson(p, toName, 'message', `${a.name} messaged you`, m.text, { view: 'activity' });
+    if (!m.to) for (const [, who] of m.text.matchAll(/(?:^|\s)@([\w.-]{2,40})/g)) { const n = canonicalName(p, who); if (n !== a.name && (p.settings[n] || p.stats[n] || (p.members || {})[n])) X.notePerson(p, n, 'mention', `${a.name} mentioned you`, m.text, { view: 'activity' }); }
     p.dirty = true;
     return { ok: true, message: m };
   },
@@ -785,6 +792,7 @@ const routes = {
       made.push(x);
       p.emit('approval', { approval: x });
       notify(p, 'approval', `${a.name}'s Claude needs ${a.name}'s OK to run \`${command.slice(0, 120)}\`${x.title ? ` for "${x.title}"` : ''}`);
+      X.notePerson(p, a.name, 'approval', 'Your agent needs your OK', `${command.slice(0, 200)}${x.title ? ` (for "${x.title}")` : ''}`, { view: 'activity', approval: x.id });
     }
     if (p.approvals.length > 100) p.approvals.splice(0, p.approvals.length - 100);
     p.dirty = true;
@@ -894,7 +902,8 @@ const routes = {
     if (to) {
       goal.status = 'planned';
       goal.planner = to;
-      pushTask(p, { goalId: goal.id, title: given || requestTitle(text), detail: text, owner: to, direct: true }, a);
+      const t = pushTask(p, { goalId: goal.id, title: given || requestTitle(text), detail: text, owner: to, direct: true }, a);
+      if (to !== a.name) X.notePerson(p, to, 'request', `${a.name} sent your agent a request`, text, { view: 'tasks', task: t.id });
     }
     boardChanged(p, 'goal', { goal }, a);
     return { ok: true, goal };
@@ -968,7 +977,10 @@ const routes = {
         outcome: ['ok', 'failed', 'crashed', 'limit', 'retrying', 'waiting'].includes(r.outcome) ? r.outcome : 'failed',
         ms: Math.max(0, Number(r.ms) || 0), error: redact(String(r.error || '').slice(0, 600)), agent: r.agent === 'codex' ? 'codex' : 'claude' }].slice(-10);
     }
-    if (b.status === 'blocked' && was !== 'blocked') notify(p, 'stuck', `Stuck: "${t.title}" (${t.owner || 'unassigned'})${b.note ? ': ' + redact(String(b.note)).slice(0, 200) : ''}`);
+    if (b.status === 'blocked' && was !== 'blocked') {
+      notify(p, 'stuck', `Stuck: "${t.title}" (${t.owner || 'unassigned'})${b.note ? ': ' + redact(String(b.note)).slice(0, 200) : ''}`);
+      for (const n of new Set([t.owner, t.by].filter(Boolean))) X.notePerson(p, n, 'stuck', `Stuck: ${t.title}`, b.note ? redact(String(b.note)).slice(0, 300) : `${t.owner || 'Its agent'} couldn't finish it.`, { view: 'tasks', task: t.id });
+    }
     if (a.kind === 'human' && b.status && b.status !== was) audit(p, a.name, 'task', `${b.status === 'done' ? 'marked done' : b.status === 'todo' ? 'asked to run again' : 'set to ' + b.status}: ${t.title}`);
     // its Claude names it properly: a few plain words for the outcome (a request to one Claude names its goal too)
     if (b.title && String(b.title).trim()) {
@@ -1023,8 +1035,10 @@ const routes = {
         cacheWrite: n(u.cacheWrite, 5e8), messages: n(u.messages, 1e4) };
     }
     const day = new Date().toISOString().slice(0, 10);
+    // what it would cost at API prices, for the day and for the task a background run was doing
+    add.cost = X.chargeUsage(p, a.name, add.models, b.task ? String(b.task).slice(0, 16) : null);
     p.stats = p.stats || {};
-    p.stats[a.name] = addStats(p.stats[a.name] || newStats(), { ...add, days: { [day]: dayOf(add) } });
+    p.stats[a.name] = addStats(p.stats[a.name] || newStats(), { ...add, days: { [day]: { ...dayOf(add), cost: add.cost } } });
     p.emit('stats', { name: a.name });
     return { ok: true };
   },
@@ -1133,7 +1147,7 @@ function newStats() {
 function dayOf(s) {
   const tokens = Object.values(s.models || {}).reduce((t, u) => t + u.input + u.output + u.cacheRead + u.cacheWrite, 0);
   const output = Object.values(s.models || {}).reduce((t, u) => t + u.output, 0);
-  return { conversations: s.conversations || 0, turns: s.turns || 0, activeMs: s.activeMs || 0, tokens, output };
+  return { conversations: s.conversations || 0, turns: s.turns || 0, activeMs: s.activeMs || 0, tokens, output, cost: s.cost || 0 };
 }
 function addStats(into, add) {
   for (const k of ['conversations', 'requests', 'turns', 'activeMs', 'requestMs']) into[k] = (into[k] || 0) + (add[k] || 0);
@@ -1143,8 +1157,8 @@ function addStats(into, add) {
     for (const k of TOKEN_KEYS) t[k] += u[k] || 0;
   }
   for (const [d, v] of Object.entries(add.days || {})) {
-    const t = into.days[d] || (into.days[d] = { conversations: 0, turns: 0, activeMs: 0, tokens: 0, output: 0 });
-    for (const k of Object.keys(t)) t[k] += v[k] || 0;
+    const t = into.days[d] || (into.days[d] = { conversations: 0, turns: 0, activeMs: 0, tokens: 0, output: 0, cost: 0 });
+    for (const k of ['conversations', 'turns', 'activeMs', 'tokens', 'output', 'cost']) t[k] = (t[k] || 0) + (v[k] || 0);
   }
   const keep = Object.keys(into.days).sort().slice(-STATS_DAYS);
   into.days = Object.fromEntries(keep.map(d => [d, into.days[d]]));
@@ -1250,6 +1264,7 @@ function goalDone(p, t) {
   if (g && g.status !== 'done' && p.board.tasks.filter(x => x.goalId === g.id).every(x => x.status === 'done')) {
     g.status = 'done';
     notify(p, 'done', `Done: ${g.title || requestTitle(g.text)} (asked by ${g.byName})`);
+    X.notePerson(p, g.byName, 'done', `Done: ${g.title || requestTitle(g.text)}`, t.notes && t.notes.length ? t.notes[t.notes.length - 1].text : 'Every task in it is finished.', { view: 'tasks', task: t.id });
   }
 }
 
@@ -1289,9 +1304,12 @@ const ROLES = ['owner', 'member', 'viewer'];
 const MAX_AUDIT = 500;
 const MAX_PROBLEMS = 100;
 const OWNER_ROUTES = new Set(['POST member-role', 'POST member-remove', 'POST invite-revoke', 'GET invites', 'POST project-setting',
-  'POST notify-set', 'POST notify-test', 'POST policy', 'POST merge-person', 'POST tidy', 'POST forget-agent']);
+  'POST notify-set', 'POST notify-test', 'POST policy', 'POST merge-person', 'POST tidy', 'POST forget-agent',
+  'POST cost-settings', 'POST retention', 'POST delete-project', 'POST repo-connect', 'POST repo-disconnect', 'GET export']);
 // a viewer reads everything (dashboard, feed, code) and changes nothing
-const VIEWER_POSTS = new Set(['hello', 'inbox', 'link-github', 'redeem', 'leave']);
+const VIEWER_POSTS = new Set(['hello', 'inbox', 'link-github', 'link-account', 'redeem', 'leave', 'notes-read', 'note-prefs', 'erase-me']);
+// GitHub's webhook proves itself with a signature the route checks; a personal invite is its own proof
+const NO_AUTH_ROUTES = new Set(['POST redeem', 'POST github-webhook']);
 const hasOwner = (p) => Object.values(p.members || {}).some(m => m.role === 'owner');
 const newMemberToken = () => 'hm_' + crypto.randomBytes(24).toString('base64url');
 
@@ -1299,10 +1317,12 @@ const newMemberToken = () => 'hm_' + crypto.randomBytes(24).toString('base64url'
 function authorize(p, cred = {}) {
   const ps = p.projectSettings || {};
   if (cred.kind === 'admin') return { role: 'owner', name: null, via: 'admin' };
-  if (cred.kind === 'member' || cred.kind === 'github') {
+  if (cred.kind === 'member' || cred.kind === 'github' || cred.kind === 'user') {
     const h = cred.kind === 'member' ? sha('member:' + cred.token) : null;
-    const hit = Object.entries(p.members || {}).find(([, m]) => (h && m.tokenHash === h) || (!h && cred.github && m.github && m.github.toLowerCase() === String(cred.github).toLowerCase()));
-    if (!hit) throw httpError(401, cred.kind === 'member' ? 'this invite was taken back or is no longer valid; ask the project owner for a new one' : 'your GitHub account is not on this project');
+    const lower = (x) => String(x || '').toLowerCase();
+    const hit = Object.entries(p.members || {}).find(([, m]) => (h && m.tokenHash === h) ||
+      (!h && ((cred.user && m.user === cred.user) || (cred.github && m.github && lower(m.github) === lower(cred.github)) || (cred.email && m.email && lower(m.email) === lower(cred.email)))));
+    if (!hit) throw httpError(401, cred.kind === 'member' ? 'this invite was taken back or is no longer valid; ask the project owner for a new one' : 'your account is not on this project; open it once with an invite and link your account');
     const [name, m] = hit;
     if (now() - (m.lastSeen || 0) > 60 * 1000) { m.lastSeen = now(); p.dirty = true; }
     return { role: m.role, name, via: cred.kind, github: cred.github || m.github || null };
@@ -1321,7 +1341,7 @@ async function dispatch(p, method, ep, body, q, ctx, cred) {
   const route = routes[key];
   if (!route) throw httpError(404, 'no such endpoint');
   const auth = authorize(p, cred);
-  if (auth.role === 'none' && key !== 'POST redeem') throw httpError(401, 'bad token or no such project');
+  if (auth.role === 'none' && !NO_AUTH_ROUTES.has(key)) throw httpError(401, 'bad token or no such project');
   if (auth.role === 'viewer' && method !== 'GET' && !VIEWER_POSTS.has(ep)) throw httpError(403, 'you can view this project but not change it');
   if (auth.role === 'viewer' && key === 'GET audit') throw httpError(403, 'viewers cannot see the audit log');
   if (auth.role !== 'owner' && OWNER_ROUTES.has(key)) throw httpError(403, 'only the project owner can do that');
@@ -1334,6 +1354,7 @@ async function dispatch(p, method, ep, body, q, ctx, cred) {
     body.agent = { ...body.agent, name: auth.name, ...(held && held.name !== auth.name ? { id: `${auth.name}#${sha('as:' + id).slice(0, 6)}` } : {}) };
   }
   ctx.auth = auth;
+  ctx.cred = cred;
   return route(p, body, q, ctx);
 }
 
@@ -1569,6 +1590,10 @@ Object.assign(routes, {
   'GET problems': (p, b, q) => ({ problems: (p.problems || []).slice(-Math.min(Number(q.get('limit')) || 50, MAX_PROBLEMS)) }),
 });
 
+// notifications, search, cost, tasks, data, GitHub and conflicts (features.js)
+const X = require('./features')({ httpError, now, audit, hasOwner, boardChanged, pushTask, requestTitle, goalDone, normPath, notify, canonicalName, personFor, publicMembers, taskIdsIn, routes });
+Object.assign(routes, X.routes);
+
 function waitOn(p, pred, timeoutMs, onAbort) {
   return new Promise(resolve => {
     const done = (v) => { clearTimeout(timer); p.waiters.delete(w); resolve(v); };
@@ -1579,5 +1604,5 @@ function waitOn(p, pred, timeoutMs, onAbort) {
   });
 }
 
-module.exports = { dispatch, authorize, takeOutbox, notify, audit, hasOwner, NOTIFY_EVENTS, ROLES, needsAPerson, requestTitle, SHORT_INVITE, handOn, assignByUsage, Project, routes, waitOn, parseFrontmatter, fileKey, GIT_CHUNK, sha, now, httpError, sameSecret, normPath, aiLabel, taskIdsIn, blockingLock,
+module.exports = { features: X, dispatch, authorize, takeOutbox, notify, audit, hasOwner, NOTIFY_EVENTS, ROLES, needsAPerson, requestTitle, SHORT_INVITE, handOn, assignByUsage, Project, routes, waitOn, parseFrontmatter, fileKey, GIT_CHUNK, sha, now, httpError, sameSecret, normPath, aiLabel, taskIdsIn, blockingLock,
   ONLINE_MS, MAX_FILE_BYTES, OPEN_IDLE_MS, OPEN_MAX_PROJECTS, OPEN_CREATES_PER_HOUR };

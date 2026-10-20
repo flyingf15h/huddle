@@ -27,8 +27,17 @@ function notify(title, body) {
   } catch {}
 }
 
-// What a live event means for this person, as a notification, or null if it isn't for them.
+// What a live event means for this person, as a notification, or null if it isn't for them. A
+// current server sends each person's notifications as "note" events (their own settings decide which
+// reach the desktop); before the first one arrives, messages and requests are picked out directly.
+let notesSeen = false;
 function noteFor(ev, me) {
+  if (ev.type === 'note') {
+    notesSeen = true;
+    if (ev.to !== me.name || !ev.note || !ev.note.desktop) return null;
+    return { title: `huddle: ${ev.note.title}`, body: ev.note.body || '' };
+  }
+  if (notesSeen) return null;
   if (ev.type === 'message' && ev.message) {
     const m = ev.message;
     if (m.fromName === me.name || m.from === me.id) return null;

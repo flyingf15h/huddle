@@ -258,7 +258,7 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
     const m = s1.models['claude-test'];
     assert.deepEqual([m.messages, m.output, m.input, m.cacheRead], [3, 40 + 7 + 3, 30, 3000]);
     assert(s1.activeMs >= before0.activeMs);
-    assert.match(await (await fetch(url + '/app')).text(), /data-view="stats"/);
+    assert.match(await (await fetch(url + "/app")).text(), /id="root"/);
     ok('the stats page counts conversations, prompts, time with Claude and tokens per person (numbers only)');
 
     // autopilot: every Claude is active for the team by default; "requests" only runs what is sent to it

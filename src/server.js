@@ -8,7 +8,7 @@ const crypto = require('crypto');
 
 const { Project, routes, dispatch, takeOutbox, waitOn, sha, now, httpError, sameSecret,
   MAX_FILE_BYTES, OPEN_IDLE_MS, OPEN_MAX_PROJECTS, OPEN_CREATES_PER_HOUR } = require('./core');
-const gh = require('./github-auth');
+const accounts = require('./accounts');
 const { statusPage } = require('./status-page');
 
 function createServer(opts = {}) {
@@ -76,7 +76,7 @@ function createServer(opts = {}) {
         fs.rmSync(projectFile(p.name), { force: true });
       }
     }
-  }, 10 * 1000);
+  }, Number(process.env.HUDDLE_SWEEP_MS) || 10 * 1000);
   sweeper.unref();
 
   const creates = new Map(); // ip -> timestamps of recent project creations
@@ -100,6 +100,19 @@ function createServer(opts = {}) {
   }
 
   const dashboard = fs.readFileSync(path.join(__dirname, 'dashboard.html'), 'utf8');
+  // the public/ folder: screenshots, the privacy and terms pages, icons
+  const publicDir = path.join(__dirname, '..', 'public');
+  const TYPES = { '.html': 'text/html; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.css': 'text/css', '.js': 'text/javascript', '.json': 'application/json', '.txt': 'text/plain', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json' };
+  function staticFile(pathname, res) {
+    let rel = decodeURIComponent(pathname).replace(/^\/+/, '');
+    if (!rel || rel.includes('..') || rel.startsWith('api/')) return false;
+    if (!path.extname(rel)) rel += '.html';
+    const file = path.join(publicDir, rel);
+    if (!file.startsWith(publicDir + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) return false;
+    res.writeHead(200, { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream', 'cache-control': 'public, max-age=300' });
+    res.end(fs.readFileSync(file));
+    return true;
+  }
   const landing = fs.readFileSync(path.join(__dirname, 'landing.html'), 'utf8');
   const invitesFile = path.join(dataDir, 'invites.json');
   let invites = {};
@@ -116,17 +129,29 @@ function createServer(opts = {}) {
     };
   }
 
-  // GitHub sign-in (HUDDLE_GITHUB_CLIENT_ID / HUDDLE_GITHUB_CLIENT_SECRET) and which projects each login is in
-  const ghCfg = { clientId: opts.githubClientId || process.env.HUDDLE_GITHUB_CLIENT_ID, clientSecret: opts.githubClientSecret || process.env.HUDDLE_GITHUB_CLIENT_SECRET, secret: token };
-  const usersFile = path.join(dataDir, 'users.json');
-  let users = {};
-  try { users = JSON.parse(fs.readFileSync(usersFile, 'utf8')); } catch {}
-  const saveUsers = () => { try { fs.writeFileSync(usersFile, JSON.stringify(users), { mode: 0o600 }); } catch {} };
+  // accounts: sign in with an email code (HUDDLE_RESEND_API_KEY or HUDDLE_EMAIL_WEBHOOK sends the mail;
+  // HUDDLE_EMAIL_DEV=1 hands the code back instead, for local use) or GitHub (HUDDLE_GITHUB_CLIENT_ID / _SECRET)
+  const accountsFile = path.join(dataDir, 'accounts.json');
+  let acct = {};
+  try { acct = JSON.parse(fs.readFileSync(accountsFile, 'utf8')); } catch {}
+  const saveAccounts = () => { try { fs.writeFileSync(accountsFile + '.tmp', JSON.stringify(acct), { mode: 0o600 }); fs.renameSync(accountsFile + '.tmp', accountsFile); } catch {} };
+  const emailDev = !!(opts.emailDev || process.env.HUDDLE_EMAIL_DEV);
+  const send = accounts.mailer({ resendKey: opts.resendKey || process.env.HUDDLE_RESEND_API_KEY, webhook: opts.emailWebhook || process.env.HUDDLE_EMAIL_WEBHOOK, from: process.env.HUDDLE_EMAIL_FROM });
+  const acctCfg = {
+    secret: token,
+    github: { clientId: opts.githubClientId || process.env.HUDDLE_GITHUB_CLIENT_ID, clientSecret: opts.githubClientSecret || process.env.HUDDLE_GITHUB_CLIENT_SECRET },
+    email: (send || emailDev) ? { send: send || (emailDev ? async (m) => console.log(`huddle: sign-in email for ${m.to}:\n${m.text}`) : null), dev: emailDev } : null,
+    store: { async get(k) { return acct[k] || null; }, async put(k, v) { acct[k] = v; saveAccounts(); }, async del(k) { delete acct[k]; saveAccounts(); } },
+  };
   const started = now();
 
   // notifications a route queued: posted after the answer, never holding it up
   function sendOutbox(p) {
     for (const o of takeOutbox(p)) {
+      if (o.email) {
+        if (acctCfg.email && acctCfg.email.send) acctCfg.email.send(o.email).catch(e => { (p.problems = p.problems || []).push({ id: sha(String(Math.random())).slice(0, 8), at: now(), name: 'huddle', kind: 'notify', message: `an email could not be sent: ${e.message}`, detail: '' }); p.dirty = true; });
+        continue;
+      }
       fetch(o.url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(o.body), signal: AbortSignal.timeout(10000) })
         .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); })
         .catch(e => { p.problems = p.problems || []; p.problems.push({ id: sha(String(Math.random())).slice(0, 8), at: now(), name: 'huddle', kind: 'notify', message: `a notification could not be delivered: ${e.message}`, detail: '' }); p.dirty = true; });
@@ -168,27 +193,27 @@ function createServer(opts = {}) {
       if (url.pathname === '/health') return send(200, { ok: true, open });
       if (url.pathname === '/status') {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-        return res.end(statusPage({ ok: true, server: 'self-hosted', since: started, projects: projects.size, github: gh.configured(ghCfg) }));
+        return res.end(statusPage({ ok: true, server: 'self-hosted', since: started, projects: projects.size, github: accounts.githubConfigured(acctCfg), email: accounts.emailConfigured(acctCfg) }));
       }
       const origin = `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}`;
       const reply = (r) => { res.writeHead(r.status, r.headers); res.end(r.body); };
-      if (url.pathname === '/auth/github/login') return reply(await gh.login(ghCfg, origin, url.searchParams.get('next') || '/'));
-      if (url.pathname === '/auth/github/callback') return reply(await gh.callback(ghCfg, origin, url, req.headers.cookie));
-      if (url.pathname === '/auth/logout') return reply(gh.logout(origin));
-      if (url.pathname === '/auth/me') {
-        const who = await gh.session(ghCfg, req.headers.cookie);
-        return send(200, { github: gh.configured(ghCfg), user: who });
+      if (url.pathname.startsWith('/auth/') || url.pathname.startsWith('/api/me')) {
+        const body = req.method === 'POST' ? await readBody(req) : {};
+        const r = await accounts.handle(acctCfg, origin, { method: req.method, url, cookie: req.headers.cookie, body });
+        if (r) return reply(r);
       }
-      if (url.pathname === '/api/me/projects') {
-        const who = await gh.session(ghCfg, req.headers.cookie);
-        if (!who) throw httpError(401, 'sign in with GitHub first');
-        const out = [];
-        for (const name of users[who.login.toLowerCase()] || []) {
-          const p = projects.get(name);
-          const m = p && Object.entries(p.members || {}).find(([, x]) => x.github && x.github.toLowerCase() === who.login.toLowerCase());
-          if (m) out.push({ project: name, name: m[0], role: m[1].role });
-        }
-        return send(200, { user: who, projects: out });
+      if (staticFile(url.pathname, res)) return;
+      // GitHub's webhook for a project's connected repository (the project checks its signature)
+      const hook = url.pathname.match(/^\/api\/hooks\/github\/([\w.-]{1,64})$/);
+      if (hook && req.method === 'POST') {
+        const p = projects.get(hook[1]);
+        if (!p) throw httpError(404, 'no such project');
+        const raw = await readRaw(req);
+        let body = {};
+        try { body = JSON.parse(raw); } catch { throw httpError(400, 'invalid JSON'); }
+        const ctx = { request: { raw, header: (k) => req.headers[k.toLowerCase()] || '' }, blobs: blobStore(p.name), waitFor: () => Promise.resolve(null) };
+        send(200, await dispatch(p, 'POST', 'github-webhook', body, url.searchParams, ctx, { kind: 'none' }));
+        return sendOutbox(p);
       }
       const short = url.pathname.match(/^\/api\/invite\/([\w-]{12})$/);
       if (short && req.method === 'GET') {
@@ -213,10 +238,10 @@ function createServer(opts = {}) {
       // what the caller holds: the server's own token or the project's shared one, a personal token
       // (hm_…), a GitHub session cookie, or nothing (only good for turning a personal invite into a token)
       const tok = given(req, url);
-      const who = await gh.session(ghCfg, req.headers.cookie);
-      const cred = admin || (p.tokenHash && sameSecret(sha(tok + ':' + p.name), p.tokenHash)) ? { kind: 'project', github: who && who.login }
-        : tok.startsWith('hm_') ? { kind: 'member', token: tok, github: who && who.login }
-        : who ? { kind: 'github', github: who.login } : { kind: 'none' };
+      const who = accounts.credOf(await accounts.sessionUser(acctCfg, req.headers.cookie).catch(() => null));
+      const cred = admin || (p.tokenHash && sameSecret(sha(tok + ':' + p.name), p.tokenHash)) ? { kind: 'project', ...(who || {}) }
+        : tok.startsWith('hm_') ? { kind: 'member', token: tok, ...(who || {}) }
+        : who ? { kind: 'user', ...who } : { kind: 'none' };
       if (cred.kind === 'none' && m[2] !== 'redeem') throw httpError(401, 'bad token or no such project');
       p.origin = origin;
       if (m[2] === 'events' && (req.headers.accept || '').includes('text/event-stream')) {
@@ -225,16 +250,12 @@ function createServer(opts = {}) {
       }
       let body = {};
       if (req.method === 'POST') body = await readBody(req);
-      const ctx = { waitFor: (pred, ms) => waitOn(p, pred, ms, (abort) => req.on('close', abort)), blobs: blobStore(p.name) };
+      const ctx = { waitFor: (pred, ms) => waitOn(p, pred, ms, (abort) => req.on('close', abort)), blobs: blobStore(p.name),
+        deleteProject: async () => { projects.delete(p.name); fs.rmSync(projectFile(p.name), { force: true }); fs.rmSync(path.join(dataDir, 'blobs', p.name), { recursive: true, force: true }); p.dirty = false; } };
       const out = await dispatch(p, req.method, m[2], body, url.searchParams, ctx, cred);
       // what a short invite stands for: the project and the token of whoever asked for it
       if (m[2] === 'invite-code') saveInvite(out.code, { project: p.name, token: tok });
       if (m[2] === 'member-invite' && out.inviteCode) saveInvite(out.inviteCode, { project: p.name, personal: true });
-      if (m[2] === 'link-github' && out.linked) {
-        const k = out.linked.toLowerCase();
-        users[k] = [...new Set([...(users[k] || []), p.name])];
-        saveUsers();
-      }
       send(200, out);
       sendOutbox(p);
     } catch (e) {
@@ -261,6 +282,16 @@ function createServer(opts = {}) {
   server.huddleFlush = flush;
   server.on('close', () => { clearInterval(sweeper); clearInterval(saver); flush(); });
   return server;
+}
+
+function readRaw(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on('data', c => { size += c.length; if (size > MAX_FILE_BYTES * 2) { reject(httpError(413, 'body too large')); req.destroy(); } else chunks.push(c); });
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
 }
 
 function readBody(req) {

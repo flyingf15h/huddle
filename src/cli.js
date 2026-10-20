@@ -24,7 +24,7 @@ Start a project (one person, in the project folder):
       --open lets anyone create projects on it with \`huddle new --server URL\`.
 
 Everyone (in the project folder):
-  huddle join <invite> [--name YOUR_NAME] [--agent claude|codex]
+  huddle join <invite> [--name YOUR_NAME] [--agent claude|codex|cursor]
       Set up this folder: config, hooks and the huddle MCP tools for Claude Code or Codex.
   huddle leave                  remove huddle from this folder
   huddle update [--from DIR] [--ref REF]
@@ -95,6 +95,11 @@ Day to day:
                                 files, how much a session may share (owner)
   huddle notify [add URL|rm ID|test]   Slack, Discord or webhook alerts (owner)
   huddle delivery pr|merge      finished background work as a GitHub pull request, or merged
+  huddle search WORDS           search tasks, messages, agent activity, memory and the shared code
+  huddle notes [read]           your notifications; huddle notes email|desktop KIND on|off
+  huddle cost                   what the agents' tokens would cost at API prices, per person and task
+  huddle conflicts              which teammates' branches would conflict with yours, and in which files
+  huddle export [--out FILE]    everything the project holds, as JSON (owner)
   huddle audit                  who changed what, and every command background agents ran
   huddle problems               crashes and failures reported from teammates' computers
   huddle tests ["CMD"] [--review on|off]
@@ -392,7 +397,7 @@ function q(s) { return process.platform === 'win32' ? `"${s}"` : `'${s.replace(/
 
 // projectRoot is set when the hooks live in a parent folder linked to a joined project
 function hookCmd(dir, event, projectRoot, agent) {
-  return cliCmd(dir, `hook ${event}${agent === 'codex' ? ' --agent codex' : ''}`, projectRoot);
+  return cliCmd(dir, `hook ${event}${['codex', 'cursor'].includes(agent) ? ' --agent ' + agent : ''}`, projectRoot);
 }
 function cliCmd(dir, args, projectRoot) {
   const env = projectRoot ? (process.platform === 'win32' ? '' : `HUDDLE_ROOT=${q(projectRoot)} `) : '';
@@ -479,12 +484,25 @@ function installCodex(root, dir, projectRoot) {
   if (want.length) fs.appendFileSync(exclude, (cur && !cur.endsWith('\n') ? '\n' : '') + want.join('\n') + '\n');
   if (tracked) console.log('  note: .codex/ is in git here; huddle added its hooks and MCP server to it. Don\'t commit those lines (they hold paths on your computer).');
 }
+// Cursor: .cursor/mcp.json, .cursor/hooks.json and a rule, kept out of git unless the project tracks them
+function installCursor(root, dir, projectRoot) {
+  require('./cursor').install(root, dir, projectRoot || root, (ev) => hookCmd(dir, ev, projectRoot, 'cursor'), HOOK_MARK);
+  if (!fs.existsSync(path.join(root, '.git'))) return;
+  const exclude = path.join(root, '.git', 'info', 'exclude');
+  let cur = '';
+  try { cur = fs.readFileSync(exclude, 'utf8'); } catch {}
+  const tracked = gitx.git(root, ['ls-files', '--', '.cursor']).out.trim();
+  if (tracked) return console.log('  note: .cursor/ is in git here; huddle added its hooks and MCP server to it. Don\'t commit those lines (they hold paths on your computer).');
+  const want = ['.cursor/mcp.json', '.cursor/hooks.json', '.cursor/rules/huddle.mdc'].filter(l => !cur.split('\n').includes(l));
+  if (want.length) fs.appendFileSync(exclude, (cur && !cur.endsWith('\n') ? '\n' : '') + want.join('\n') + '\n');
+}
 function folderAgent(root) {
   try { return JSON.parse(fs.readFileSync(path.join(root, CONFIG_DIR, 'config.json'), 'utf8')).agent || 'claude'; } catch { return 'claude'; }
 }
 // set a folder up for the coding agent it uses
 function installFor(root, dir, projectRoot) {
   if (folderAgent(projectRoot || root) === 'codex') return installCodex(root, dir, projectRoot);
+  if (folderAgent(projectRoot || root) === 'cursor') return installCursor(root, dir, projectRoot);
   installHooks(root, dir, projectRoot);
   installCommand(root);
 }
@@ -540,12 +558,13 @@ async function pickName(flags, root) {
 const hasTool = (cmd) => spawnSync(cmd, ['--version'], { encoding: 'utf8', shell: process.platform === 'win32' }).status === 0;
 function checkTools(agent) {
   if (agent === 'codex' && !hasTool('codex')) console.log('! Codex isn\'t installed here yet. Install it with: npm install -g @openai/codex');
-  if (agent !== 'codex' && !hasTool('claude')) console.log('! Claude Code isn\'t installed here yet. Install it with: npm install -g @anthropic-ai/claude-code');
+  if (agent === 'cursor' && !hasTool('agent') && !hasTool('cursor-agent')) console.log('! Cursor\'s command line (`agent`) isn\'t installed here. Cursor itself works without it; it is only needed for background requests (curl https://cursor.com/install -fsS | bash).');
+  if (agent !== 'codex' && agent !== 'cursor' && !hasTool('claude')) console.log('! Claude Code isn\'t installed here yet. Install it with: npm install -g @anthropic-ai/claude-code');
   if (!hasTool('git')) console.log('! git isn\'t installed, so code won\'t be shared through huddle (live edits still are).');
 }
 // --agent, what this folder used before, or whichever of Claude Code and Codex is installed (asked when both are)
 async function pickAgent(flags, root) {
-  if (flags.agent) return String(flags.agent).toLowerCase() === 'codex' ? 'codex' : 'claude';
+  if (flags.agent) return ['codex', 'cursor'].includes(String(flags.agent).toLowerCase()) ? String(flags.agent).toLowerCase() : 'claude';
   if (fs.existsSync(path.join(root, CONFIG_DIR, 'config.json'))) return folderAgent(root);
   const claude = hasTool('claude'), cdx = hasTool('codex');
   if (cdx && !claude) return 'codex';
@@ -593,17 +612,21 @@ async function cmdJoin({ pos, flags }) {
   await recordBuild(dir);
   rememberFolder(root);
   installFor(root, dir);
-  const mcp = agent === 'codex' ? true : installMcp(root, dir);
+  const mcp = agent === 'codex' || agent === 'cursor' ? true : installMcp(root, dir);
   // (a personal token opens the dashboard as this person; it's never swapped for the shared invite)
   const code = inv.token.startsWith('hm_') ? encodeInvite(inv.server, inv.token, inv.project) : await shortInvite(cfg);
   console.log(`
 ✓ joined "${inv.project.replace(/-[0-9a-f]{6,8}$/, '')}" as ${name}${mcp ? '' : ' (the huddle tools need registering by hand, see above)'}
   Dashboard: ${inv.server}/app#invite=${code}${inv.token.startsWith('hm_') ? '\n  (that link is yours alone: it opens the project as you)' : ''}`);
-  if (agent !== 'codex' && process.stdin.isTTY && !flags.yes && await yes('Let Claude make routine edits, use git and run builds and tests here without asking each time?')) {
+  if (agent === 'claude' && process.stdin.isTTY && !flags.yes && await yes('Let Claude make routine edits, use git and run builds and tests here without asking each time?')) {
     const n = addPermissions(path.join(root, '.claude', 'settings.local.json'), permissionPreset(root));
     console.log(n ? '  done (in your own .claude/settings.local.json; deploys and anything risky still ask)' : '  already set');
   }
-  if (agent === 'codex') console.log(`
+  if (agent === 'cursor') console.log(`
+Next: open this folder in Cursor and start the agent. The first time, Cursor asks you to enable the huddle MCP
+server (Settings, MCP) and to trust the project hooks (Settings, Hooks). After that Cursor is in the huddle.
+Background requests for your Cursor need Cursor's command line (\`agent\`) and CURSOR_API_KEY or \`agent login\`.`);
+  else if (agent === 'codex') console.log(`
 Next: run \`codex\` in this folder. The first time, Codex asks whether to trust the folder (say yes, so it
 loads .codex/), then run /hooks once and trust huddle's hooks. After that Codex is in the huddle.
 Your Codex helps the team while you're away and your session is visible to them;
@@ -1031,6 +1054,7 @@ function cmdLeave() {
   } catch {}
   spawnSync('claude', ['mcp', 'remove', '-s', 'local', 'huddle'], { cwd: cfg.root, stdio: 'ignore' });
   require('./codex').uninstall(cfg.root, HOOK_MARK);
+  require('./cursor').uninstall(cfg.root, HOOK_MARK);
   fs.rmSync(path.join(cfg.root, CONFIG_DIR), { recursive: true, force: true });
   console.log('left the huddle; hooks and MCP server removed from this folder');
 }
@@ -1357,6 +1381,54 @@ async function cmdNotify({ pos, flags }) {
   console.log('\nAdd one (owner only): huddle notify add <Slack or Discord webhook URL> [--events approval,stuck,done,failed,member]');
 }
 
+async function cmdSearch({ pos, flags }) {
+  const q = pos.join(' ').trim();
+  need(q.length >= 2, 'usage: huddle search WORDS [--kinds tasks,messages,activity,knowledge,code]');
+  const r = await humanClient('cli').get('search', { q, ...(flags.kinds ? { kinds: flags.kinds } : {}), limit: flags.limit || 30 });
+  if (!r.results.length) return console.log(`nothing mentions "${q}"`);
+  for (const x of r.results) console.log(`${x.kind.padEnd(8)} ${x.title}${x.who ? `  (${x.who}, ${ago(x.at)})` : ''}\n         ${x.snippet}`);
+  if (r.total > r.results.length) console.log(`… ${r.total - r.results.length} more`);
+}
+async function cmdNotes({ pos, flags }) {
+  const c = humanClient('cli');
+  if (pos[0] === 'read') { await c.post('notes-read', {}); return console.log('all marked as read'); }
+  if (pos[0] === 'email' || pos[0] === 'desktop') {
+    const [, kind, onoff] = pos;
+    need(kind && /^(on|off)$/.test(onoff || ''), `usage: huddle notes ${pos[0]} KIND on|off   (kinds: message, mention, request, approval, stuck, done, conflict, ci, budget)`);
+    const r = await c.post('note-prefs', { prefs: { [kind]: { [pos[0]]: onoff === 'on' } } });
+    return console.log(Object.entries(r.prefs).map(([k, v]) => `${k.padEnd(9)} email ${v.email ? 'on ' : 'off'}  desktop ${v.desktop ? 'on' : 'off'}`).join('\n'));
+  }
+  const r = await c.get('notes', { name: c.agent.name });
+  const list = r.notes.slice(-(Number(flags.limit) || 20));
+  console.log(list.map(n => `${n.read ? ' ' : '•'} ${ago(n.at).padEnd(12)} ${n.title}\n               ${n.body}`).join('\n') || 'no notifications');
+  if (!r.contact || !r.contact.email) console.log('\nTo get these by email, sign in on the dashboard and link your account (Team & settings).');
+}
+async function cmdCost() {
+  const r = await humanClient('cli').get('costs');
+  const $ = (n) => '$' + (n || 0).toFixed(2);
+  console.log(`API-equivalent cost of everyone's agent usage (subscriptions aren't billed per token):`);
+  console.log(`  this month: ${$(r.monthSpend)}${r.budget ? ` of a ${$(r.budget.monthly)} budget` : ''}   all time: ${$(r.total)}`);
+  for (const [n, x] of Object.entries(r.people).sort((a, b) => b[1].cost - a[1].cost)) console.log(`  ${n.padEnd(16)} ${$(x.cost).padStart(9)}  ${Math.round(x.tokens / 1000)}k tokens`);
+  if (r.tasks.length) { console.log('\nMost expensive tasks:'); for (const t of r.tasks.slice(0, 8)) console.log(`  ${$(t.cost).padStart(9)}  ${t.title} (${t.owner || 'unassigned'})`); }
+  if (r.unpriced.length) console.log(`\nNo price for: ${r.unpriced.join(', ')} (an owner can add prices on the dashboard's Usage page)`);
+}
+async function cmdConflicts() {
+  const cfg = configured();
+  const c = new Client(cfg, { ...identity(cfg), branch: gitx.currentBranch(cfg.root) });
+  need(gitx.isRepo(cfg.root), 'this folder is not a git repository');
+  await gitx.fetchAll(c, cfg.root);
+  const found = await gitx.reportConflicts(c, cfg.root);
+  if (found === null) return console.log('git is too old to check without merging (needs git 2.38 or newer)');
+  if (!found.length) return console.log("no teammate's branch conflicts with yours");
+  for (const x of found) console.log(`${x.other} conflicts with your ${gitx.currentBranch(cfg.root)} in:\n${x.files.map(f => '  ' + f).join('\n')}`);
+  console.log('\nMerge with `huddle merge PERSON/BRANCH` and ask your agent to resolve them, or press "Resolve with agent" on the dashboard.');
+}
+async function cmdExport({ flags }) {
+  const r = await humanClient('cli').get('export');
+  const file = flags.out || `${r.project}-${new Date().toISOString().slice(0, 10)}.json`;
+  fs.writeFileSync(file, JSON.stringify(r, null, 2));
+  console.log(`wrote ${file}`);
+}
 async function cmdAudit({ flags }) {
   const r = await humanClient('cli').get('audit', { limit: flags.limit || 50 });
   console.log(r.audit.map(e => `${new Date(e.at).toLocaleString().padEnd(22)} ${e.by.padEnd(14)} ${e.bg ? 'ran ' : ''}${e.action === 'command' ? '`' + e.detail + '`' : e.detail}`).join('\n') || 'nothing yet');
@@ -1399,6 +1471,7 @@ async function main() {
     ask: cmdAsk, board: cmdBoard, autopilot: cmdAutopilot, unpublish: cmdUnpublish, forget: cmdForget, 'same-person': cmdSamePerson, link: cmdLink, unlink: cmdUnlink, statusline: cmdStatusline, memory: cmdMemory, memories: cmdMemory, skill: cmdSkill, skills: cmdSkill,
     hook: () => require('./hooks').runHook(args.pos[0], args.flags),
     members: cmdMembers, member: cmdMembers, policy: cmdPolicy, notify: cmdNotify, audit: cmdAudit, problems: cmdProblems, delivery: cmdDelivery,
+    search: cmdSearch, notes: cmdNotes, notifications: cmdNotes, cost: cmdCost, costs: cmdCost, conflicts: cmdConflicts, export: cmdExport,
     mcp: () => require('./mcp').runMcp(),
   };
   if (!cmd || cmd === 'help' || cmd === '--help' || cmd === '-h') return console.log(HELP);
