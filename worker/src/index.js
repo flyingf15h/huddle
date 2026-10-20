@@ -105,6 +105,16 @@ export default {
         headers.delete('x-huddle-index');
         return env.PROJECTS.get(env.PROJECTS.idFromName(hook[1])).fetch(new Request(`https://do/api/p/${hook[1]}/github-webhook`, { method: 'POST', headers, body: await request.text() }));
       }
+      // Slack's slash command and button presses for a project (the project checks Slack's signature)
+      const sl = url.pathname.match(/^\/api\/slack\/([\w.-]{1,64})\/(command|interact)$/);
+      if (sl && request.method === 'POST') {
+        const headers = new Headers(request.headers);
+        headers.set('x-huddle-project', sl[1]);
+        headers.set('x-huddle-cred', JSON.stringify({ kind: 'none' }));
+        headers.set('x-huddle-origin', url.origin);
+        headers.delete('x-huddle-index');
+        return env.PROJECTS.get(env.PROJECTS.idFromName(sl[1])).fetch(new Request(`https://do/api/p/${sl[1]}/slack-${sl[2]}`, { method: 'POST', headers, body: await request.text() }));
+      }
       // screenshots, privacy and terms pages, icons
       if (request.method === 'GET' && env.ASSETS && !url.pathname.startsWith('/api/')) {
         const a = await env.ASSETS.fetch(new Request(new URL(url.pathname.includes('.') ? url.pathname : url.pathname + '.html', url.origin)));
@@ -239,7 +249,7 @@ export class HuddleProject extends DurableObject {
   async schedule() {
     let want = this.busy() ? now() + SWEEP_MS : this.p.lastActive + IDLE_DELETE_MS;
     // the daily digest has its own time
-    const nd = core.features.nextDigestAt(this.p);
+    const nd = core.features.nextWakeAt(this.p);
     if (nd) want = Math.min(want, nd + 1000);
     const cur = await this.ctx.storage.getAlarm();
     if (!cur || cur > want + 1000 || (want - cur > 24 * 3600 * 1000)) await this.ctx.storage.setAlarm(want);
@@ -280,7 +290,7 @@ export class HuddleProject extends DurableObject {
       if (request.method === 'POST') {
         raw = await request.text();
         if (raw.length > LIMITS.fileBytes * 2) throw httpError(413, 'body too large');
-        try { body = raw ? JSON.parse(raw) : {}; } catch { throw httpError(400, 'invalid JSON'); }
+        try { body = raw ? JSON.parse(raw) : {}; } catch { if (!/\/slack-(command|interact)$/.test(url.pathname)) throw httpError(400, 'invalid JSON'); }
       }
       const store = this.ctx.storage;
       const ctx = {
@@ -306,7 +316,7 @@ export class HuddleProject extends DurableObject {
     const mail = all.filter(o => o.email), out = all.filter(o => !o.email);
     const cfg = acctCfg(this.env);
     if (mail.length && cfg.email && cfg.email.send) this.ctx.waitUntil(Promise.all(mail.map(o => cfg.email.send(o.email).catch(() => {}))));
-    this.ctx.waitUntil(Promise.all(out.map(o => fetch(o.url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(o.body) })
+    this.ctx.waitUntil(Promise.all(out.map(o => fetch(o.url, { method: o.method || 'POST', headers: { 'content-type': 'application/json', ...(o.headers || {}) }, body: JSON.stringify(o.body) })
       .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); })
       .catch(e => { (p.problems = p.problems || []).push({ id: Math.random().toString(16).slice(2, 10), at: now(), name: 'huddle', kind: 'notify', message: `a notification could not be delivered: ${e.message}`, detail: '' }); p.problemsChanged = true; }))));
   }

@@ -115,7 +115,7 @@ ${t.detail ? '\n' + t.detail + '\n' : ''}${goal ? `\nIt is part of the team goal
 First, call huddle_update_task with task_id "${t.id}" and a title of 2 to 6 plain words naming the outcome (like "Fix pin-to-pin guide labels"), unless the current one already reads that way. Someone who never saw the chat should understand it: sentence case, no names, colons, ids, commit hashes or parentheses.
 Do the task in this repository. Stay inside its scope; if you need a file someone else is working on, message them with huddle_send instead of waiting silently.${t.paths && t.paths.length ? `\nYou hold the lock on ${t.paths.join(', ')} for this task; keep your changes there unless the task really needs more.` : ''}
 Shell commands: ${canRun}${t.allow && t.allow.length ? `, and ${me} approved: ${t.allow.join('; ')}` : ''}. Nobody is watching this session to approve anything, so a refused command stays refused; don't retry it. If you can't run a check, say what you couldn't verify in your note instead of blocking the task.
-If the task needs a command you weren't allowed to run, finish what you can, then end your final message with "Needs ${me}'s OK:" and one line per command, as "- <command> — why". ${me} can approve them from the dashboard, and you'll be run again with them allowed. Don't mark the task blocked for this.${t.notes && t.notes.length ? `\nNotes on this task so far:\n${t.notes.slice(-4).map(n => `- ${n.by}: ${n.text}`).join('\n')}` : ''}
+If the task needs a command you weren't allowed to run, finish what you can, then end your final message with "Needs ${me}'s OK:" and one line per command, as "- <command> — why". ${me} can approve them from the dashboard, and you'll be run again with them allowed. Don't mark the task blocked for this.${t.notes && t.notes.length ? `\nNotes on this task so far:\n${t.notes.slice(-4).map(n => `- ${n.by}: ${n.text}`).join('\n')}` : ''}${feedbackText(t)}
 When it's done, commit it with git (one short message; anything left uncommitted is committed for you). Then call huddle_update_task with task_id "${t.id}", status "done" and a one-line note of what you did. Only use status "blocked" for a real problem in the work itself.${t.direct ? `
 ${t.by} sent you this directly, and your final message goes back to ${t.by} as your reply. Always answer, even if you can't finish: read what's needed, do what you can without the refused commands, then end with a short reply saying what you did or found.` : ''}`;
 }
@@ -161,6 +161,24 @@ function neededCommands(text) {
 }
 const LIMIT = /usage limit|limit reached|hit your limit|out of (usage|credits)|rate.?limited/i;
 
+// what a task changed, from its worktree: the file list and a unified diff (capped, file by file)
+function diffOf(c) {
+  const num = gitx.git(c.dir, ['diff', '--numstat', `${c.base}..HEAD`]);
+  if (!num.ok || !num.out) return null;
+  const files = num.out.split('\n').filter(Boolean).map(l => { const [add, del, ...rest] = l.split('\t'); return { path: rest.join('\t'), add: add === '-' ? 0 : Number(add), del: del === '-' ? 0 : Number(del), binary: add === '-' }; });
+  const full = gitx.git(c.dir, ['diff', '--no-color', '--no-ext-diff', '-U3', `${c.base}..HEAD`]).out;
+  const parts = full.split(/\n(?=diff --git )/);
+  let diff = '', truncated = false;
+  for (const part of parts) { if (diff.length + part.length > 450 * 1024) { truncated = true; break; } diff += (diff ? '\n' : '') + part; }
+  return { files, diff, truncated, base: c.base, head: gitx.git(c.dir, ['rev-parse', 'HEAD']).out.trim() };
+}
+// what a reviewer asked to change, for the agent that runs the task again
+function feedbackText(t) {
+  const f = (t.feedback || [])[(t.feedback || []).length - 1];
+  if (!f) return '';
+  const lines = f.comments.map(c => `- ${c.file}${c.line ? ':' + c.line : ''}: ${c.text}`);
+  return `\n${f.by} reviewed your earlier work on this task and asked for changes${f.note ? `: ${f.note}` : ''}.${lines.length ? '\nTheir comments:\n' + lines.join('\n') : ''}\nAddress each one (your earlier changes are already in this checkout), commit, then mark the task done again.`;
+}
 function reviewPrompt(t, base) {
   return `You are reviewing work another Claude just finished for the task "${t.title}".${t.detail ? `\nThe task: ${t.detail.slice(0, 1500)}` : ''}
 Look at the change with \`git diff ${base}..HEAD\` (and read surrounding code as needed). Check for real problems only: bugs, crashes, broken callers, parts of the task that are missing, security holes. Ignore style and taste.
@@ -201,10 +219,13 @@ function makeClone(cfg, id) {
   // outside the project, so dev servers, watchers and test runners there never see it
   const dir = path.join(cfg.clonesDir || path.join(os.homedir(), '.huddle', 'clones'), `${path.basename(root)}-${sha(root).slice(0, 6)}`, id);
   const branch = `huddle-request-${id}`;
-  const base = gitx.head(root);
+  const head = gitx.head(root);
+  // asked to change work that was left on its branch: carry on from there, with the person's branch as the base
+  const kept = gitx.git(root, ['rev-parse', '-q', '--verify', 'refs/heads/' + branch]).out;
+  const base = kept ? (gitx.git(root, ['merge-base', head, kept]).out.trim() || head) : head;
   fs.rmSync(dir, { recursive: true, force: true });
   gitx.git(root, ['worktree', 'prune']);
-  if (!gitx.git(root, ['worktree', 'add', '-q', '-B', branch, dir, base]).ok) return null;
+  if (!gitx.git(root, ['worktree', 'add', '-q', '-B', branch, dir, kept || head]).ok) return null;
   const person = gitx.currentBranch(root, 0);
   fs.mkdirSync(path.join(dir, CONFIG_DIR), { recursive: true });
   const own = JSON.parse(fs.readFileSync(path.join(root, CONFIG_DIR, 'config.json'), 'utf8'));
@@ -625,6 +646,10 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
         else { log('pull request: ' + pr.error); await reportProblem('pr', `couldn't open a pull request for "${t.title}": ${pr.error}`, '', t.id); pr = null; }
       }
     }
+    if (c) {
+      const d = diffOf(c);
+      if (d) await client.post('task-diff', { taskId: t.id, ...d, branch: c.branch, left: false }).catch(e => log('diff: ' + e.message));
+    }
     if (c && !pr && (!checks || checks.tests !== 'failed')) {
       const settled = await settleConflicts(t, c).catch(e => { log('conflicts: ' + e.message); return null; });
       if (settled) checks = { ...(checks || {}), conflicts: settled };
@@ -636,6 +661,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
         where = checks && checks.tests === 'failed' ? `on branch ${c.branch}: tests failed, so it wasn't merged`
           : `on branch ${c.branch}: it didn't merge cleanly into ${me}'s ${c.person || 'checkout'}`;
         await gitx.publish(client, cfg.root, { branch: c.branch }).catch(() => {});
+        await client.post('task-diff', { taskId: t.id, branch: c.branch, left: true }).catch(() => {});
         log(`left the work on ${c.branch}`);
       }
       if (checks) checks.merged = l.landed === 'merged';
@@ -690,6 +716,21 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     }
   }
 
+  // someone pressed "Merge" on work that was left on its own branch
+  async function mergeLeft(t) {
+    const branch = `huddle-request-${t.id}`;
+    const say = (text, extra = {}) => client.post('task-update', { id: t.id, note: text, ...extra }).catch(() => {});
+    if (!gitx.git(cfg.root, ['rev-parse', '-q', '--verify', 'refs/heads/' + branch]).ok) return say(`The branch ${branch} is gone, so there is nothing to merge.`);
+    const m = gitx.git(cfg.root, ['merge', '--no-edit', '-m', `merge ${branch}: ${t.title.slice(0, 60)}`, branch]);
+    if (!m.ok) {
+      if (gitx.git(cfg.root, ['rev-parse', '-q', '--verify', 'MERGE_HEAD']).ok) gitx.git(cfg.root, ['merge', '--abort']);
+      return say(`The branch didn't merge cleanly into ${gitx.currentBranch(cfg.root, 0)}. Ask for changes (the agent will sort out the conflicts), or merge it by hand: git merge ${branch}`);
+    }
+    gitx.git(cfg.root, ['branch', '-D', branch]);
+    await client.post('task-diff', { taskId: t.id, left: false }).catch(() => {});
+    await say(`Merged ${branch} into ${gitx.currentBranch(cfg.root, 0)}.`, { checks: { merged: true } });
+    log(`merged ${branch}`);
+  }
   let conflictTimer = null;
   function checkConflictsSoon() {
     if (conflictTimer || !gitx.isRepo(cfg.root)) return;
@@ -759,6 +800,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
         return start('msg-' + ev.message.id, 'answer', () => answer(ev.message));
       }
       if (ev.type === 'usage' && ev.name === me) usage = ev.usage;
+      if (ev.type === 'board' && ev.action === 'merge-request' && ev.task && ev.task.owner === me && gitx.isRepo(cfg.root)) return mergeLeft(ev.task);
       // a teammate shared new commits: fetch them and say whether they'd conflict with this branch
       if (ev.type === 'git' && ev.action === 'publish' && ev.ref && ev.ref.owner !== me) checkConflictsSoon();
       if (ev.type === 'project-setting') projectSettings = ev.settings || {};

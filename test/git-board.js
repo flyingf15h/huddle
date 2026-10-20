@@ -285,8 +285,39 @@ if (p.includes('ship it')) { fs.writeFileSync('ship.txt', 'ready\\n'); console.l
     assert.equal(yes.approval.status, 'approved');
     const again = await task2('ship it');
     assert.deepEqual([again.status, again.allow], ['todo', ['npm run deploy']], 'approved: it runs again with the command allowed');
+    // diff review: every task's changes are shared; changes can be asked for, and work left on a branch merged
+    const brokeNow = await task2('break the tests');
+    assert.ok(brokeNow.diff && brokeNow.diff.files.some(f => f.path === 'bad.txt') && brokeNow.diff.left === true && brokeNow.diff.add >= 1);
+    const dd = await api('task-diff?id=' + brokeNow.id);
+    assert.match(dd.diff, /\+\+\+ b\/bad\.txt/);
+    const calcTask = (await api('board')).tasks.find(t => t.id === calcId);
+    assert.ok(calcTask.diff && calcTask.diff.left, 'work left on its branch can be merged from the dashboard');
+    await api('task-merge', { agent: asker, id: calcId });
+    await runner2.onEvent({ type: 'board', action: 'merge-request', task: { id: calcId, title: calcTask.title, owner: 'dave' } });
+    assert.ok(dave.read('calc.py').includes('# from the request'), 'merged into dave\'s branch');
+    assert.ok(!dave.git('branch').includes('huddle-request-' + calcId));
+    assert.equal(((await api('board')).tasks.find(t => t.id === calcId).diff || {}).left, false);
+    // asking for changes sends the comments back, and the agent carries on from the branch it left
+    assert.match((await api('task-review', { agent: asker, id: brokeNow.id, verdict: 'changes' })).error, /say what should change/);
+    await api('task-review', { agent: asker, id: brokeNow.id, verdict: 'changes', comments: [{ file: 'bad.txt', line: 1, text: 'remove this file, it breaks check.js' }] });
+    assert.equal((await task2('break the tests')).status, 'todo');
+    fs.writeFileSync(path.join(fakeBin, 'claude'), `#!/usr/bin/env node
+const fs = require('fs');
+const p = process.argv[process.argv.indexOf('-p') + 1] || '';
+if (p.includes('You are reviewing work')) { console.log('VERDICT: OK'); process.exit(0); }
+if (p.includes('asked for changes') && p.includes('remove this file')) { fs.rmSync('bad.txt', { force: true }); console.log('fixed it'); }
+else if (p.includes('break the tests')) fs.writeFileSync('bad.txt', 'oops\\n');
+`, { mode: 0o755 });
+    await runner2.onEvent({ type: 'board', action: 'task-update', task: { id: brokeNow.id, status: 'todo' } });
+    const end3 = Date.now() + 30000;
+    while ((await task2('break the tests')).status !== 'done') { assert(Date.now() < end3, 'the changes were never made'); await new Promise(r => setTimeout(r, 200)); }
+    assert.equal((await task2('break the tests')).checks.tests, 'passed');
+    assert.ok(!fs.existsSync(path.join(dave.root, 'bad.txt')), 'the fixed work merged without the bad file');
+    await api('task-review', { agent: asker, id: brokeNow.id, verdict: 'approve', note: 'thanks' });
+    assert.equal((await task2('break the tests')).diff.review.verdict, 'approved');
     runner2.stop();
     ok('work is reviewed and tested before it merges; commands it needs wait for its person\'s OK');
+    ok('every task\'s changes can be read, commented on, approved, sent back for changes or merged from a branch');
 
     // someone nearly out of Claude usage (or away) has their waiting tasks handed to someone with room
     const core = require('../src/core');

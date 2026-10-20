@@ -7,6 +7,8 @@
 const crypto = require('crypto');
 const pricing = require('./pricing');
 const githost = require('./githost');
+const slack = require('./slack');
+const { deniedBy } = require('./policy');
 
 const MAX_NOTES = 80;            // per person, newest kept
 const NOTE_TEXT = 400;
@@ -26,6 +28,7 @@ const NOTE_KINDS = {
   ci: { label: 'Checks failing on your pull requests', email: true, desktop: true },
   budget: { label: 'Budget alerts (owners)', email: true, desktop: false },
   digest: { label: 'Daily digest', email: true, desktop: false },
+  cost: { label: 'Cost spikes and forecasts (owners)', email: true, desktop: false },
 };
 
 module.exports = function features(h) {
@@ -34,6 +37,59 @@ module.exports = function features(h) {
   const clip = (s, n) => String(s || '').replace(/\s+/g, ' ').trim().slice(0, n);
   const prettyProject = (p) => p.name.replace(/-[0-9a-f]{6,8}$/, '');
   const people = (p) => [...new Set([...Object.values(p.agents).map(a => a.name), ...Object.keys(p.settings || {}), ...Object.keys(p.members || {})])].filter(n => n && !/^(human|guest)$/.test(n));
+
+
+  // ---------- conflict-aware planning ----------
+  // Two tasks that change the same files shouldn't run at the same time on different branches: the
+  // second would conflict with the first. When a plan is made, tasks that touch the same files wait for
+  // each other (and, if nobody was chosen for the second one, go to whoever has the first), while tasks
+  // in different parts of the code still run in parallel. A task's files are the ones its planner listed,
+  // or, failing that, the paths and file names mentioned in its text.
+  const FILE_WORD = /(?:^|[\s("'`])((?:[\w.@-]+\/)+[\w.@-]*|[\w-]+\.(?:js|jsx|ts|tsx|mjs|cjs|py|go|rs|rb|java|kt|swift|php|css|scss|html|vue|svelte|md|json|ya?ml|toml|sql|sh))(?=$|[\s)"'`,;:.!?])/g;
+  function guessPaths(t) {
+    const out = new Set();
+    for (const m of `${t.title || ''}\n${t.detail || ''}`.matchAll(FILE_WORD)) {
+      const w = m[1].replace(/^\.\//, '');
+      if (/^(https?|ftp):/i.test(w) || w.length < 3 || /^\d+(\/\d+)+$/.test(w)) continue;
+      out.add(w);
+    }
+    return [...out].slice(0, 12);
+  }
+  const normPathList = (list) => (list || []).map(x => String(x).trim().replace(/^\.\//, '').replace(/\*\*?.*$/, '').replace(/\/+$/, '/')).filter(Boolean);
+  function pathsOverlap(a, b) {
+    for (const x of normPathList(a)) for (const y of normPathList(b)) {
+      const xd = x.endsWith('/'), yd = y.endsWith('/');
+      if (x === y) return x;
+      if (xd && y.startsWith(x)) return y;
+      if (yd && x.startsWith(y)) return x;
+      // a bare file name ("cart.ts") matches the same name anywhere
+      if (!x.includes('/') && (y === x || y.endsWith('/' + x))) return y;
+      if (!y.includes('/') && (x === y || x.endsWith('/' + y))) return x;
+    }
+    return null;
+  }
+  const filesOf = (t) => (t.paths && t.paths.length ? t.paths : t.guess || []);
+  // after a plan's tasks are made: order the ones that overlap, and keep unowned ones with whoever has the files
+  function conflictAware(p, made, asked) {
+    const open = p.board.tasks.filter(t => t.status !== 'done' && !made.includes(t));
+    for (const t of made) { if (!(t.paths && t.paths.length)) t.guess = guessPaths(t); }
+    made.forEach((t, i) => {
+      const mine = filesOf(t);
+      if (!mine.length) return;
+      const before = [...open, ...made.slice(0, i)];
+      const hits = [];
+      for (const o of before) { const f = pathsOverlap(mine, filesOf(o)); if (f) hits.push({ task: o, file: f }); }
+      if (!hits.length) return;
+      t.after = [...new Set([...(t.after || []), ...hits.map(h => h.task.id)])].slice(0, 10);
+      // nobody was picked for it by name: keep it with the person who has the files
+      const explicit = asked && asked[i] && asked[i].owner;
+      const holder = hits.map(h => h.task.owner).find(Boolean);
+      if (!explicit && holder && t.owner !== holder) t.owner = holder;
+      const first = hits[0];
+      t.waitsFor = hits.slice(0, 3).map(h => ({ id: h.task.id, title: h.task.title, file: h.file }));
+      t.notes = [...(t.notes || []), { by: 'huddle', at: now(), text: `Waits for “${clip(first.task.title, 60)}”${hits.length > 1 ? ` and ${hits.length - 1} more` : ''}: both change ${first.file}. They run one after the other so their work doesn't conflict.` }].slice(-20);
+    });
+  }
 
   // ---------- notifications ----------
   function prefsOf(p, name) {
@@ -90,6 +146,65 @@ module.exports = function features(h) {
     return total;
   }
   // after usage comes in: the task it was for, and the owners told when the month's budget runs low
+
+  // ---------- cost trends ----------
+  // Beyond the monthly budget line: a day that costs far more than usual, a month on course to go over
+  // budget, and a single task that costs far more than tasks usually do. Each alert fires once, to the
+  // owners (everyone when there are no owners yet) and any Slack or Discord channel that wants cost news.
+  const COST_ALERTS = { spike: true, spikeMultiple: 2.5, spikeMinUsd: 5, forecast: true, task: true, taskUsd: 15 };
+  const costAlertCfg = (p) => ({ ...COST_ALERTS, ...(((p.projectSettings || {}).costAlerts) || {}) });
+  const dayKey = (t = now()) => new Date(t).toISOString().slice(0, 10);
+  function dayTotals(p) {
+    const out = {};
+    for (const st of Object.values(p.stats || {})) for (const [d, v] of Object.entries(st.days || {})) out[d] = (out[d] || 0) + (v.cost || 0);
+    return out;
+  }
+  // today, the usual active day, and where the month is heading
+  function costTrend(p, extraToday = 0) {
+    const days = dayTotals(p), today = dayKey(), t = now();
+    const prior = [];
+    for (let i = 1; i <= 14; i++) { const v = days[dayKey(t - i * 86400000)] || 0; if (v > 0) prior.push(v); }
+    const avg = prior.length >= 3 ? prior.reduce((a, b) => a + b, 0) / prior.length : 0;
+    const d = new Date(t), dim = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate(), elapsed = d.getUTCDate() - 1 + (d.getUTCHours() + d.getUTCMinutes() / 60) / 24;
+    const mtd = monthSpend(p) + extraToday;
+    const projected = elapsed >= 4 ? mtd / elapsed * dim : null;
+    const series = [];
+    for (let i = 13; i >= 0; i--) { const k = dayKey(t - i * 86400000); series.push({ d: k, cost: (days[k] || 0) + (k === today ? extraToday : 0) }); }
+    return { today: (days[today] || 0) + extraToday, avg, mtd, projected, daysInMonth: dim, series };
+  }
+  function costAlert(p, key, title, msg) {
+    for (const [n, m] of Object.entries(p.members || {})) if (m.role === 'owner') notePerson(p, n, 'cost', title, msg, { view: 'usage' });
+    if (!hasOwner(p)) for (const n of people(p)) notePerson(p, n, 'cost', title, msg, { view: 'usage' });
+    h.notify(p, 'cost', msg);
+  }
+  function checkCostTrends(p, total, taskId, name) {
+    const c = costAlertCfg(p);
+    p.costAlerts = p.costAlerts || {};
+    const st = p.costAlerts, trend = costTrend(p, total), today = dayKey();
+    if (c.spike && trend.avg > 0 && st.spikeDay !== today && trend.today >= Math.max(c.spikeMinUsd, trend.avg * c.spikeMultiple)) {
+      st.spikeDay = today;
+      const days = dayTotals(p);
+      const who = Object.entries(p.stats || {}).map(([n, s2]) => [n, ((s2.days || {})[today] || {}).cost || 0]).sort((a, b) => b[1] - a[1])[0];
+      costAlert(p, 'spike', 'Agent usage is high today', `About ${money(trend.today)} so far today, ${(trend.today / trend.avg).toFixed(1)}x the usual ${money(trend.avg)} a day${who && who[1] > 0 ? ` (${who[0]} has used the most)` : ''}.`);
+    }
+    const b = (p.projectSettings || {}).budget;
+    if (c.forecast && b && b.monthly > 0 && trend.projected && trend.projected > b.monthly && (!st.forecastAt || now() - st.forecastAt > 7 * 86400000)) {
+      st.forecastAt = now();
+      costAlert(p, 'forecast', 'On course to go over budget', `At this pace the month ends around ${money(trend.projected)}, over the ${money(b.monthly)} budget (${money(trend.mtd)} so far).`);
+    }
+    if (c.task && taskId) {
+      const t = p.board.tasks.find(x => x.id === taskId);
+      if (t && t.usage && !t.costAlerted) {
+        const costs = p.board.tasks.filter(x => x.id !== t.id && x.usage && x.usage.cost > 0).map(x => x.usage.cost).sort((a, b) => a - b);
+        const median = costs.length >= 5 ? costs[Math.floor(costs.length / 2)] : 0;
+        if (t.usage.cost >= c.taskUsd || (median > 0 && t.usage.cost >= Math.max(3, median * 5))) {
+          t.costAlerted = true;
+          costAlert(p, 'task', 'A task is costing a lot', `“${clip(t.title, 70)}”${t.owner ? ` (${t.owner})` : ''} has used about ${money(t.usage.cost)} of agent usage${median ? `, against about ${money(median)} for a typical task` : ''}. It may be looping.`);
+        }
+      }
+    }
+  }
+
   function chargeUsage(p, name, models, taskId) {
     const prices = (p.projectSettings || {}).prices;
     const { total } = pricing.costOfModels(models, prices);
@@ -116,6 +231,7 @@ module.exports = function features(h) {
         }
       }
     }
+    if (total > 0) checkCostTrends(p, total, taskId, name);
     return total;
   }
   function costReport(p) {
@@ -139,6 +255,8 @@ module.exports = function features(h) {
       out.people[name] = per;
     }
     out.total = Object.values(out.people).reduce((t, x) => t + x.cost, 0);
+    out.trend = costTrend(p);
+    out.alerts = costAlertCfg(p);
     out.tasks = p.board.tasks.filter(t => t.usage && t.usage.tokens).map(t => ({ id: t.id, title: t.title, owner: t.owner, status: t.status, cost: t.usage.cost, tokens: t.usage.tokens, goalId: t.goalId }))
       .sort((a, b) => b.cost - a.cost).slice(0, 100);
     return out;
@@ -149,7 +267,7 @@ module.exports = function features(h) {
   // Once a day (at the owner's chosen hour, in their time zone) the project writes a short summary of
   // what its agents did, what's stuck and what it cost, and sends it to the owners or to everyone, by
   // email, as a pop-up in the dashboard, or both. A day with nothing to report sends nothing.
-  const DIGEST_DEFAULT = { enabled: false, to: 'owners', email: true, popup: true, hour: 8, tz: 'UTC', weekdaysOnly: true };
+  const DIGEST_DEFAULT = { enabled: false, to: 'owners', email: true, popup: true, slack: false, hour: 8, tz: 'UTC', weekdaysOnly: true };
   const digestCfg = (p) => ({ ...DIGEST_DEFAULT, ...((p.projectSettings || {}).digest || {}) });
   const fmts = new Map();
   function localParts(t, tz) {
@@ -221,6 +339,9 @@ module.exports = function features(h) {
       const items = costBy.slice(0, 6).map(([n, v]) => ({ text: `${n}: ${money(v)}` }));
       if (budget) items.push({ text: `This month so far: ${money(month)} of a ${money(budget.monthly)} budget (${Math.round(month / budget.monthly * 100)}%)` });
       else items.push({ text: `This month so far: ${money(month)}` });
+      const tr = costTrend(p);
+      if (tr.avg > 0 && cost > tr.avg * 1.8) items.push({ text: `That is ${(cost / tr.avg).toFixed(1)}x the usual ${money(tr.avg)} a day` });
+      if (budget && tr.projected) items.push({ text: `On course for ${money(tr.projected)} this month` });
       sections.push({ title: `Agent usage, about ${money(cost)} at API prices`, items });
     }
     const bits = [done.length && `${done.length} task${done.length === 1 ? '' : 's'} finished`, newGoals.length && `${newGoals.length} new request${newGoals.length === 1 ? '' : 's'}`, stuck.length && `${stuck.length} stuck`, cost >= 0.005 && `${money(cost)} of agent usage`].filter(Boolean);
@@ -255,6 +376,7 @@ module.exports = function features(h) {
       const contact = (p.contacts || {})[who];
       if (mail && contact && contact.email && prefsOf(p, who).digest.email !== false) { (p.outbox = p.outbox || []).push({ email: { to: contact.email, ...mail } }); sent.email++; }
     }
+    if (c.slack) h.notify(p, 'digest', `${d.project}: ${d.headline}`, { slack: slack.digestBlocks(d, p.origin ? `${p.origin}/app#p=${encodeURIComponent(p.name)}` : '') });
     p.digestState = { at: d.at, lastDate: localParts(d.at, c.tz).date, cost: d._cost };
     p.emit('digest', { id: d.id, popup: c.popup });
     p.dirty = true;
@@ -363,7 +485,7 @@ module.exports = function features(h) {
   // everything the project holds, without anything secret (tokens, webhook URLs, key hashes)
   function exportOf(p) {
     const j = JSON.parse(JSON.stringify(p));
-    delete j.tokenHash; delete j.secretHooks; delete j.secretRepo; delete j.keys; delete j.outbox; delete j.mailQueue; delete j.events; delete j.nudged; delete j.repoCache;
+    delete j.tokenHash; delete j.secretHooks; delete j.secretRepo; delete j.secretSlack; delete j.slackCodes; delete j.slackUsers; delete j.keys; delete j.outbox; delete j.mailQueue; delete j.events; delete j.nudged; delete j.repoCache;
     for (const m of Object.values(j.members || {})) delete m.tokenHash;
     for (const i of Object.values(j.invites || {})) delete i.codeHash;
     for (const c of Object.values(j.contacts || {})) delete c.user;
@@ -385,6 +507,183 @@ module.exports = function features(h) {
     for (const t of p.board.tasks) if (t.owner === name && t.status !== 'done') { t.owner = null; t.status = 'todo'; }
     p.activityChanged = true; p.board.version++; p.boardChanged = true; p.dirty = true;
     return n;
+  }
+
+
+  // ---------- automations: things that start by themselves ----------
+  // A schedule starts a request at the same time on chosen days ("every weekday at 9: triage the new
+  // issues"). GitHub can start one too: put the trigger label (default "huddle") on an issue, or comment
+  // "/huddle <what to do>" on an issue or pull request. Whoever's agent gets it runs it; point them at an
+  // always-on worker (huddle worker) and it runs with every laptop closed.
+  const MAX_AUTOMATIONS = 20;
+  const triggerCfg = (p) => ({ github: false, label: 'huddle', to: null, ack: true, ...(((p.projectSettings || {}).trigger) || {}) });
+  function scheduleDue(a, t) {
+    if (!a.enabled) return false;
+    const lp = localParts(t, a.tz || 'UTC');
+    if (a.days === 'weekdays' && (lp.weekday === 'Sat' || lp.weekday === 'Sun')) return false;
+    if (a.days === 'weekly' && lp.weekday !== 'Mon') return false;
+    return lp.hour >= a.hour && a.lastDate !== lp.date;
+  }
+  function startFrom(p, who, text, to, title, extra = {}) {
+    const r = h.routes['POST goal'](p, { agent: { id: 'auto#' + who.id, name: who.name, kind: 'human', host: who.host || 'automation' }, text, to: to || null, title });
+    Object.assign(r.goal, extra);
+    p.dirty = true; p.board.version++;
+    return r.goal;
+  }
+  function runSchedule(p, a) {
+    a.lastDate = localParts(now(), a.tz || 'UTC').date; a.lastRun = now();
+    // last time's request is still open: don't pile another on top
+    if (p.board.goals.some(g => g.automation === a.id && g.status !== 'done')) { a.skipped = (a.skipped || 0) + 1; p.emit('automation', { id: a.id, skipped: true }); return null; }
+    const g = startFrom(p, { id: a.id, name: `${clip(a.name, 30)} (scheduled)` }, a.text, a.to, clip(a.name, 80), { automation: a.id });
+    audit(p, 'schedule', 'automation', `started “${a.name}”${a.to ? ' for ' + a.to : ' for the team'}`);
+    p.emit('automation', { id: a.id });
+    return g;
+  }
+  function maybeAutomations(p) {
+    for (const a of p.automations || []) if (scheduleDue(a, now())) runSchedule(p, a);
+  }
+  function nextAutomationAt(p) {
+    const list = (p.automations || []).filter(a => a.enabled);
+    if (!list.length) return null;
+    const key = JSON.stringify(list.map(a => [a.id, a.hour, a.tz, a.days, a.lastDate]));
+    if (p._na && p._na.key === key && p._na.at > now()) return p._na.at;
+    let best = null;
+    for (const a of list) for (let t = now(); t < now() + 9 * 86400000; t += 15 * 60000) if (scheduleDue(a, t)) { best = best === null ? t : Math.min(best, t); break; }
+    p._na = { key, at: best };
+    return best;
+  }
+  const nextWakeAt = (p) => { const a = nextDigestAt(p), b = nextAutomationAt(p); return a && b ? Math.min(a, b) : a || b; };
+  // "/huddle fix the login redirect" on a GitHub issue or pull request, or the trigger label on an issue
+  function githubStart(p, ev) {
+    const t = triggerCfg(p), r = repoOf(p);
+    if (!t.github || !r) return null;
+    const issue = ev.issue || {};
+    const num = issue.number;
+    if (!num || p.board.goals.some(g => g.source && g.source.repo === r.full && g.source.number === num && g.status !== 'done')) return null;
+    let text = '', by = ev.sender && ev.sender.login || 'github';
+    if (ev.kind === 'label') {
+      text = `${issue.title}\n\n${clip(issue.body, 3000) || ''}`.trim();
+    } else {
+      const c = ev.comment || {};
+      if (!['OWNER', 'MEMBER', 'COLLABORATOR'].includes(c.author_association)) return null;
+      const m = /^\s*\/huddle\b\s*([\s\S]*)$/i.exec(c.body || '');
+      if (!m) return null;
+      text = m[1].trim() || `${issue.title}\n\n${clip(issue.body, 3000) || ''}`.trim();
+      by = (c.user && c.user.login) || by;
+    }
+    const person = personForGithub(p, by) || null;
+    const isPr = !!issue.pull_request;
+    const goalText = `${text}\n\n(From GitHub ${isPr ? 'pull request' : 'issue'} #${num}${issue.html_url ? ': ' + issue.html_url : ''})`.slice(0, 8000);
+    const g = startFrom(p, { id: 'gh-' + by, name: person || by, host: 'github' }, goalText, t.to, clip(issue.title, 80), { source: { kind: 'github', repo: r.full, number: num, url: issue.html_url, isPr } });
+    audit(p, by, 'automation', `started a request from GitHub #${num}`);
+    const tok = repoToken(p);
+    if (t.ack && tok) (p.outbox = p.outbox || []).push({ url: `https://api.github.com/repos/${r.full}/issues/${num}/comments`, headers: { authorization: `Bearer ${tok}`, accept: 'application/vnd.github+json', 'user-agent': 'huddle' },
+      body: { body: `Picked up by huddle${t.to ? `, assigned to ${t.to}'s agent` : ''}. ${p.origin ? p.origin + '/app#p=' + encodeURIComponent(p.name) : ''}`.trim() } });
+    return g;
+  }
+  // a request that came from GitHub says so back there when it's finished
+  function githubDone(p, g, t) {
+    const s2 = g.source, tok = repoToken(p), cfg = triggerCfg(p);
+    if (!s2 || s2.kind !== 'github' || !tok || !cfg.ack) return;
+    const pr = (p.board.tasks.filter(x => x.goalId === g.id).map(x => x.checks && x.checks.pr).filter(Boolean))[0];
+    const last = t && t.notes && t.notes.length ? t.notes[t.notes.length - 1].text : '';
+    (p.outbox = p.outbox || []).push({ url: `https://api.github.com/repos/${s2.repo}/issues/${s2.number}/comments`, headers: { authorization: `Bearer ${tok}`, accept: 'application/vnd.github+json', 'user-agent': 'huddle' },
+      body: { body: `Done.${pr ? ' Pull request: ' + pr : ''}${last ? '\n\n' + clip(last, 400) : ''}` } });
+  }
+
+
+  // ---------- Slack ----------
+  const hookLabelOf = (url) => { try { const u = new URL(url); return `${u.host}/…${url.slice(-4)}`; } catch { return 'webhook'; } };
+  const slackOn = (p) => !!(p.secretSlack && p.secretSlack.signingSecret);
+  const hashCode = async (code) => { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('slack:' + code)); return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join('').slice(0, 24); };
+  const newCode = () => crypto.randomBytes(5).toString('hex').toUpperCase();
+  const slackRequest = async (p, ctx) => {
+    const sl = p.secretSlack, req = ctx.request || {};
+    if (!sl || !sl.signingSecret) throw httpError(404, 'Slack is not set up for this project');
+    if (!(await slack.verify(sl.signingSecret, req.raw || '', req.header('x-slack-request-timestamp'), req.header('x-slack-signature')))) throw httpError(401, 'bad Slack signature');
+  };
+  const eph = (text) => ({ response_type: 'ephemeral', text });
+  const channelOk = (p, teamId, channelId) => !!(p.slack && p.slack.channelId && p.slack.channelId === channelId && p.slack.teamId === teamId);
+  const slackWho = (p, f) => { const mapped = (p.slackUsers || {})[f.user_id]; return mapped ? { name: mapped, mapped: true } : { name: `${clip(f.user_name, 30) || 'someone'} (Slack)`, mapped: false }; };
+  function slackStatus(p) {
+    const tasks = p.board.tasks, stuck = tasks.filter(t => t.status === 'blocked'), doing = tasks.filter(t => t.status === 'doing'), todo = tasks.filter(t => t.status === 'todo');
+    const online = [...new Set(Object.values(p.agents).filter(a => p.online(a) && a.kind !== 'human' && !a.clone).map(a => a.name))];
+    const lines = [`*${prettyProject(p)}*: ${doing.length} in progress, ${todo.length} waiting, ${stuck.length} stuck. ${online.length ? 'Online: ' + online.join(', ') + '.' : 'Nobody online.'}`];
+    for (const t of stuck.slice(0, 4)) lines.push(`• Stuck: ${slack.esc(clip(t.title, 80))}${t.owner ? ` (${t.owner})` : ''}`);
+    for (const t of doing.slice(0, 4)) lines.push(`• ${slack.esc(clip(t.title, 80))}${t.owner ? ` (${t.owner})` : ''}`);
+    const approvals = p.liveApprovals().length;
+    if (approvals) lines.push(`${approvals} command${approvals === 1 ? '' : 's'} waiting for an OK.`);
+    return lines.join('\n');
+  }
+  async function slackCommand(p, f) {
+    const text = String(f.text || '').trim(), first = text.split(/\s+/)[0].toLowerCase();
+    if (first === 'link') {
+      const code = text.split(/\s+/)[1] || '';
+      const rec = (p.slackCodes || {})[await hashCode(code)];
+      if (!rec || rec.kind !== 'link' || rec.exp < now()) return eph("That link code didn't work or has expired. Make a new one in huddle: Team & settings, Integrations, Slack.");
+      delete p.slackCodes[await hashCode(code)];
+      p.slack = { ...(p.slack || {}), teamId: f.team_id, channelId: f.channel_id, channelName: clip(f.channel_name, 60), linkedAt: now(), by: rec.by };
+      audit(p, rec.by, 'settings', `linked Slack channel #${p.slack.channelName || f.channel_id}`);
+      p.emit('project-setting', { settings: p.projectSettings, byName: rec.by });
+      return { response_type: 'in_channel', text: `Linked. Anyone here can now use /huddle to start requests and see status. Try \`/huddle status\`.` };
+    }
+    if (first === 'iam') {
+      const code = text.split(/\s+/)[1] || '';
+      const rec = (p.slackCodes || {})[await hashCode(code)];
+      if (!rec || rec.kind !== 'me' || rec.exp < now()) return eph("That code didn't work or has expired. Get a new one in huddle: Team & settings, Integrations, Slack.");
+      delete p.slackCodes[await hashCode(code)];
+      p.slackUsers = { ...(p.slackUsers || {}), [f.user_id]: rec.name };
+      p.dirty = true;
+      return eph(`You're ${rec.name} in huddle now. You can approve your agent's commands from Slack.`);
+    }
+    if (!channelOk(p, f.team_id, f.channel_id)) return eph(p.slack && p.slack.channelId ? `huddle only works in the linked channel${p.slack.channelName ? ' (#' + p.slack.channelName + ')' : ''}.` : 'This project is not linked to a channel yet. In huddle: Team & settings, Integrations, Slack. Then run /huddle link CODE here.');
+    if (!text || first === 'help') return eph('`/huddle <what to do>` starts a request for the team. `/huddle @maya <what to do>` sends it to one person\'s agent. `/huddle status` shows where things stand. `/huddle iam CODE` links your Slack account to your huddle name, so you can approve from here.');
+    if (first === 'status') return { response_type: 'in_channel', text: slackStatus(p) };
+    const who = slackWho(p, f);
+    if (who.mapped && ((p.members || {})[who.name] || {}).role === 'viewer') return eph("You're a viewer in this project, so you can't start requests.");
+    if (!who.mapped && (p.slack || {}).anyone === false) return eph('Link your Slack account first: /huddle iam CODE (get a code in huddle under Team & settings, Integrations).');
+    const { to, text: ask } = slack.parseRequest(text, people(p));
+    const g = startFrom(p, { id: 'slack-' + (f.user_id || who.name), name: who.name, host: 'slack' }, ask, to, requestTitle(ask), { source: { kind: 'slack', user: f.user_id } });
+    audit(p, who.name, 'automation', `started a request from Slack${to ? ' for ' + to : ''}`);
+    return { response_type: 'in_channel', text: `${who.name} asked ${to ? to + "'s agent" : 'the team'}: ${slack.esc(clip(ask, 300))}` };
+  }
+  // a button pressed in a Slack message
+  async function slackInteract(p, payload) {
+    const act = (payload.actions || [])[0] || {}, uid = (payload.user || {}).id, name = (p.slackUsers || {})[uid];
+    const reply = (text, replace = true) => { if (payload.response_url && /^https:\/\/hooks\.slack\.com\//.test(payload.response_url)) (p.outbox = p.outbox || []).push({ url: payload.response_url, body: replace ? { replace_original: true, text } : { response_type: 'ephemeral', replace_original: false, text } }); };
+    if (!name) { reply("Link your Slack account first: run /huddle iam CODE (get a code in huddle under Team & settings, Integrations, Slack).", false); return {}; }
+    const role = ((p.members || {})[name] || {}).role;
+    if (role === 'viewer') { reply("Viewers can't do that.", false); return {}; }
+    if (['approve', 'decline'].includes(act.action_id)) {
+      const x = (p.approvals || []).find(y => y.id === act.value);
+      if (!x) { reply('That approval is gone.', false); return {}; }
+      if (x.owner !== name) { reply(`Only ${x.owner} can approve their agent's commands.`, false); return {}; }
+      if (x.status !== 'waiting') { reply(`Already ${x.status}.`); return {}; }
+      const allow = act.action_id === 'approve';
+      const rule = allow && deniedBy((p.projectSettings || {}).policy, x.command);
+      if (rule) { reply(`\`${x.command}\` is never allowed in this project (rule: ${rule}).`, false); return {}; }
+      x.status = allow ? 'approved' : 'denied'; x.by = name; x.decidedAt = now();
+      audit(p, name, 'approve', `${allow ? 'allowed' : 'refused'} \`${x.command}\`${x.title ? ` for "${x.title}"` : ''} (from Slack)`);
+      const t = p.board.tasks.find(y => y.id === x.taskId);
+      if (t) {
+        if (allow) { t.allow = [...new Set([...(t.allow || []), x.command])].slice(-10); t.status = 'todo'; t.held = null; }
+        t.notes = [...(t.notes || []), { by: name, at: now(), text: `${allow ? 'Allowed' : 'Said no to'}: ${x.command}` }].slice(-20); t.updated = now();
+        boardChanged(p, 'approve', { task: t, approval: x }, { name });
+      }
+      p.emit('approval', { approval: x });
+      reply(`${allow ? ':white_check_mark: Approved' : ':no_entry: Declined'} by ${name}: \`${x.command}\``);
+      return {};
+    }
+    if (['rerun', 'done'].includes(act.action_id)) {
+      const t = p.board.tasks.find(y => y.id === act.value);
+      if (!t) { reply('That task is gone.', false); return {}; }
+      t.status = act.action_id === 'done' ? 'done' : 'todo'; t.updated = now(); if (act.action_id === 'rerun') t.limitHit = false;
+      t.notes = [...(t.notes || []), { by: name, at: now(), text: act.action_id === 'done' ? `${name} marked it done from Slack` : `${name} asked for it to run again from Slack` }].slice(-20);
+      goalDone(p, t); boardChanged(p, 'task-update', { task: t }, { name });
+      reply(`${act.action_id === 'done' ? ':white_check_mark: Marked done' : ':repeat: Running again'} by ${name}: ${slack.esc(clip(t.title, 80))}`);
+      return {};
+    }
+    return {};
   }
 
   // ---------- GitHub ----------
@@ -457,6 +756,12 @@ module.exports = function features(h) {
           if (who) notePerson(p, who, 'ci', `Checks failing on PR #${prRef.number}`, `${cs.app ? cs.app.name : 'CI'} failed on ${cs.head_branch}${t ? ` for "${t.title}"` : ''}.`, { url });
         }
       }
+    } else if (event === 'issues' && b.action === 'labeled' && b.label && String(b.label.name).toLowerCase() === String(triggerCfg(p).label).toLowerCase()) {
+      const g = githubStart(p, { kind: 'label', issue: b.issue, sender: b.sender });
+      repoEvent(p, { action: 'issue', number: (b.issue || {}).number, title: (b.issue || {}).title, url: (b.issue || {}).html_url, by: b.sender && b.sender.login, started: !!g });
+    } else if (event === 'issue_comment' && b.action === 'created') {
+      const g = githubStart(p, { kind: 'comment', issue: b.issue, comment: b.comment, sender: b.sender });
+      if (!g) return { ok: true, ignored: 'comment' };
     } else if (event === 'issues' && ['opened', 'reopened'].includes(b.action)) {
       const i = b.issue || {};
       repoEvent(p, { action: 'issue', number: i.number, title: i.title, url: i.html_url, by: i.user && i.user.login });
@@ -466,7 +771,7 @@ module.exports = function features(h) {
 
   // ---------- routes ----------
   return {
-    NOTE_KINDS, notePerson, flushMail, applyRetention, chargeUsage, prefsOf, monthSpend, maybeDigest, nextDigestAt,
+    NOTE_KINDS, notePerson, flushMail, applyRetention, chargeUsage, prefsOf, monthSpend, maybeDigest, nextDigestAt, nextWakeAt, slackApprovalBlocks: slack.approvalBlocks, slackStuckBlocks: slack.stuckBlocks, maybeAutomations, githubDone, conflictAware, guessPaths, pathsOverlap,
     routes: {
       // my notifications: newest last
       'GET notes': (p, b, q, ctx) => {
@@ -582,11 +887,163 @@ module.exports = function features(h) {
           ps.budget = m > 0 ? { monthly: Math.min(m, 1e7), alertPct: Math.max(10, Math.min(Number(b.budget.alertPct) || 80, 99)) } : null;
         }
         if (b.prices !== undefined) ps.prices = pricing.cleanPrices(b.prices);
+        if (b.alerts && typeof b.alerts === 'object') {
+          const al = b.alerts, cur = costAlertCfg(p), n = (v, lo, hi, d) => { const x = Number(v); return isFinite(x) ? Math.max(lo, Math.min(hi, x)) : d; };
+          ps.costAlerts = { spike: al.spike !== undefined ? !!al.spike : cur.spike, forecast: al.forecast !== undefined ? !!al.forecast : cur.forecast, task: al.task !== undefined ? !!al.task : cur.task,
+            spikeMultiple: n(al.spikeMultiple, 1.2, 20, cur.spikeMultiple), spikeMinUsd: n(al.spikeMinUsd, 0, 100000, cur.spikeMinUsd), taskUsd: n(al.taskUsd, 0.5, 100000, cur.taskUsd) };
+        }
         audit(p, a.name, 'settings', `cost settings: ${ps.budget ? `budget $${ps.budget.monthly}/month, alert at ${ps.budget.alertPct}%` : 'no budget'}${ps.prices && Object.keys(ps.prices).length ? `; custom prices for ${Object.keys(ps.prices).join(', ')}` : ''}`);
         p.emit('project-setting', { settings: ps, byName: a.name });
         return { ok: true, settings: ps };
       },
 
+
+
+      // ---- reviewing what an agent changed ----
+      // The runner uploads the diff of each background task (base to head, before it lands), so anyone can
+      // read it afterwards, comment on lines, approve it, ask for changes (the task runs again with the
+      // comments) or merge work that was left on its own branch.
+      'POST task-diff': async (p, b, q, ctx) => {
+        const a = p.touch(b.agent);
+        const t = p.board.tasks.find(x => x.id === b.taskId);
+        if (!t) throw httpError(404, 'no such task');
+        if (t.owner !== a.name && (ctx.auth || {}).role !== 'owner') throw httpError(403, 'only the agent that did the task can share its changes');
+        t.diff = t.diff || { at: now() };
+        if (typeof b.diff === 'string') {
+          const text = b.diff.slice(0, 500 * 1024);
+          if (ctx.blobs) await ctx.blobs.put(`diff:${t.id}`, text);
+          const files = (Array.isArray(b.files) ? b.files : []).slice(0, 300).map(f => ({ path: clip(f.path, 300), add: Number(f.add) || 0, del: Number(f.del) || 0, binary: !!f.binary }));
+          t.diff = { ...t.diff, at: now(), base: clip(b.base, 40), head: clip(b.head, 40), files, add: files.reduce((n, f) => n + f.add, 0), del: files.reduce((n, f) => n + f.del, 0), truncated: !!b.truncated || b.diff.length > text.length, review: null };
+        }
+        if (b.branch !== undefined) t.diff.branch = clip(b.branch, 200);
+        if (b.left !== undefined) t.diff.left = !!b.left;
+        p.boardChanged = true;
+        boardChanged(p, 'task-update', { task: t }, a);
+        return { ok: true };
+      },
+      'GET task-diff': async (p, b, q, ctx) => {
+        const t = p.board.tasks.find(x => x.id === q.get('id'));
+        if (!t || !t.diff) throw httpError(404, 'that task has no changes to show');
+        const diff = ctx.blobs ? await ctx.blobs.get(`diff:${t.id}`) : null;
+        return { diff: diff || '', meta: t.diff, task: { id: t.id, title: t.title, owner: t.owner, status: t.status } };
+      },
+      // approve, or send comments back: the agent runs the task again with them
+      'POST task-review': (p, b) => {
+        const a = p.touch(b.agent);
+        const t = p.board.tasks.find(x => x.id === b.id);
+        if (!t || !t.diff) throw httpError(404, 'that task has no changes to review');
+        const comments = (Array.isArray(b.comments) ? b.comments : []).slice(0, 40).map(c => ({ file: clip(c.file, 300), line: Number(c.line) || 0, text: clip(c.text, 600) })).filter(c => c.text);
+        const note = String(b.note || '').trim().slice(0, 1500);
+        if (b.verdict === 'approve') {
+          t.diff.review = { verdict: 'approved', by: a.name, at: now() };
+          t.notes = [...(t.notes || []), { by: a.name, at: now(), text: `${a.name} approved the changes${note ? ': ' + note : ''}` }].slice(-20);
+        } else if (b.verdict === 'changes') {
+          if (!comments.length && !note) throw httpError(400, 'say what should change');
+          t.diff.review = { verdict: 'changes', by: a.name, at: now(), count: comments.length };
+          t.feedback = [...(t.feedback || []), { by: a.name, at: now(), note, comments }].slice(-5);
+          t.notes = [...(t.notes || []), { by: a.name, at: now(), text: `${a.name} asked for changes: ${note || comments.slice(0, 3).map(c => `${c.file}${c.line ? ':' + c.line : ''} ${c.text}`).join('; ')}` }].slice(-20);
+          t.status = 'todo'; t.held = null; t.limitHit = false;
+        } else throw httpError(400, 'verdict must be approve or changes');
+        t.updated = now();
+        audit(p, a.name, 'task', `${b.verdict === 'approve' ? 'approved' : 'asked for changes to'} the work on "${t.title}"`);
+        boardChanged(p, 'task-update', { task: t }, a);
+        if (t.owner && t.owner !== a.name) notePerson(p, t.owner, 'request', `${a.name} ${b.verdict === 'approve' ? 'approved' : 'asked for changes to'} your agent's work`, clip(t.title + (note ? ': ' + note : ''), 200), { view: 'tasks', task: t.id });
+        return { ok: true, task: t };
+      },
+      // work that was left on its own branch (tests failed, or it didn't merge cleanly): merge it from the dashboard
+      'POST task-merge': (p, b) => {
+        const a = p.touch(b.agent);
+        const t = p.board.tasks.find(x => x.id === b.id);
+        if (!t || !t.diff || !t.diff.left) throw httpError(409, 'that work is not waiting on a branch');
+        t.mergeRequested = now(); t.updated = now();
+        t.notes = [...(t.notes || []), { by: a.name, at: now(), text: `${a.name} asked for the branch to be merged` }].slice(-20);
+        boardChanged(p, 'merge-request', { task: t }, a);
+        return { ok: true, task: t };
+      },
+
+
+      // ---- automations ----
+      'GET automations': (p) => ({ automations: (p.automations || []).map(a => ({ ...a })), trigger: triggerCfg(p), repo: !!repoOf(p) }),
+      'POST automation-set': (p, b) => {
+        const a = p.touch(b.agent);
+        p.automations = p.automations || [];
+        if (b.remove) { p.automations = p.automations.filter(x => x.id !== b.remove); p._na = null; audit(p, a.name, 'automation', 'removed a schedule'); p.emit('automation', {}); return { ok: true, automations: p.automations }; }
+        if (b.run) { const x = p.automations.find(y => y.id === b.run); if (!x) throw httpError(404, 'no such schedule'); x.lastDate = null; const g = runSchedule(p, x); return { ok: true, started: !!g, automations: p.automations }; }
+        const text = String(b.text || '').trim().slice(0, 6000), name = clip(b.name || text.split('\n')[0], 80);
+        if (!text) throw httpError(400, 'say what it should do');
+        const hour = Number(b.hour); if (!Number.isInteger(hour) || hour < 0 || hour > 23) throw httpError(400, 'hour must be 0 to 23');
+        const tz = String(b.tz || 'UTC'); if (!validTz(tz)) throw httpError(400, 'unknown time zone');
+        const days = ['daily', 'weekdays', 'weekly'].includes(b.days) ? b.days : 'weekdays';
+        const to = b.to ? h.personFor(p, b.to) : null;
+        let x = b.id && p.automations.find(y => y.id === b.id);
+        if (!x) { if (p.automations.length >= MAX_AUTOMATIONS) throw httpError(413, 'that is a lot of schedules; remove some first'); x = { id: id(), kind: 'schedule', by: a.name, at: now(), lastDate: null }; p.automations.push(x); }
+        Object.assign(x, { name, text, hour, tz, days, to, enabled: b.enabled !== false });
+        p._na = null;
+        audit(p, a.name, 'automation', `${b.id ? 'changed' : 'added'} the schedule “${name}”: ${days}, ${hour}:00 ${tz}${to ? ', for ' + to : ''}`);
+        p.emit('automation', { id: x.id });
+        return { ok: true, automation: x, automations: p.automations };
+      },
+      'POST trigger-settings': (p, b) => {
+        const a = p.touch(b.agent);
+        const cur = triggerCfg(p), next = { ...cur };
+        if (b.github !== undefined) next.github = !!b.github;
+        if (b.label !== undefined) { const l = clip(b.label, 40).replace(/[^\w .:-]/g, ''); if (!l) throw httpError(400, 'give the label a name'); next.label = l; }
+        if (b.to !== undefined) next.to = b.to ? h.personFor(p, b.to) : null;
+        if (b.ack !== undefined) next.ack = !!b.ack;
+        if (next.github && !repoOf(p)) throw httpError(409, 'connect a GitHub repository first (Integrations)');
+        p.projectSettings = { ...(p.projectSettings || {}), trigger: next };
+        audit(p, a.name, 'settings', next.github ? `GitHub can start requests: label “${next.label}” or /huddle in a comment${next.to ? ', for ' + next.to : ''}` : 'GitHub no longer starts requests');
+        p.emit('project-setting', { settings: p.projectSettings, byName: a.name });
+        return { ok: true, trigger: next };
+      },
+
+
+      // ---- Slack ----
+      'POST slack-command': async (p, b, q, ctx) => { await slackRequest(p, ctx); return slackCommand(p, Object.fromEntries(new URLSearchParams((ctx.request || {}).raw || ''))); },
+      'POST slack-interact': async (p, b, q, ctx) => {
+        await slackRequest(p, ctx);
+        let payload = {};
+        try { payload = JSON.parse(new URLSearchParams((ctx.request || {}).raw || '').get('payload') || '{}'); } catch { throw httpError(400, 'bad payload'); }
+        return slackInteract(p, payload);
+      },
+      'GET slack': (p, b, q, ctx) => {
+        const origin = p.origin || '';
+        return { configured: slackOn(p), webhook: !!(p.secretHooks || []).find(x => x.slackApp), linked: !!(p.slack && p.slack.channelId), channelName: (p.slack || {}).channelName || null, anyone: (p.slack || {}).anyone !== false,
+          people: Object.values(p.slackUsers || {}), mine: Object.values(p.slackUsers || {}).includes((ctx.auth || {}).name), createUrl: origin ? slack.createUrl(origin, p.name) : null, manifest: origin ? slack.manifest(origin, p.name) : null };
+      },
+      'POST slack-setup': (p, b) => {
+        const a = p.touch(b.agent);
+        if (b.remove) {
+          delete p.secretSlack; p.slack = null; p.slackUsers = {}; p.slackCodes = {};
+          p.secretHooks = (p.secretHooks || []).filter(x => !x.slackApp);
+          audit(p, a.name, 'settings', 'disconnected Slack');
+        } else {
+          if (b.signingSecret !== undefined) { const v = String(b.signingSecret).trim(); if (!/^[0-9a-f]{20,64}$/i.test(v)) throw httpError(400, "that doesn't look like a Slack signing secret (Basic Information, App Credentials)"); p.secretSlack = { ...(p.secretSlack || {}), signingSecret: v }; }
+          if (b.webhook !== undefined) {
+            const url = String(b.webhook).trim();
+            if (!/^https:\/\/hooks\.slack\.com\/services\/[\w/-]+$/.test(url)) throw httpError(400, 'give the Incoming Webhook URL (it starts with https://hooks.slack.com/services/)');
+            p.secretHooks = (p.secretHooks || []).filter(x => !x.slackApp);
+            p.secretHooks.push({ id: crypto.randomBytes(4).toString('hex'), kind: 'slack', url, events: ['approval', 'stuck', 'done', 'failed', 'budget', 'cost', 'digest'], by: a.name, at: now(), slackApp: true });
+            const ps0 = p.projectSettings = p.projectSettings || {};
+            ps0.notify = p.secretHooks.map(x => ({ id: x.id, kind: x.kind, events: x.events, label: x.slackApp ? 'Slack app' : hookLabelOf(x.url), by: x.by }));
+          }
+          if (b.anyone !== undefined) p.slack = { ...(p.slack || {}), anyone: !!b.anyone };
+          audit(p, a.name, 'settings', 'changed the Slack connection');
+        }
+        p.emit('project-setting', { settings: p.projectSettings, byName: a.name });
+        return { ok: true };
+      },
+      'POST slack-code': async (p, b, q, ctx) => {
+        const a = p.touch(b.agent);
+        const kind = b.kind === 'link' ? 'link' : 'me';
+        if (kind === 'link' && (ctx.auth || {}).role !== 'owner') throw httpError(403, 'only the project owner can link a channel');
+        if (kind === 'me' && a.transient) throw httpError(400, 'pick a name first');
+        const code = newCode();
+        p.slackCodes = p.slackCodes || {};
+        for (const [k, v] of Object.entries(p.slackCodes)) if (v.exp < now()) delete p.slackCodes[k];
+        p.slackCodes[await hashCode(code)] = { kind, name: a.name, by: a.name, exp: now() + 15 * 60000 };
+        return { ok: true, code, expires: now() + 15 * 60000, command: `/huddle ${kind === 'link' ? 'link' : 'iam'} ${code}` };
+      },
 
       // ---- the daily digest ----
       'GET digests': (p, b, q, ctx) => {
@@ -601,10 +1058,11 @@ module.exports = function features(h) {
         if (b.to !== undefined) { if (!['owners', 'everyone'].includes(b.to)) throw httpError(400, 'send to owners or everyone'); next.to = b.to; }
         if (b.email !== undefined) next.email = !!b.email;
         if (b.popup !== undefined) next.popup = !!b.popup;
+        if (b.slack !== undefined) next.slack = !!b.slack;
         if (b.weekdaysOnly !== undefined) next.weekdaysOnly = !!b.weekdaysOnly;
         if (b.hour !== undefined) { const h = Number(b.hour); if (!Number.isInteger(h) || h < 0 || h > 23) throw httpError(400, 'hour must be 0 to 23'); next.hour = h; }
         if (b.tz !== undefined) { if (!validTz(String(b.tz))) throw httpError(400, 'unknown time zone'); next.tz = String(b.tz); }
-        if (next.enabled && !next.email && !next.popup) throw httpError(400, 'choose email, a dashboard pop-up, or both');
+        if (next.enabled && !next.email && !next.popup && !next.slack) throw httpError(400, 'choose email, a dashboard pop-up, Slack, or a mix');
         p.projectSettings = { ...(p.projectSettings || {}), digest: next };
         p._nd = null;
         audit(p, a.name, 'settings', next.enabled ? `daily digest on: to ${next.to}, ${[next.email && 'email', next.popup && 'pop-up'].filter(Boolean).join(' and ')}, at ${next.hour}:00 ${next.tz}${next.weekdaysOnly ? ', weekdays' : ''}` : 'daily digest off');

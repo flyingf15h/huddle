@@ -190,7 +190,7 @@ class Project {
     this.limits = { ...DEFAULT_LIMITS };
   }
   toJSON() {
-    const { waiters, dirty, changedFiles, sharedChanged, activityChanged, boardChanged, isConnected, limits, outbox, auditChanged, problemsChanged, repoCache, _nd, ...rest } = this;
+    const { waiters, dirty, changedFiles, sharedChanged, activityChanged, boardChanged, isConnected, limits, outbox, auditChanged, problemsChanged, repoCache, _nd, _na, ...rest } = this;
     return rest;
   }
   // events after `since`, or null if they've been dropped and the client must resync
@@ -315,6 +315,7 @@ class Project {
     X.applyRetention(this);
     X.flushMail(this);
     X.maybeDigest(this);
+    X.maybeAutomations(this);
   }
 }
 
@@ -792,7 +793,7 @@ const routes = {
       p.approvals.push(x);
       made.push(x);
       p.emit('approval', { approval: x });
-      notify(p, 'approval', `${a.name}'s Claude needs ${a.name}'s OK to run \`${command.slice(0, 120)}\`${x.title ? ` for "${x.title}"` : ''}`);
+      { const line = `${a.name}'s Claude needs ${a.name}'s OK to run \`${command.slice(0, 120)}\`${x.title ? ` for "${x.title}"` : ''}`; notify(p, 'approval', line, { slack: X.slackApprovalBlocks(line, x.id) }); }
       X.notePerson(p, a.name, 'approval', 'Your agent needs your OK', `${command.slice(0, 200)}${x.title ? ` (for "${x.title}")` : ''}`, { view: 'activity', approval: x.id });
     }
     if (p.approvals.length > 100) p.approvals.splice(0, p.approvals.length - 100);
@@ -940,6 +941,8 @@ const routes = {
     });
     // "after" refers to earlier tasks in this same list by index
     tasks.forEach((t, i) => { made[i].after = (Array.isArray(t.after) ? t.after : []).map(j => made[j] && made[j].id).filter(Boolean); });
+    // tasks that change the same files wait for each other instead of colliding later
+    X.conflictAware(p, made, tasks);
     boardChanged(p, 'plan', { goal: g, tasks: made }, a);
     return { ok: true, tasks: made };
   },
@@ -979,7 +982,7 @@ const routes = {
         ms: Math.max(0, Number(r.ms) || 0), error: redact(String(r.error || '').slice(0, 600)), agent: r.agent === 'codex' ? 'codex' : 'claude' }].slice(-10);
     }
     if (b.status === 'blocked' && was !== 'blocked') {
-      notify(p, 'stuck', `Stuck: "${t.title}" (${t.owner || 'unassigned'})${b.note ? ': ' + redact(String(b.note)).slice(0, 200) : ''}`);
+      { const line = `Stuck: "${t.title}" (${t.owner || 'unassigned'})${b.note ? ': ' + redact(String(b.note)).slice(0, 200) : ''}`; notify(p, 'stuck', line, { slack: X.slackStuckBlocks(line, t.id) }); }
       for (const n of new Set([t.owner, t.by].filter(Boolean))) X.notePerson(p, n, 'stuck', `Stuck: ${t.title}`, b.note ? redact(String(b.note)).slice(0, 300) : `${t.owner || 'Its agent'} couldn't finish it.`, { view: 'tasks', task: t.id });
     }
     if (a.kind === 'human' && b.status && b.status !== was) audit(p, a.name, 'task', `${b.status === 'done' ? 'marked done' : b.status === 'todo' ? 'asked to run again' : 'set to ' + b.status}: ${t.title}`);
@@ -1265,6 +1268,7 @@ function goalDone(p, t) {
   if (g && g.status !== 'done' && p.board.tasks.filter(x => x.goalId === g.id).every(x => x.status === 'done')) {
     g.status = 'done';
     notify(p, 'done', `Done: ${g.title || requestTitle(g.text)} (asked by ${g.byName})`);
+    X.githubDone(p, g, t);
     X.notePerson(p, g.byName, 'done', `Done: ${g.title || requestTitle(g.text)}`, t.notes && t.notes.length ? t.notes[t.notes.length - 1].text : 'Every task in it is finished.', { view: 'tasks', task: t.id });
   }
 }
@@ -1306,11 +1310,11 @@ const MAX_AUDIT = 500;
 const MAX_PROBLEMS = 100;
 const OWNER_ROUTES = new Set(['POST member-role', 'POST member-remove', 'POST invite-revoke', 'GET invites', 'POST project-setting',
   'POST notify-set', 'POST notify-test', 'POST policy', 'POST merge-person', 'POST tidy', 'POST forget-agent',
-  'POST cost-settings', 'POST digest-settings', 'POST digest-now', 'POST retention', 'POST delete-project', 'POST repo-connect', 'POST repo-disconnect', 'GET export']);
+  'POST cost-settings', 'POST slack-setup', 'POST automation-set', 'POST trigger-settings', 'POST digest-settings', 'POST digest-now', 'POST retention', 'POST delete-project', 'POST repo-connect', 'POST repo-disconnect', 'GET export']);
 // a viewer reads everything (dashboard, feed, code) and changes nothing
 const VIEWER_POSTS = new Set(['hello', 'inbox', 'link-github', 'link-account', 'redeem', 'leave', 'notes-read', 'note-prefs', 'erase-me']);
 // GitHub's webhook proves itself with a signature the route checks; a personal invite is its own proof
-const NO_AUTH_ROUTES = new Set(['POST redeem', 'POST github-webhook']);
+const NO_AUTH_ROUTES = new Set(['POST redeem', 'POST github-webhook', 'POST slack-command', 'POST slack-interact']);
 const hasOwner = (p) => Object.values(p.members || {}).some(m => m.role === 'owner');
 const newMemberToken = () => 'hm_' + crypto.randomBytes(24).toString('base64url');
 
@@ -1384,15 +1388,15 @@ function liveInvites(p) {
 // ---------- notifications: Slack, Discord or any webhook ----------
 // The URLs are secrets (anyone with one can post to the channel), so they live apart from the
 // settings everyone can read; the team only sees which kinds are set up and for what.
-const NOTIFY_EVENTS = ['approval', 'stuck', 'done', 'failed', 'member'];
-function notify(p, event, text) {
+const NOTIFY_EVENTS = ['approval', 'stuck', 'done', 'failed', 'member', 'budget', 'cost', 'digest'];
+function notify(p, event, text, extra) {
   const hooks = (p.secretHooks || []).filter(h => !h.events || h.events.includes(event));
   if (!hooks.length) return;
   const link = p.origin ? `${p.origin}/app#p=${encodeURIComponent(p.name)}` : '';
   const title = p.name.replace(/-[0-9a-f]{6,8}$/, '');
   for (const h of hooks) {
     const line = `[${title}] ${text}${link ? `\n${link}` : ''}`;
-    const body = h.kind === 'slack' ? { text: line } : h.kind === 'discord' ? { content: line.slice(0, 1900), username: 'huddle' }
+    const body = h.kind === 'slack' ? { text: line, ...(extra && extra.slack ? { blocks: extra.slack } : {}) } : h.kind === 'discord' ? { content: line.slice(0, 1900), username: 'huddle' }
       : { event, project: p.name, text, link, at: now() };
     p.outbox = p.outbox || [];
     p.outbox.push({ url: h.url, body, hook: h.id });

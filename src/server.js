@@ -152,7 +152,7 @@ function createServer(opts = {}) {
         if (acctCfg.email && acctCfg.email.send) acctCfg.email.send(o.email).catch(e => { (p.problems = p.problems || []).push({ id: sha(String(Math.random())).slice(0, 8), at: now(), name: 'huddle', kind: 'notify', message: `an email could not be sent: ${e.message}`, detail: '' }); p.dirty = true; });
         continue;
       }
-      fetch(o.url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(o.body), signal: AbortSignal.timeout(10000) })
+      fetch(o.url, { method: o.method || 'POST', headers: { 'content-type': 'application/json', ...(o.headers || {}) }, body: JSON.stringify(o.body), signal: AbortSignal.timeout(10000) })
         .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); })
         .catch(e => { p.problems = p.problems || []; p.problems.push({ id: sha(String(Math.random())).slice(0, 8), at: now(), name: 'huddle', kind: 'notify', message: `a notification could not be delivered: ${e.message}`, detail: '' }); p.dirty = true; });
     }
@@ -213,6 +213,16 @@ function createServer(opts = {}) {
         try { body = JSON.parse(raw); } catch { throw httpError(400, 'invalid JSON'); }
         const ctx = { request: { raw, header: (k) => req.headers[k.toLowerCase()] || '' }, blobs: blobStore(p.name), waitFor: () => Promise.resolve(null) };
         send(200, await dispatch(p, 'POST', 'github-webhook', body, url.searchParams, ctx, { kind: 'none' }));
+        return sendOutbox(p);
+      }
+      const slk = url.pathname.match(/^\/api\/slack\/([\w.-]{1,64})\/(command|interact)$/);
+      if (slk && req.method === 'POST') {
+        const p = projects.get(slk[1]);
+        if (!p) throw httpError(404, 'no such project');
+        const raw = await readRaw(req);
+        const ctx = { request: { raw, header: (k) => req.headers[k.toLowerCase()] || '' }, blobs: blobStore(p.name), waitFor: () => Promise.resolve(null) };
+        const out = await dispatch(p, 'POST', 'slack-' + slk[2], {}, url.searchParams, ctx, { kind: 'none' });
+        send(200, out);
         return sendOutbox(p);
       }
       const short = url.pathname.match(/^\/api\/invite\/([\w-]{12})$/);
