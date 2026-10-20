@@ -174,7 +174,7 @@ process.exit(1);
     const runs = fs.readFileSync(runLog, 'utf8').trim().split('\n').map(l => JSON.parse(l));
     const work = runs.filter(r => !r.review), review = runs.find(r => r.review);
     assert(work.every(r => r.args[0] === 'exec' && r.args.includes('workspace-write') && r.args.includes('approval_policy="never"') && r.env === 'codex'));
-    assert(work.every(r => r.dir.startsWith(path.join(tmp, 'clones')) && r.args.includes('--add-dir')), 'each run is in its own worktree and may commit to the repository');
+    assert(work.every(r => r.dir.split(path.sep).includes('clones') /* (macOS and Windows spell the temp folder differently) */ && r.args.includes('--add-dir')), 'each run is in its own worktree and may commit to the repository');
     assert(work[0].rules.includes('pattern = ["git","push"], decision = "forbidden"'), work[0].rules);
     assert(review && review.args.includes('read-only'));
     const reply = (await api('messages')).messages.find(m => m.to === 'boss' && /Re your request/.test(m.text));

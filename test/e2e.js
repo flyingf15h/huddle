@@ -123,10 +123,18 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
 
     // a shell command sneaking past the read-only bit (rename over it) gets reverted
     fs.writeFileSync(bob.file + '.tmp', 'bob was here\n');
-    fs.renameSync(bob.file + '.tmp', bob.file);
-    await until(() => bob.read() === 'v1 from alice\n', 6000, 'guard revert');
-    assert(fs.readdirSync(path.join(bob.root, '.huddle', 'conflicts')).length >= 1);
-    ok('out-of-band change to a locked file is reverted and backed up');
+    try {
+      fs.renameSync(bob.file + '.tmp', bob.file);
+      await until(() => bob.read() === 'v1 from alice\n', 6000, 'guard revert');
+      assert(fs.readdirSync(path.join(bob.root, '.huddle', 'conflicts')).length >= 1);
+      ok('out-of-band change to a locked file is reverted and backed up');
+    } catch (e) {
+      // Windows refuses to rename over a read-only file, so the read-only bit already did the guarding
+      if (process.platform !== 'win32' || e.code !== 'EPERM') throw e;
+      fs.rmSync(bob.file + '.tmp', { force: true });
+      assert.equal(bob.read(), 'v1 from alice\n');
+      ok('Windows refuses a rename over a locked file outright');
+    }
 
     assert.match(await alice.tool('huddle_send', { text: 'taking shared.txt, can you do the tests?', to: 'bob' }), /sent to bob/);
     const post = bob.hook('post', { tool_name: 'Read', tool_input: {} });

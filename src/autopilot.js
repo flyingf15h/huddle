@@ -870,8 +870,11 @@ function listenWs(client, since, onEvent) {
     try { ws = new WebSocket(`${client.base.replace(/^http/, 'ws')}/ws?${q}`); } catch { return resolve(false); }
     ws.onopen = () => { opened = true; ping = setInterval(() => { try { ws.send('ping'); } catch {} }, 30000); };
     ws.onmessage = (m) => { if (m.data === 'pong') return; try { const ev = JSON.parse(m.data); if (['board', 'setting', 'message', 'usage', 'project-setting', 'git', 'note'].includes(ev.type)) onEvent(ev); } catch {} };
-    ws.onclose = () => { clearInterval(ping); setTimeout(() => resolve(opened), opened ? 1000 : 0); };
-    ws.onerror = () => {};
+    // newer Node versions report a failed handshake as "error" alone, with no "close" after it
+    let done = false;
+    const finish = () => { if (done) return; done = true; clearInterval(ping); try { ws.close(); } catch {} setTimeout(() => resolve(opened), opened ? 1000 : 0); };
+    ws.onclose = finish;
+    ws.onerror = () => { if (!opened) finish(); };
   });
 }
 

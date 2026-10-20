@@ -105,9 +105,19 @@ class Sync {
       const q = new URLSearchParams({ token: this.client.cfg.token, since: String(this.seq), agent: JSON.stringify(this.client.agent) });
       let ws, opened = false, chain = Promise.resolve(), ping;
       try { ws = new WebSocket(`${base}/ws?${q}`); } catch { return resolve(false); }
-      const finish = () => { clearInterval(ping); this.wsOpen = false; chain.then(() => resolve(opened)); };
+      let done = false, connectTimer;
+      // newer Node versions report a failed handshake as "error" alone, with no "close" after it
+      const finish = () => {
+        if (done) return;
+        done = true;
+        clearInterval(ping); clearTimeout(connectTimer); this.wsOpen = false;
+        try { ws.close(); } catch {}
+        chain.then(() => resolve(opened));
+      };
+      connectTimer = setTimeout(() => { if (!opened) finish(); }, 15000);
       ws.onopen = () => {
         opened = this.wsOpen = true;
+        clearTimeout(connectTimer);
         ping = setInterval(() => { try { ws.send('ping'); } catch {} }, 30000);
       };
       ws.onmessage = (m) => {
@@ -124,7 +134,7 @@ class Sync {
         }).catch(e => this.log('sync: ' + e.message));
       };
       ws.onclose = finish;
-      ws.onerror = () => {};
+      ws.onerror = () => { if (!opened) finish(); };
       this.closeWs = () => { try { ws.close(); } catch {} };
     });
   }
