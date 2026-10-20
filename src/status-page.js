@@ -11,15 +11,15 @@ function statusPage(info) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>huddle status</title>
 <style>
-:root { --bg: #f4f7fc; --card: #fff; --ink: #14203a; --muted: #5b6785; --line: #dde4f0; --ok: #1f9d6b; --bad: #d4453a; }
-@media (prefers-color-scheme: dark) { :root { --bg: #0b1226; --card: #121c38; --ink: #e8eefc; --muted: #93a0c2; --line: #233056; --ok: #3ccf91; --bad: #ff6b5e; } }
+:root { --bg: #faf7f0; --card: #fffdf8; --ink: #24211c; --muted: #5f5b53; --line: rgba(36, 33, 28, .14); --ok: #1f7a5c; --bad: #b42318; }
+@media (prefers-color-scheme: dark) { :root { --bg: #1d1b18; --card: #272420; --ink: #ece5da; --muted: #aaa398; --line: rgba(255, 255, 255, .12); --ok: #5cc49c; --bad: #f07a6a; } }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, sans-serif; }
 main { max-width: 560px; margin: 0 auto; padding: 48px 16px; }
 h1 { font-size: 20px; margin: 0 0 4px; }
 .sub { color: var(--muted); margin: 0 0 24px; }
-.banner { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); font-weight: 600; margin-bottom: 16px; }
-ul { list-style: none; margin: 0; padding: 0; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+.banner { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-radius: 8px; background: var(--card); border: 1px solid var(--line); font-weight: 600; margin-bottom: 16px; }
+ul { list-style: none; margin: 0; padding: 0; background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
 li { display: flex; align-items: center; gap: 10px; padding: 12px 16px; }
 li + li { border-top: 1px solid var(--line); }
 .n { flex: 1; } .v { color: var(--muted); font-variant-numeric: tabular-nums; }

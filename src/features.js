@@ -133,7 +133,7 @@ module.exports = function features(h) {
       const subject = unread.length === 1 ? `[${prettyProject(p)}] ${unread[0].title}` : `[${prettyProject(p)}] ${unread.length} things need you`;
       const text = unread.map(n => `${n.title}\n${n.body}`).join('\n\n') + (link ? `\n\nOpen the project: ${link}` : '') + '\n\nChange what you get emailed about in the project, under your notification settings.';
       const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-      const html = `<div style="font:15px/1.5 system-ui,sans-serif;color:#0d1a33;max-width:560px">${unread.map(n => `<p style="margin:0 0 14px"><b>${esc(n.title)}</b><br><span style="color:#42537a">${esc(n.body)}</span></p>`).join('')}${link ? `<p><a href="${esc(link)}" style="background:#2a5fe0;color:#fff;padding:9px 14px;border-radius:8px;text-decoration:none;font-weight:600">Open ${esc(prettyProject(p))}</a></p>` : ''}<p style="color:#5a6a8e;font-size:12px">You can change what you get emailed about in the project's notification settings.</p></div>`;
+      const html = `<div style="font:15px/1.5 system-ui,sans-serif;color:#24211c;max-width:560px">${unread.map(n => `<p style="margin:0 0 14px"><b>${esc(n.title)}</b><br><span style="color:#5f5b53">${esc(n.body)}</span></p>`).join('')}${link ? `<p><a href="${esc(link)}" style="background:#2f5d62;color:#fff;padding:9px 14px;border-radius:6px;text-decoration:none;font-weight:600">Open ${esc(prettyProject(p))}</a></p>` : ''}<p style="color:#8a857b;font-size:12px">You can change what you get emailed about in the project's notification settings.</p></div>`;
       (p.outbox = p.outbox || []).push({ email: { to: contact.email, subject, text, html } });
     }
   }

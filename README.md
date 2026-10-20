@@ -23,7 +23,7 @@ That's the whole setup. No sign-up needed (accounts are optional), nothing commi
 <td><img src="public/shots/search.webp" alt="Search"></td>
 </tr></table>
 
-<p align="center"><img src="public/shots/phone-activity.webp" width="230" alt="On a phone"> <img src="public/shots/phone-tasks.webp" width="230" alt="Tasks on a phone"> <img src="public/shots/activity-light.webp" width="520" alt="Light mode"></p>
+<p align="center"><img src="public/shots/phone-activity.webp" width="230" alt="On a phone"> <img src="public/shots/phone-tasks.webp" width="230" alt="Tasks on a phone"> <img src="public/shots/activity-dark.webp" width="520" alt="The Evening theme"></p>
 
 
 ### How it differs

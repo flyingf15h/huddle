@@ -125,7 +125,7 @@ async function startEmail(cfg, origin, body) {
   const url = `${origin}/auth/email/verify?e=${encodeURIComponent(email)}&t=${link}&next=${encodeURIComponent(next)}`;
   const brand = cfg.brand || 'huddle';
   const text = `Your ${brand} sign-in code is ${code}\n\nOr open this link to sign in:\n${url}\n\nIt works for ${CODE_MINUTES} minutes. If you didn't ask for it, ignore this email.`;
-  const html = `<div style="font:15px/1.5 system-ui,sans-serif;color:#0d1a33;max-width:480px"><p>Your ${brand} sign-in code is</p><p style="font-size:28px;font-weight:700;letter-spacing:4px;margin:8px 0 16px">${code}</p><p><a href="${url}" style="background:#2a5fe0;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:600">Sign in to ${brand}</a></p><p style="color:#5a6a8e;font-size:13px">The code and link work for ${CODE_MINUTES} minutes. If you didn't ask for this, ignore it.</p></div>`;
+  const html = `<div style="font:15px/1.5 system-ui,sans-serif;color:#24211c;max-width:480px"><p>Your ${brand} sign-in code is</p><p style="font-size:28px;font-weight:700;letter-spacing:4px;margin:8px 0 16px">${code}</p><p><a href="${url}" style="background:#2f5d62;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;font-weight:600">Sign in to ${brand}</a></p><p style="color:#8a857b;font-size:13px">The code and link work for ${CODE_MINUTES} minutes. If you didn't ask for this, ignore it.</p></div>`;
   if (cfg.email.send) {
     try { await cfg.email.send({ to: email, subject: `${code} is your ${brand} sign-in code`, text, html }); }
     catch (e) { return fail(502, "couldn't send the email: " + e.message); }

@@ -294,7 +294,7 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; grid-template
 #side h2 { font-size: 13px; font-weight: 600; color: var(--ink); margin: 22px 2px 10px; display: flex; align-items: center; gap: 8px; }
 #side h2:first-child { margin-top: 2px; }
 #side h2 .count:empty { display: none; }
-#side h2 .count { margin-left: auto; font-size: 12.5px; font-weight: 600; color: var(--muted); background: var(--sunk); border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; }
+#side h2 .count { margin-left: auto; font-size: 12.5px; font-weight: 600; color: var(--muted); background: var(--sunk); border: 1px solid var(--line); border-radius: 4px; padding: 0 8px; }
 .tfilter { display: inline-flex; gap: 2px; background: var(--raised); border: 1px solid var(--line); padding: 2px; border-radius: 8px; margin-bottom: 10px; }
 .tfilter button { border: 0; background: transparent; padding: 3px 10px; border-radius: 6px; font-size: 12.5px; color: var(--muted); font-weight: 500; }
 .tfilter button.on { background: var(--mark); color: var(--mark-ink); }
@@ -307,7 +307,7 @@ details.goal > summary:hover { background: var(--sunk); }
 .chev { flex: none; color: var(--faint); transition: transform .15s; width: 12px; height: 12px; margin-top: 4px; }
 details.goal[open] > summary .chev { transform: rotate(90deg); }
 .tags { display: flex; gap: 5px; flex-wrap: wrap; margin: 6px 0 0 20px; }
-.tag { font-size: 11.5px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--pop-soft); color: var(--pop-ink); }
+.tag { font-size: 11.5px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: var(--pop-soft); color: var(--pop-ink); }
 .progress { flex: 1; height: 5px; background: var(--sunk); border-radius: 99px; overflow: hidden; max-width: 140px; }
 .progress span { display: block; height: 100%; background: var(--ok); border-radius: 99px; transition: width .4s; }
 .gmeta { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); margin: 7px 0 0 20px; }
@@ -337,7 +337,7 @@ details.finished > summary::-webkit-details-marker { display: none; }
 details.finished > summary:hover { color: var(--ink); }
 details.finished > summary .chev { margin-top: 0; }
 details.finished[open] > summary .chev { transform: rotate(90deg); }
-details.finished .count { font-size: 11.5px; font-weight: 600; color: var(--muted); background: var(--sunk); border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; }
+details.finished .count { font-size: 11.5px; font-weight: 600; color: var(--muted); background: var(--sunk); border: 1px solid var(--line); border-radius: 4px; padding: 0 7px; }
 .flist { display: flex; flex-direction: column; margin-top: 2px; }
 .frow { display: flex; align-items: center; gap: 8px; width: 100%; border: 0; background: none; text-align: left; padding: 6px 6px; border-radius: 6px; font-size: 13px; font-weight: 400; color: var(--muted); }
 .frow:hover { background: var(--wash); color: var(--ink); }
@@ -355,7 +355,7 @@ details.finished .count { font-size: 11.5px; font-weight: 600; color: var(--mute
 .card .owner { margin-left: auto; flex: none; display: inline-flex; gap: 5px; align-items: center; font-size: 12.5px; color: var(--muted); }
 .card .trow .tt { font-weight: 500; font-size: 14px; flex: 1; }
 .tmeta .st.doing { color: var(--accent); font-weight: 600; } .tmeta .st.blocked { color: var(--bad); font-weight: 600; } .tmeta .st.done { color: var(--ok); }
-.slabel { flex: none; font-size: 11.5px; font-weight: 600; padding: 0 7px; border-radius: 999px; }
+.slabel { flex: none; font-size: 11.5px; font-weight: 600; padding: 0 7px; border-radius: 4px; }
 .slabel.doing { color: var(--accent-soft-ink); background: var(--accent-soft); } .slabel.blocked { color: var(--bad); background: var(--bad-soft); }
 .goal.single { background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 10px; box-shadow: var(--shadow-sm); padding: 2px 2px; }
 .goal.single > .trow { border-radius: var(--radius); }
@@ -367,7 +367,7 @@ details.finished .count { font-size: 11.5px; font-weight: 600; color: var(--mute
 .tdetail .tfull { font-weight: 600; margin: 0 0 4px; }
 .tdetail p { margin: 2px 0 6px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .showdone { font-size: 13px; margin: 2px 8px 4px 27px; }
-.pill { flex: none; font-size: 11.5px; font-weight: 600; border-radius: 999px; padding: 2px 9px; white-space: nowrap; }
+.pill { flex: none; font-size: 11.5px; font-weight: 600; border-radius: 4px; padding: 2px 9px; white-space: nowrap; }
 .pill.done { background: var(--ok-soft); color: var(--ok); }
 .pill.doing { background: var(--accent-soft); color: var(--accent-soft-ink); }
 .pill.open { background: var(--warn-soft); color: var(--warn); }
@@ -395,7 +395,7 @@ details.finished .count { font-size: 11.5px; font-weight: 600; color: var(--mute
 .codebox .ln span:first-child { width: 54px; flex: none; text-align: right; padding-right: 14px; color: var(--faint); user-select: none; }
 .codebox .ln span:last-child { white-space: pre-wrap; overflow-wrap: anywhere; padding-right: 14px; }
 .codebox .ln.hl { background: var(--hl); }
-.livebar { background: var(--warn-soft); color: var(--warn); border-radius: 999px; padding: 3px 11px; font-weight: 600; font-size: 13px; }
+.livebar { background: var(--warn-soft); color: var(--warn); border-radius: 4px; padding: 3px 11px; font-weight: 600; font-size: 13px; }
 
 /* ---------- brief, memory and skills: a page to read ---------- */
 #briefview { flex: 1; overflow-y: auto; padding: 0 20px 32px; }
@@ -509,7 +509,7 @@ ol.steps { padding-left: 20px; } ol.steps li { margin-bottom: 10px; }
 .srow .grow, .switchrow .grow, .problem .pm .grow { flex: 1; min-width: 0; }
 .srow .sub { display: block; font-size: 12px; color: var(--muted); }
 .plist { border-top: 1px solid var(--line); margin-top: 12px; }
-.pill { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--sunk); color: var(--muted); white-space: nowrap; }
+.pill { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: var(--sunk); color: var(--muted); white-space: nowrap; }
 .pill.ok { background: var(--ok-soft); color: var(--ok); } .pill.bad { background: var(--bad-soft); color: var(--bad); } .pill.warn { background: var(--warn-soft); color: var(--warn); } .pill.acc { background: var(--accent-soft); color: var(--accent-soft-ink); }
 .switchrow { display: flex; align-items: flex-start; gap: 12px; padding: 11px 16px; border-top: 1px solid var(--line); }
 .switchrow .grow b { display: block; font-size: 13.5px; font-weight: 600; }

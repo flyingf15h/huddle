@@ -18,7 +18,7 @@ main[data-main] { min-height: 0; }
 .palette .phead { font-size: 12.5px; font-weight: 600; color: var(--faint); padding: 10px 10px 4px; }
 .palette .hit { display: flex; gap: 10px; align-items: flex-start; width: 100%; text-align: left; border: 0; background: none; padding: 8px 10px; border-radius: 9px; font-weight: 400; }
 .palette .hit.sel, .palette .hit:hover { background: var(--accent-soft); }
-.palette .hit .hk { flex: none; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; background: var(--sunk); color: var(--muted); margin-top: 2px; min-width: 62px; text-align: center; }
+.palette .hit .hk { flex: none; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 4px; background: var(--sunk); color: var(--muted); margin-top: 2px; min-width: 62px; text-align: center; }
 .palette .hit .hb { min-width: 0; flex: 1; }
 .palette .hit .ht { font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
 .palette .hit .hs { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; font-family: inherit; }
