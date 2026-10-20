@@ -1,6 +1,7 @@
 // A second opinion from another vendor: the team has a Codex user, so the review of a Claude's work is
 // asked of `codex` (a stand-in here), and the task says who reviewed it. Same setup as test/worker.js.
 'use strict';
+require('./winbin');
 const assert = require('assert');
 const fs = require('fs');
 const os = require('os');

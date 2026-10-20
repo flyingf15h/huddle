@@ -8,7 +8,7 @@ const { spawnSync } = require('child_process');
 const { loadConfig, Client, identity, CONFIG_DIR } = require('./client');
 const policy = require('./policy');
 
-const has = (cmd) => spawnSync(cmd, ['--version'], { encoding: 'utf8', shell: process.platform === 'win32' }).status === 0;
+const has = (cmd) => require('./bin').spawnSync(cmd, ['--version'], { encoding: 'utf8', windowsHide: true }).status === 0;
 const readJson = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
 
 // every file under root that the project's private-file rules cover (shallow walk, skips junk folders)

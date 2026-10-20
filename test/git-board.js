@@ -1,5 +1,6 @@
 // Versions, branches and the team board, end to end with real git repos.
 'use strict';
+require('./winbin');
 const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
@@ -228,7 +229,7 @@ setTimeout(() => {
     const at = (kind, id) => Number(runs.find(r => r[0] === kind && r[1] === id)[2]);
     assert(at('start', rb) < at('end', ra) && at('start', ra) < at('end', rb), 'the two requests ran at the same time');
     for (const r of runs.filter(r => r[0] === 'start')) {
-      assert(r[3].startsWith(path.join(tmp, 'clones')) && r[3] === r[5], 'each runs in its own worktree, with huddle pointed there');
+      assert(r[3].split(path.sep).includes('clones') && r[3] === r[5], 'each runs in its own worktree, with huddle pointed there');
       assert.equal(r[4], 'clone-' + r[1]);
       assert.equal(r[6], 'main');
     }

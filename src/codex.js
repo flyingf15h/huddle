@@ -171,7 +171,7 @@ function execArgs({ dir, readOnly, model, gitDir, lastFile, mcpRoot, cli }) {
 
 function installed() {
   const { spawnSync } = require('child_process');
-  return spawnSync('codex', ['--version'], { encoding: 'utf8', shell: process.platform === 'win32' }).status === 0;
+  return require('./bin').spawnSync('codex', ['--version'], { encoding: 'utf8', windowsHide: true }).status === 0;
 }
 function tmpFile(name) { return path.join(os.tmpdir(), `huddle-${process.pid}-${Date.now()}-${name}`); }
 

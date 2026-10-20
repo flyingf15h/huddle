@@ -1,6 +1,7 @@
 // End-to-end: a real server, three checkouts in temp dirs, MCP servers and hook
 // processes run exactly the way Claude Code would run them.
 'use strict';
+require('./winbin');
 const assert = require('assert');
 const fs = require('fs');
 const os = require('os');

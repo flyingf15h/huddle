@@ -1,6 +1,7 @@
 // `huddle worker`: joins from an invite, clones the repo, and works a request started by a schedule
 // with nobody's laptop involved. A stand-in `claude` does the work.
 'use strict';
+require('./winbin');
 const assert = require('assert');
 const fs = require('fs');
 const os = require('os');

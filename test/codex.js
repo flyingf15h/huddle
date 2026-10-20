@@ -2,6 +2,7 @@
 // and usage, never-allowed commands, and background runs with `codex exec` (retries and pull requests).
 // `codex` and `gh` are stand-ins that record how they were called.
 'use strict';
+require('./winbin');
 const assert = require('assert');
 const fs = require('fs');
 const os = require('os');

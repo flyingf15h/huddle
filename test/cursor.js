@@ -2,6 +2,7 @@
 // same locks and sharing as Claude Code, never-allowed commands, and background runs with a stand-in
 // `agent` command that records how it was called.
 'use strict';
+require('./winbin');
 const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
@@ -111,13 +112,15 @@ function person(name, pid, url, token, project, agent) {
     // ---- background requests: `agent -p --force` in a worktree with .cursor/cli.json permissions
     const bin = path.join(tmp, 'bin');
     fs.mkdirSync(bin);
-    fs.writeFileSync(path.join(bin, 'agent'), `#!/bin/sh
-echo "$@" > "${tmp}/agent-args"
-cp .cursor/cli.json "${tmp}/agent-cli.json" 2>/dev/null
-echo "$HUDDLE_AGENT:$HUDDLE_TASK" > "${tmp}/agent-env"
-echo done > made.txt
-git add -A . ':!.cursor' ':!.huddle' 2>/dev/null
-echo "All done, made made.txt"
+    fs.writeFileSync(path.join(bin, 'agent'), `#!/usr/bin/env node
+const fs = require('fs'), { spawnSync } = require('child_process');
+const tmp = ${JSON.stringify(tmp)};
+fs.writeFileSync(tmp + '/agent-args', process.argv.slice(2).join(' ') + '\\n');
+try { fs.copyFileSync('.cursor/cli.json', tmp + '/agent-cli.json'); } catch {}
+fs.writeFileSync(tmp + '/agent-env', process.env.HUDDLE_AGENT + ':' + process.env.HUDDLE_TASK + '\\n');
+fs.writeFileSync('made.txt', 'done\\n');
+spawnSync('git', ['add', '-A', '.', ':!.cursor', ':!.huddle']);
+console.log('All done, made made.txt');
 `, { mode: 0o755 });
     const dee = person('dee', 403, url, token, project, 'cursor');
     sh(dee.root, 'init', '-q'); dee.write('a.js', 'one\n'); sh(dee.root, 'add', '-A', ':!.huddle'); sh(dee.root, 'commit', '-qm', 'init');

@@ -6,6 +6,7 @@ const os = require('os');
 const { spawn, spawnSync } = require('child_process');
 const { loadConfig, identity, Client, relPath, hashFile, formatMessages, ago, build, ownerKey, sha, adoptName, CONFIG_DIR } = require('./client');
 const gitx = require('./git');
+const procs = require('./bin');
 
 const PKG_DIR = path.resolve(__dirname, '..');
 const INSTALL_DIR = process.env.HUDDLE_HOME || path.join(os.homedir(), '.huddle', 'app');
@@ -462,8 +463,8 @@ function installCommand(root) {
 
 function installMcp(root, dir, projectRoot) {
   const spec = JSON.stringify({ type: 'stdio', command: process.execPath, args: [path.join(dir, 'src', 'cli.js'), 'mcp'], env: { HUDDLE_ROOT: projectRoot || root } });
-  spawnSync('claude', ['mcp', 'remove', '-s', 'local', 'huddle'], { cwd: root, stdio: 'ignore' });
-  const r = spawnSync('claude', ['mcp', 'add-json', '-s', 'local', 'huddle', spec], { cwd: root, encoding: 'utf8' });
+  procs.spawnSync('claude', ['mcp', 'remove', '-s', 'local', 'huddle'], { cwd: root, stdio: 'ignore' });
+  const r = procs.spawnSync('claude', ['mcp', 'add-json', '-s', 'local', 'huddle', spec], { cwd: root, encoding: 'utf8' });
   if (r.status === 0) return true;
   console.log(`\nCouldn't register the MCP server automatically (${r.error ? r.error.code : (r.stderr || '').trim()}). Run this in ${root}:`);
   console.log(`  claude mcp add-json -s local huddle '${spec}'`);
@@ -558,7 +559,7 @@ async function pickName(flags, root) {
 }
 
 // what huddle needs on this computer, said up front instead of failing halfway
-const hasTool = (cmd) => spawnSync(cmd, ['--version'], { encoding: 'utf8', shell: process.platform === 'win32' }).status === 0;
+const hasTool = (cmd) => procs.spawnSync(cmd, ['--version'], { encoding: 'utf8', windowsHide: true }).status === 0;
 function checkTools(agent) {
   if (agent === 'codex' && !hasTool('codex')) console.log('! Codex isn\'t installed here yet. Install it with: npm install -g @openai/codex');
   if (agent === 'cursor' && !hasTool('agent') && !hasTool('cursor-agent')) console.log('! Cursor\'s command line (`agent`) isn\'t installed here. Cursor itself works without it; it is only needed for background requests (curl https://cursor.com/install -fsS | bash).');
@@ -822,7 +823,7 @@ function cmdUnlink() {
     if (s.permissions && s.permissions.allow) s.permissions.allow = s.permissions.allow.filter(p => p !== 'mcp__huddle');
     fs.writeFileSync(file, JSON.stringify(s, null, 2) + '\n');
   } catch {}
-  spawnSync('claude', ['mcp', 'remove', '-s', 'local', 'huddle'], { cwd: here, stdio: 'ignore' });
+  procs.spawnSync('claude', ['mcp', 'remove', '-s', 'local', 'huddle'], { cwd: here, stdio: 'ignore' });
   console.log('Claude sessions started here are no longer connected to huddle');
 }
 
@@ -993,7 +994,7 @@ async function cmdSummarize() {
   if (!cfg || !e.HUDDLE_SUM_PROMPT) return;
   const env = Object.fromEntries(Object.entries(e).filter(([k]) => !/^(HUDDLE_|CLAUDE_PROJECT_DIR|CLAUDECODE)/.test(k)));
   const ask = `Someone just gave their AI coding assistant the request below. Say what they are working on as one short phrase of at most 8 words, starting with an -ing verb, in plain words a teammate understands at a glance (like "Fixing the login redirect" or "Making the task list easier to read"). Reply with only the phrase.\n\nRequest:\n${e.HUDDLE_SUM_PROMPT}`;
-  const r = spawnSync('claude', ['-p', ask, '--model', 'haiku'], { cwd: os.tmpdir(), env: { ...env, HUDDLE_AUTOPILOT: '1' }, encoding: 'utf8', timeout: 60000, stdio: ['ignore', 'pipe', 'pipe'] });
+  const r = procs.spawnSync('claude', ['-p', ask, '--model', 'haiku'], { cwd: os.tmpdir(), env: { ...env, HUDDLE_AUTOPILOT: '1' }, encoding: 'utf8', timeout: 60000, stdio: ['ignore', 'pipe', 'pipe'] });
   const line = String(r.stdout || '').split('\n').map(l => l.trim()).find(Boolean) || '';
   const phrase = line.replace(/^["'“*]+|["'”*.]+$/g, '').trim();
   if (!phrase || phrase.length > 90 || r.status !== 0) return;
@@ -1080,7 +1081,7 @@ function cmdLeave() {
     if (s.permissions && s.permissions.allow) s.permissions.allow = s.permissions.allow.filter(p => p !== 'mcp__huddle');
     fs.writeFileSync(file, JSON.stringify(s, null, 2) + '\n');
   } catch {}
-  spawnSync('claude', ['mcp', 'remove', '-s', 'local', 'huddle'], { cwd: cfg.root, stdio: 'ignore' });
+  procs.spawnSync('claude', ['mcp', 'remove', '-s', 'local', 'huddle'], { cwd: cfg.root, stdio: 'ignore' });
   require('./codex').uninstall(cfg.root, HOOK_MARK);
   require('./cursor').uninstall(cfg.root, HOOK_MARK);
   fs.rmSync(path.join(cfg.root, CONFIG_DIR), { recursive: true, force: true });

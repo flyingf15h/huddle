@@ -32,6 +32,7 @@ const gitx = require('./git');
 const policy = require('./policy');
 const codex = require('./codex');
 const cursor = require('./cursor');
+const procs = require('./bin');
 const APP_DIR = path.join(__dirname, '..');
 const q = (s) => process.platform === 'win32' ? `"${s}"` : `'${String(s).replace(/'/g, `'\\''`)}'`;
 
@@ -280,7 +281,7 @@ function landClone(cfg, c, title, { merge = true } = {}) {
 function slug(t) { return String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'work'; }
 function openPr(cfg, c, t, checks, me) {
   const { spawnSync } = require('child_process');
-  const gh = (args, cwd) => spawnSync('gh', args, { cwd, encoding: 'utf8', timeout: 120000 });
+  const gh = (args, cwd) => procs.spawnSync('gh', args, { cwd, encoding: 'utf8', timeout: 120000 });
   if (gh(['--version']).status !== 0) return { error: 'the gh CLI is not installed on ' + me + "'s computer" };
   if (!gitx.git(cfg.root, ['remote', 'get-url', 'origin']).ok) return { error: 'this repository has no origin remote' };
   const head = `huddle/${t.id}-${slug(t.title)}`;
@@ -303,7 +304,7 @@ function openPr(cfg, c, t, checks, me) {
   return { url, head, base };
 }
 function prState(cfg, url) {
-  const r = require('child_process').spawnSync('gh', ['pr', 'view', url, '--json', 'state'], { cwd: cfg.root, encoding: 'utf8', timeout: 30000 });
+  const r = procs.spawnSync('gh', ['pr', 'view', url, '--json', 'state'], { cwd: cfg.root, encoding: 'utf8', timeout: 30000 });
   try { return JSON.parse(r.stdout).state.toLowerCase(); } catch { return null; }
 }
 
@@ -374,7 +375,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     const args = codex.execArgs({ dir: cwd, readOnly, model: model && model !== 'sonnet' ? model : (flags.model || cfg.autopilotModel || null), gitDir, lastFile, mcpRoot, cli: CLI });
     args.push(prompt);
     const env = { ...process.env, HUDDLE_AUTOPILOT: '1', HUDDLE_AGENT: 'codex', HUDDLE_SHOWN: String(shown).slice(0, 4000), ...(taskId ? { HUDDLE_TASK: taskId } : {}), ...(session ? { HUDDLE_SESSION: session } : {}), ...(mcpRoot ? { HUDDLE_ROOT: mcpRoot } : {}) };
-    const child = spawn('codex', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env, shell: process.platform === 'win32' });
+    const child = procs.spawn('codex', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env });
     let text = '', err = '';
     child.stdout.on('data', d => { text += d; if (out) out(String(d)); });
     child.stderr.on('data', d => { err += d; if (out) out(String(d)); });
@@ -401,7 +402,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     const env = { ...process.env, HUDDLE_AUTOPILOT: '1', HUDDLE_AGENT: 'cursor', HUDDLE_SHOWN: String(shown).slice(0, 4000), ...(taskId ? { HUDDLE_TASK: taskId } : {}), ...(session ? { HUDDLE_SESSION: session } : {}), ...(mcpRoot ? { HUDDLE_ROOT: mcpRoot } : {}) };
     const args = cursor.execArgs({ model: model && model !== 'sonnet' ? model : (flags.model || cfg.autopilotModel || null), prompt });
     const run = (bin) => {
-      const child = spawn(bin, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env, shell: process.platform === 'win32' });
+      const child = procs.spawn(bin, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env });
       let text = '', err = '';
       child.stdout.on('data', d => { text += d; if (out) out(String(d)); });
       child.stderr.on('data', d => { err += d; if (out) out(String(d)); });
@@ -437,7 +438,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     args.push('--allowedTools', ...allowed);
     // (the session's MCP server runs with HUDDLE_ROOT set to the person's folder; a clone has its own)
     const env = { ...process.env, HUDDLE_AUTOPILOT: '1', HUDDLE_SHOWN: String(shown).slice(0, 4000), ...(taskId ? { HUDDLE_TASK: taskId } : {}), ...(session ? { HUDDLE_SESSION: session } : {}), ...(mcpRoot ? { HUDDLE_ROOT: mcpRoot } : {}) };
-    const child = spawn('claude', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env });
+    const child = procs.spawn('claude', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env });
     let text = '', err = '';
     child.stdout.on('data', d => { text += d; if (out) out(String(d)); });
     child.stderr.on('data', d => { err += d; if (out) out(String(d)); });
