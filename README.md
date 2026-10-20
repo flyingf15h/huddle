@@ -5,9 +5,11 @@
 Everyone on your team keeps using their own agent (**Claude Code**, **OpenAI Codex** or **Cursor**, on their own subscription and computer). huddle connects them, so they see what the others are doing, never overwrite each other, hand work back and forth, and keep going while their people are away.
 
 ```sh
-npx -y github:flyingf15h/huddle new        # start a project, get an invite
-npx -y github:flyingf15h/huddle join <invite>   # everyone else, in their copy of the repo
+curl -fsSL https://huddle.sage-hill.workers.dev/install.sh | sh                 # start a project, get an invite link
+curl -fsSL https://huddle.sage-hill.workers.dev/install.sh | sh -s -- <invite>  # everyone else, in their copy of the repo
 ```
+
+On Windows use `irm https://huddle.sage-hill.workers.dev/install.ps1 | iex`. The invite link (`…/j/<code>`) shows each person the exact command for their computer, and `huddle doctor` checks a folder's setup. The same thing works with `npx -y github:flyingf15h/huddle new` and `… join <invite>`.
 
 That's the whole setup. No sign-up needed (accounts are optional), nothing committed to your repo, zero dependencies for the CLI.
 
@@ -23,6 +25,12 @@ That's the whole setup. No sign-up needed (accounts are optional), nothing commi
 
 <p align="center"><img src="public/shots/phone-activity.webp" width="230" alt="On a phone"> <img src="public/shots/phone-tasks.webp" width="230" alt="Tasks on a phone"> <img src="public/shots/activity-light.webp" width="520" alt="Light mode"></p>
 
+
+### How it differs
+
+- **Agent managers that run many agents for one person** (worktree-based tools) don't coordinate between people: your agents and your teammate's still collide. huddle locks files across everyone's machines and streams live edits, before anything is committed.
+- **One vendor's cloud agents and team features** work for that vendor's agent. huddle puts Claude Code, Codex and Cursor on the same board, with the same locks, rules, reviews and costs, and the agents run on each person's own computer and subscription.
+- **It stays out of your repo.** Nothing is committed, and your conversation stays private by default.
 
 ### Work together without collisions
 
@@ -57,7 +65,7 @@ That's the whole setup. No sign-up needed (accounts are optional), nothing commi
 - **Merge conflicts, early.** Each person's huddle checks whether teammates' branches would conflict with theirs, names the files, and one click hands the merge to an agent. Background work settles conflicts with its owner's branch before it lands.
 - **Your GitHub repository.** Branches with their checks, pull requests, commits and issues in the dashboard, instant updates through a webhook, issues sent to the team as requests, and pull requests opened from huddle.
 
-Each person needs Claude Code, Codex or Cursor, Node 18+ (22+ recommended) and git. Tested on Linux; macOS should work, Windows is untested.
+Each person needs Claude Code, Codex or Cursor, Node 18+ (22+ recommended) and git. Linux is what it's developed on; macOS and Windows are covered by a CI matrix (see `.github/workflows/test.yml`), and `huddle doctor` flags problems on any of them.
 
 ## Quick start
 
@@ -298,8 +306,9 @@ If you're in several projects, each one has its own dashboard address (`…/#p=p
 ## What's shared, and what isn't
 
 - Only Claude Code sessions started **inside the joined folder** are connected. Claude anywhere else on your computer never sees huddle and nothing from it is shared.
-- Inside the folder, your prompts, Claude's replies and its tool calls show up in the team's timeline (so everyone can follow along). To keep one turn to yourself, start the prompt with **`private:`**, e.g. `private: draft a message to my manager`. That whole turn, prompt, replies and tool calls, stays out of the feed, and Claude is told not to repeat it to the team. File edits still sync, since they're project work.
-- `huddle sharing tools` shares only which tools ran (no conversation), and `huddle sharing off` shares neither.
+- Inside the folder, the team's timeline shows which tools your agent ran (commands, files). **Your conversation stays on your computer** unless you choose `huddle sharing full`, which also shares your prompts and your agent's replies. To keep one turn to yourself even then, start the prompt with **`private:`**, e.g. `private: draft a message to my manager`. That whole turn stays out of the feed, and Claude is told not to repeat it to the team. File edits still sync, since they're project work.
+- `huddle sharing off` shares neither the conversation nor the tool steps. An owner can cap what anyone shares with `huddle policy sharing`.
+- Secrets never leave your computer: `.env` files, keys, cloud credentials and similar files are never uploaded (see `huddle policy private`), and API keys, tokens and passwords are stripped from everything shared. `huddle doctor` checks this setup.
 - Keep your huddle projects together in one parent folder? Run `huddle link PROJECT_FOLDER` in the parent, and Claude started in the parent joins that project's huddle too. Only files inside the project folder are shared; anything else in the parent stays yours. `huddle unlink` undoes it.
 - The Claudes' huddle tools only reach the project the folder is joined to. Each project has its own token, and nothing crosses between projects.
 
@@ -355,6 +364,7 @@ MCP tools (registered for that folder only):
 huddle new [NAME] [--server URL]       create a project (public server by default)
 huddle server [--port 7777] [--tunnel] [--project NAME] [--data DIR] [--open]
 huddle join <invite> [--name NAME] [--agent claude|codex|cursor]  set up the current folder
+huddle doctor                          check this folder's setup: hooks, tools, privacy
 huddle leave                           undo join in this folder
 huddle update [--from DIR] [--ref REF] newest huddle from GitHub (or a local checkout), hooks refreshed in every joined folder
 huddle permissions [--write]           shared .claude/settings.json: no prompts for edits, huddle, git, builds and tests

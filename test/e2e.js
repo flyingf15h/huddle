@@ -31,7 +31,7 @@ async function until(fn, ms = 8000, what = 'condition') {
 function checkout(name, pid, server, token, project = 'demo') {
   const root = path.join(tmp, name);
   fs.mkdirSync(path.join(root, '.huddle'), { recursive: true });
-  fs.writeFileSync(path.join(root, '.huddle', 'config.json'), JSON.stringify({ server, token, project, name, notify: false, summarize: false })); // no desktop pop-ups from test runs
+  fs.writeFileSync(path.join(root, '.huddle', 'config.json'), JSON.stringify({ server, token, project, name, notify: false, summarize: false, shareActivity: 'full' })); // (the default shares only tool steps; tests exercise full sharing) no desktop pop-ups from test runs
   fs.writeFileSync(path.join(root, 'shared.txt'), 'v0\n');
   const env = { ...process.env, HUDDLE_SESSION: String(pid), HUDDLE_ROOT: root, PATH: fakeBin + path.delimiter + process.env.PATH };
   const hook = (event, input) => {
@@ -204,7 +204,16 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
     carol.hook('session-end', {});
     ok('PROJECT.md, memories and skills reach every agent, on disk and in context');
 
-    // activity: prompts, replies and tool calls stream to the others
+    // activity: a conversation is only shared when someone opts in (the test agents all have)
+    const aliceCfg = path.join(alice.root, '.huddle', 'config.json');
+    const bareCfg = { ...JSON.parse(fs.readFileSync(aliceCfg, 'utf8')) };
+    delete bareCfg.shareActivity;
+    const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'huddle-share-'));
+    fs.mkdirSync(path.join(bare, '.huddle'));
+    fs.writeFileSync(path.join(bare, '.huddle', 'config.json'), JSON.stringify(bareCfg));
+    assert.equal(require('../src/client').loadConfig(bare).shareActivity, 'tools', 'sharing defaults to tool steps only');
+    fs.rmSync(bare, { recursive: true, force: true });
+    // prompts, replies and tool calls stream to the others
     const transcript = path.join(alice.root, 'transcript.jsonl');
     fs.writeFileSync(transcript, JSON.stringify({ type: 'user', message: { content: 'old prompt' } }) + '\n');
     fs.rmSync(path.join(alice.root, '.huddle', 'sessions'), { recursive: true, force: true });

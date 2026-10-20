@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Join a huddle</title><meta name="robots" content="noindex">
+<style>
+:root { --page:#eef4fd; --ink:#0d1a33; --muted:#42537a; --line:rgba(40,80,160,.18); --accent:#2a5fe0; --card:#fff; color-scheme: light dark; }
+@media (prefers-color-scheme: dark) { :root { --page:#050c22; --ink:#e8eefc; --muted:#a6b5d8; --line:rgba(150,180,255,.2); --accent:#5a96ff; --card:#0c1633; } }
+* { box-sizing: border-box; } body { margin:0; background:var(--page); color:var(--ink); font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+main { max-width: 640px; margin: 0 auto; padding: 40px 20px 80px; } a { color: var(--accent); }
+h1 { font-size: 30px; letter-spacing: -.02em; margin: 24px 0 6px; } p { color: var(--muted); margin: 6px 0 14px; }
+.tabs { display:flex; gap:6px; margin: 18px 0 8px; } .tabs button { font: inherit; font-size: 14px; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; }
+.tabs button[aria-pressed=true] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.cmd { display:flex; gap:10px; align-items:center; background: var(--card); border:1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.cmd code { flex:1; font: 13.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color: var(--ink); overflow-wrap: anywhere; }
+.cmd button { font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
+ol { color: var(--muted); padding-left: 20px; } li { margin: 6px 0; } .small { font-size: 13px; }
+.btn { display:inline-block; margin-top: 8px; padding: 10px 18px; border-radius: 10px; background: var(--accent); color:#fff; text-decoration:none; font-weight:600; }
+</style></head><body><main>
+<a href="/?about"><b>huddle</b></a>
+<h1>You're invited to a huddle</h1>
+<p>Your coding agent (Claude Code, Codex or Cursor) will work alongside your team's, without overwriting each other. It takes about a minute.</p>
+<ol>
+<li>Open a terminal in <b>your copy of the project</b> (the folder you'd normally start your agent in).</li>
+<li>Paste this and answer the one question (your name):</li>
+</ol>
+<div class="tabs" role="group" aria-label="Your computer"><button id="t-unix" aria-pressed="true">Mac / Linux</button><button id="t-win" aria-pressed="false">Windows</button></div>
+<div class="cmd"><code id="cmd"></code><button id="copy">Copy</button></div>
+<ol start="3"><li>Start your agent in that folder. It already knows who's working on what.</li></ol>
+<p class="small">Needs Node.js 18+ and git. Your conversation with your agent stays on your computer unless you choose to share it; secrets and <code>.env</code> files never leave it. <a href="/privacy">Privacy</a></p>
+<a class="btn" id="dash" href="/app">Just look around in the browser</a>
+<script>
+(function () {
+  var code = (location.pathname.match(/\/j\/([\w-]{12})\b/) || [])[1] || '';
+  var origin = location.origin, isPublic = origin === 'https://huddle.sage-hill.workers.dev';
+  var win = /Windows/i.test(navigator.userAgent);
+  var cmd = document.getElementById('cmd');
+  function show() {
+    var s = document.getElementById('t-unix'), w = document.getElementById('t-win');
+    s.setAttribute('aria-pressed', !win); w.setAttribute('aria-pressed', win);
+    cmd.textContent = !code ? 'This link is missing its invite code. Ask for a new one.'
+      : win ? '& ([scriptblock]::Create((irm ' + origin + '/install.ps1))) ' + code + (isPublic ? '' : ' ' + origin)
+            : 'curl -fsSL ' + origin + '/install.sh | sh -s -- ' + code + (isPublic ? '' : ' --server ' + origin);
+  }
+  document.getElementById('t-unix').onclick = function () { win = false; show(); };
+  document.getElementById('t-win').onclick = function () { win = true; show(); };
+  document.getElementById('copy').onclick = function () {
+    var b = this; (navigator.clipboard ? navigator.clipboard.writeText(cmd.textContent) : Promise.reject()).then(function () { b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1500); }, function () {});
+  };
+  if (code) document.getElementById('dash').href = '/app#invite=' + code;
+  show();
+})();
+</script>
+</main></body></html>

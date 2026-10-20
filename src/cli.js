@@ -26,6 +26,7 @@ Start a project (one person, in the project folder):
 Everyone (in the project folder):
   huddle join <invite> [--name YOUR_NAME] [--agent claude|codex|cursor]
       Set up this folder: config, hooks and the huddle MCP tools for Claude Code or Codex.
+  huddle doctor                 check this folder's setup (hooks, tools, privacy) and say what to fix
   huddle leave                  remove huddle from this folder
   huddle update [--from DIR] [--ref REF]
                                 get the newest huddle (from GitHub, or a local checkout) and
@@ -339,14 +340,11 @@ Restart Claude Code (or Codex) in those folders to load the new version.`);
 function permissionPreset(root) {
   const allow = ['mcp__huddle', 'Bash(huddle:*)',
     'Bash(git status:*)', 'Bash(git log:*)', 'Bash(git diff:*)', 'Bash(git show:*)', 'Bash(git fetch:*)', 'Bash(git pull:*)',
-    'Bash(git add:*)', 'Bash(git commit:*)', 'Bash(git stash:*)', 'Bash(curl -s:*)'];
+    'Bash(git add:*)', 'Bash(git commit:*)', 'Bash(git stash:*)'];
   const main = gitx.isRepo(root) ? (gitx.git(root, ['symbolic-ref', '--short', '-q', 'refs/remotes/origin/HEAD']).out.replace(/^origin\//, '') || gitx.currentBranch(root, 0)) : null;
   // a prefix rule would let --force through too, so force-pushes are asked about explicitly
   const ask = ['Bash(git push -f:*)', 'Bash(git push --force:*)'];
-  if (main) {
-    allow.push(`Bash(git push origin ${main}:*)`);
-    for (const f of ['-f', '--force', '--force-with-lease']) ask.push(`Bash(git push origin ${main} ${f}:*)`);
-  }
+  // pushing and network commands (curl, ssh, deploys) always ask: they leave the person's machine
   // look at the project and the folders right inside it (e.g. viewer/package.json)
   const dirs = [root, ...fs.readdirSync(root, { withFileTypes: true }).filter(d => d.isDirectory() && !d.name.startsWith('.') && d.name !== 'node_modules').map(d => path.join(root, d.name))];
   const has = (f) => dirs.some(d => fs.existsSync(path.join(d, f)));
@@ -534,12 +532,16 @@ async function cmdNew({ pos, flags }) {
   const code = await shortInvite({ server, token: r.token, project: r.project, name: 'invite', root: process.cwd() });
   console.log(`created project ${r.project.replace(/-[0-9a-f]{6,8}$/, '')}
 
-Teammates run this in their copy of the project (it asks for their name):
+Send your teammates this link (it shows them what to run):
+  ${server}/j/${code}
+or have them run this in their copy of the project (it asks for their name):
   ${joinCommand(code, server)}
 Anyone with the invite can join and see the project, so only send it to your team.`);
   if (flags['no-join']) return;
   console.log('');
   await cmdJoin({ pos: [encodeInvite(server, r.token, r.project)], flags });
+  // the dashboard is where the team shows up, so show it right away (not in scripts or with --no-open)
+  if (process.stdout.isTTY && !flags['no-open'] && !process.env.CI) cmdOpen();
 }
 
 // what to call this person: --name, the name they joined this folder with before, or asked for
@@ -630,12 +632,12 @@ Background requests for your Cursor need Cursor's command line (\`agent\`) and C
   else if (agent === 'codex') console.log(`
 Next: run \`codex\` in this folder. The first time, Codex asks whether to trust the folder (say yes, so it
 loads .codex/), then run /hooks once and trust huddle's hooks. After that Codex is in the huddle.
-Your Codex helps the team while you're away and your session is visible to them;
-change that with huddle autopilot and huddle sharing.`);
+Your Codex can help the team while you're away (change that with huddle autopilot). Teammates see which tools it runs,
+not your conversation (huddle sharing full changes that).`);
   else console.log(`
 Next: run \`claude\` in this folder. It's in the huddle and already knows who's working on what.
-Your Claude helps the team while you're away and your session is visible to them;
-change that with /autopilot and huddle sharing.${fs.existsSync(path.join(root, 'CLAUDE.md')) ? '\nTo share your CLAUDE.md with the team without committing it: huddle project --set CLAUDE.md' : ''}`);
+Your Claude can help the team while you're away (change that with /autopilot). Teammates see which tools it runs,
+not your conversation (huddle sharing full changes that).${fs.existsSync(path.join(root, 'CLAUDE.md')) ? '\nTo share your CLAUDE.md with the team without committing it: huddle project --set CLAUDE.md' : ''}`);
   try { require('./shared').writeShared(root, await new Client(cfg, identity(cfg, 'join')).get('shared')); } catch {}
   if (!flags['no-sync']) {
     console.log('');
@@ -1291,6 +1293,11 @@ async function cmdSkill({ pos, flags }) {
   for (const k of sh.skills) console.log(`${k.name}  v${k.version} by ${k.byName}\n    ${k.description}\n`);
 }
 
+async function cmdDoctor() {
+  const d = require('./doctor');
+  process.exitCode = d.print(await d.doctor({ installDir: INSTALL_DIR, hookMark: HOOK_MARK }));
+}
+
 function cmdSharing({ pos }) {
   const cfg = configured();
   const file = path.join(cfg.root, CONFIG_DIR, 'config.json');
@@ -1300,7 +1307,7 @@ function cmdSharing({ pos }) {
     raw.shareActivity = pos[0];
     fs.writeFileSync(file, JSON.stringify(raw, null, 2) + '\n', { mode: 0o600 });
   }
-  const level = raw.shareActivity || 'full';
+  const level = raw.shareActivity || 'tools';
   console.log({
     full: 'sharing: full. Others see your prompts, Claude\'s replies and its tool calls.',
     tools: 'sharing: tools. Others see which tools your Claude runs (commands, files), not the conversation.',
@@ -1492,7 +1499,7 @@ async function main() {
   const cmds = {
     server: cmdServer, new: cmdNew, join: cmdJoin, leave: cmdLeave, status: cmdStatus, send: cmdSend, inbox: cmdInbox,
     lock: cmdLock, unlock: cmdUnlock, watch: cmdWatch, invite: cmdInvite, open: cmdOpen, approve: cmdApprove, tests: cmdTests, _summarize: cmdSummarize,
-    project: cmdProject, sharing: cmdSharing, 'ai-name': cmdAiName, update: cmdUpdate, permissions: cmdPermissions, tidy: cmdTidy, handoff: cmdHandoff, handoffs: cmdHandoff,
+    project: cmdProject, sharing: cmdSharing, doctor: cmdDoctor, 'ai-name': cmdAiName, update: cmdUpdate, permissions: cmdPermissions, tidy: cmdTidy, handoff: cmdHandoff, handoffs: cmdHandoff,
     sync: cmdSync, branches: cmdBranches, branch: cmdBranch, publish: cmdPublish, fetch: cmdFetch, merge: cmdMerge,
     ask: cmdAsk, board: cmdBoard, autopilot: cmdAutopilot, worker: cmdWorker, unpublish: cmdUnpublish, forget: cmdForget, 'same-person': cmdSamePerson, link: cmdLink, unlink: cmdUnlink, statusline: cmdStatusline, memory: cmdMemory, memories: cmdMemory, skill: cmdSkill, skills: cmdSkill,
     hook: () => require('./hooks').runHook(args.pos[0], args.flags),

@@ -6,7 +6,12 @@
 // Files that stay on each person's machine unless the owner says otherwise: no lock, no live copy,
 // no code-view snapshot. A trailing "/" is a folder; "*" stays within one folder, "**" crosses them.
 const DEFAULT_PRIVATE = ['.env', '.env.*', '**/.env', '**/.env.*', '.dev.vars', '**/.dev.vars', '*.pem', '**/*.pem', '*.key', '**/*.key',
-  'secrets/', '**/secrets/', '.npmrc', '**/.npmrc', 'id_rsa*', '**/id_rsa*'];
+  'secrets/', '**/secrets/', '.npmrc', '**/.npmrc', 'id_rsa*', '**/id_rsa*', 'id_ed25519*', '**/id_ed25519*',
+  '*.p12', '**/*.p12', '*.pfx', '**/*.pfx', '*.keystore', '**/*.keystore', '*.jks', '**/*.jks',
+  '.aws/', '**/.aws/', '.ssh/', '**/.ssh/', '.gnupg/', '**/.gnupg/', '.netrc', '**/.netrc', '.pypirc', '**/.pypirc', '.git-credentials', '**/.git-credentials',
+  '.htpasswd', '**/.htpasswd', '*.tfvars', '**/*.tfvars', '*.tfstate', '**/*.tfstate', '*.tfstate.*', '**/*.tfstate.*',
+  'credentials*.json', '**/credentials*.json', 'service-account*.json', '**/service-account*.json', 'serviceAccount*.json', '**/serviceAccount*.json',
+  'google-services.json', '**/google-services.json', 'GoogleService-Info.plist', '**/GoogleService-Info.plist', 'kubeconfig', '**/kubeconfig'];
 
 function globRe(glob) {
   const g = String(glob).trim().replace(/^\.\//, '');
@@ -77,6 +82,9 @@ const SECRET_PATTERNS = [
   [/\b(AKIA|ASIA)[0-9A-Z]{16}\b/g, HIDDEN],
   [/\bAIza[0-9A-Za-z_-]{35}\b/g, HIDDEN],
   [/\b(h[pm]_[A-Za-z0-9_-]{20,})\b/g, HIDDEN],
+  [/\b(npm_[A-Za-z0-9]{30,}|SG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}|whsec_[A-Za-z0-9]{16,}|re_[A-Za-z0-9]{20,}|ya29\.[A-Za-z0-9_-]{20,}|glpat-[A-Za-z0-9_-]{16,}|dop_v1_[a-f0-9]{40,}|hf_[A-Za-z0-9]{30,})\b/g, HIDDEN],
+  [/\b(Bearer\s+)[A-Za-z0-9._~+\/-]{24,}=*/gi, `$1${HIDDEN}`],
+  [/((?:AccountKey|SharedAccessKey|Password|Pwd)=)[^;\s"']{8,}/gi, `$1${HIDDEN}`],
   [/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, HIDDEN],
   [/(hooks\.slack\.com\/services\/)[\w/]+/g, `$1${HIDDEN}`],
   [/(discord(?:app)?\.com\/api\/webhooks\/)[\w/-]+/g, `$1${HIDDEN}`],

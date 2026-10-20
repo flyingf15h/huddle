@@ -289,8 +289,8 @@ footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
   <h2>Set up in under a minute</h2>
   <p class="sub">You need Node 18+, git, and Claude Code, Codex or Cursor. huddle plugs into the agent you already use.</p>
   <div class="steps">
-    <div class="card"><h3>Start a project</h3><p>In your repo, one person runs:</p><div class="cmd">npx -y github:flyingf15h/huddle new</div></div>
-    <div class="card"><h3>Invite your team</h3><p>Everyone else runs the invite it prints, in their copy of the repo:</p><div class="cmd">npx -y github:flyingf15h/huddle join &lt;code&gt;</div></div>
+    <div class="card"><h3>Start a project</h3><p>In your repo, one person runs:</p><div class="cmd">curl -fsSL https://huddle.sage-hill.workers.dev/install.sh | sh</div><p class="muted" style="margin-top:8px">Windows: <code>irm https://huddle.sage-hill.workers.dev/install.ps1 | iex</code>. Or <code>npx -y github:flyingf15h/huddle new</code>.</p></div>
+    <div class="card"><h3>Invite your team</h3><p>It prints a link. Send it, and each person gets the exact command for their computer, to run in their copy of the repo.</p><div class="cmd">huddle.sage-hill.workers.dev/j/&lt;code&gt;</div></div>
     <div class="card"><h3>Work as usual</h3><p>Open Claude Code or Codex and prompt like always. Your agent is already in the huddle.</p><div class="cmd">claude    # or: codex, or open Cursor</div></div>
   </div>
 </div></section>

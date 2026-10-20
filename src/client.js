@@ -36,7 +36,7 @@ function loadConfig(start) {
     releaseOnStop: cfg.releaseOnStop !== false,
     failClosed: !!cfg.failClosed,
     // how much of this person's Claude session others can watch: full | tools | off
-    shareActivity: process.env.HUDDLE_SHARE || cfg.shareActivity || 'full',
+    shareActivity: process.env.HUDDLE_SHARE || cfg.shareActivity || DEFAULT_SHARING,
   };
 }
 
@@ -44,8 +44,11 @@ function loadConfig(start) {
 // server are both descendants of it, so they agree on identity. CLAUDE_PID is
 // only a fallback: an MCP server inherits it from whatever launched Claude, so
 // it's wrong when Claude was started from inside another Claude session.
+const DEFAULT_SHARING = 'tools'; // steps only until someone opts into sharing their conversation
+
 function claudePid() {
   if (process.env.HUDDLE_SESSION) return process.env.HUDDLE_SESSION;
+  if (process.platform === 'win32') return windowsAgentPid() || process.env.CLAUDE_PID || String(process.ppid);
   let pid = process.ppid;
   for (let i = 0; i < 8 && pid > 1; i++) {
     let comm = '', ppid = 0;
@@ -65,6 +68,25 @@ function claudePid() {
     pid = ppid;
   }
   return process.env.CLAUDE_PID || String(process.ppid);
+}
+
+// Windows has no /proc and no `ps`: ask PowerShell for the whole chain of parents in one go (a hook
+// runs on every tool call, so the answer is remembered for as long as our parent process lives).
+function windowsAgentPid() {
+  const cache = path.join(os.tmpdir(), `huddle-agent-${process.ppid}.txt`);
+  try { if (Date.now() - fs.statSync(cache).mtimeMs < 6 * 3600 * 1000) { const v = fs.readFileSync(cache, 'utf8').trim(); if (v) return v; } } catch {}
+  const script = `$p=${process.ppid}; for($i=0;$i -lt 8 -and $p -gt 4;$i++){ $x=Get-CimInstance Win32_Process -Filter "ProcessId=$p"; if(-not $x){break}; "$p|$($x.Name)|$($x.CommandLine)"; $p=$x.ParentProcessId }`;
+  try {
+    const out = execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', script], { encoding: 'utf8', windowsHide: true, timeout: 8000 });
+    for (const line of out.split(/\r?\n/)) {
+      const [pid, name = '', cmd = ''] = line.split('|');
+      if (/^(claude|codex)(\.exe)?$/i.test(name) || /@anthropic-ai[\\/]claude-code|[\\/]codex[\\/]/i.test(cmd)) {
+        try { fs.writeFileSync(cache, pid); } catch {}
+        return pid;
+      }
+    }
+  } catch {}
+  return null;
 }
 
 // key: what tells this agent apart from others in the same checkout (default: the Claude process)

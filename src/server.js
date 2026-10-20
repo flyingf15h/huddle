@@ -102,8 +102,9 @@ function createServer(opts = {}) {
   const dashboard = fs.readFileSync(path.join(__dirname, 'dashboard.html'), 'utf8');
   // the public/ folder: screenshots, the privacy and terms pages, icons
   const publicDir = path.join(__dirname, '..', 'public');
-  const TYPES = { '.html': 'text/html; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.css': 'text/css', '.js': 'text/javascript', '.json': 'application/json', '.txt': 'text/plain', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json' };
+  const TYPES = { '.html': 'text/html; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.css': 'text/css', '.js': 'text/javascript', '.json': 'application/json', '.txt': 'text/plain', '.sh': 'text/plain; charset=utf-8', '.ps1': 'text/plain; charset=utf-8', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json' };
   function staticFile(pathname, res) {
+    if (/^\/j\/[\w-]{12}\/?$/.test(pathname)) pathname = '/j.html'; // the page that shows how to join with an invite
     let rel = decodeURIComponent(pathname).replace(/^\/+/, '');
     if (!rel || rel.includes('..') || rel.startsWith('api/')) return false;
     if (!path.extname(rel)) rel += '.html';

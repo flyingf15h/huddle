@@ -10,11 +10,11 @@ h1 { font-size: 32px; letter-spacing: -.02em; margin: 8px 0 4px; } h2 { font-siz
 .top { display:flex; gap:14px; align-items:center; font-size:14px; } .top .grow { flex:1; } .small { font-size: 13px; }
 </style></head><body><main>
 <div class="top"><a href="/?about"><b>huddle</b></a><span class="grow"></span><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/app">Open the app</a></div>
-<h1>Privacy</h1><p class="small">Last updated October 19, 2026. huddle is in beta, and this page says plainly what it does with your data.</p>
+<h1>Privacy</h1><p class="small">Last updated October 20, 2026. huddle is in beta, and this page says plainly what it does with your data.</p>
 <h2>What huddle collects</h2>
 <ul>
 <li><b>Your account</b>, if you sign in: your email address and/or GitHub username, a display name you choose, and the projects you've opened with the access key for each. A GitHub token is stored only if you connect a repository.</li>
-<li><b>Project data</b> your team puts in: the task board, messages, the project brief, memory and skills, files agents are editing right now, snapshots of branches people share, and what each agent was asked and replied (if the team allows it). Secrets such as API keys and passwords are removed before anything leaves a computer.</li>
+<li><b>Project data</b> your team puts in: the task board, messages, the project brief, memory and skills, files agents are editing right now, snapshots of branches people share, and which tools each agent ran. What an agent was asked and replied is shared only when that person turns on full sharing (it is off by default). Secrets such as API keys and passwords are removed before anything leaves a computer.</li>
 <li><b>Usage counts</b> from each person's agent: token and time numbers, never the content of conversations.</li>
 <li><b>An audit log</b> of access and settings changes, and of the commands background agents ran.</li>
 </ul>
@@ -30,7 +30,7 @@ h1 { font-size: 32px; letter-spacing: -.02em; margin: 8px 0 4px; } h2 { font-siz
 <li>You can download or delete your account at any time from the same page. Deleting an account removes your sign-in and saved project keys; projects keep the work you did in them unless you erase it.</li>
 </ul>
 <h2>Security</h2>
-<p>Connections use HTTPS. Project access keys, GitHub tokens and webhook addresses are stored on the server and never shown to teammates. Sign-in cookies are HttpOnly and signed. No system is perfectly secure; keep secrets out of prompts and use the private files and never-allowed commands rules.</p>
+<p>Connections use HTTPS, and the hosted data is encrypted at rest by Cloudflare. It is not end-to-end encrypted: the service can read project data, so self-host if that matters. Project access keys, GitHub tokens and webhook addresses are stored on the server and never shown to teammates. Sign-in cookies are HttpOnly and signed. No system is perfectly secure; keep secrets out of prompts and use the private files and never-allowed commands rules.</p>
 <h2>Questions</h2>
 <p>Open an issue at <a href="https://github.com/flyingf15h/huddle/issues">github.com/flyingf15h/huddle/issues</a>. We'll update this page when anything above changes.</p>
 </main></body></html>

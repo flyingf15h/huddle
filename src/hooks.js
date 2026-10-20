@@ -46,7 +46,7 @@ function cacheSettings(root, s) {
 // how much of a session goes to the team: the person's choice, capped by the project's
 function sharingLevel(cfg) {
   const order = ['off', 'tools', 'full'];
-  const mine = cfg.shareActivity || 'full', cap = cachedSettings(cfg.root).maxSharing || 'full';
+  const mine = cfg.shareActivity || 'tools', cap = cachedSettings(cfg.root).maxSharing || 'full';
   return order[Math.min(order.indexOf(mine) < 0 ? 2 : order.indexOf(mine), order.indexOf(cap) < 0 ? 2 : order.indexOf(cap))];
 }
 const clean = (items) => items.map(it => ({ ...it, text: policy.redact(it.text) }));

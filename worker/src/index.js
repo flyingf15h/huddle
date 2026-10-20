@@ -39,9 +39,31 @@ async function indexGet(env, key) { return (await index(env, key).fetch(new Requ
 async function indexPut(env, key, value) { await index(env, key).fetch(new Request('https://index/', { method: 'PUT', headers: { 'x-huddle-index': key }, body: JSON.stringify(value) })); }
 async function indexDel(env, key) { await index(env, key).fetch(new Request('https://index/', { method: 'DELETE', headers: { 'x-huddle-index': key } })); }
 
+// A counter per key (an address plus what it's doing) kept in one small instance, so the limit holds
+// across every isolate. Returns false once `max` hits land inside `windowMs`.
+async function allow(env, key, max, windowMs) {
+  const res = await index(env, 'rl:' + key).fetch(new Request('https://index/', { method: 'POST', headers: { 'x-huddle-index': 'rl:' + key }, body: JSON.stringify({ max, windowMs }) }));
+  return (await res.json()).ok !== false;
+}
+const clientIp = (request) => request.headers.get('cf-connecting-ip') || 'unknown';
+// route group -> [hits, window]. Generous for people, tight for scripts guessing codes or minting projects.
+const RATES = {
+  new: [10, 60 * 60 * 1000],      // new projects (and demos) per address per hour
+  invite: [40, 60 * 1000],         // short-invite lookups: 12-character codes must not be guessable by brute force
+  redeem: [15, 10 * 60 * 1000],    // personal invite redemptions
+  auth: [30, 10 * 60 * 1000],      // sign-in routes (email codes also have their own per-address limit)
+  hook: [300, 60 * 1000],          // GitHub / Slack webhooks per project
+};
+async function limited(env, request, group, extra = '') {
+  const [max, windowMs] = RATES[group];
+  if (!(await allow(env, `${group}:${extra || clientIp(request)}`, max, windowMs))) throw httpError(429, 'too many requests from your address, try again in a few minutes');
+}
+
 // tighter than the self-hosted defaults: the free plan has 5 GB for everyone
 const LIMITS = { fileBytes: 1024 * 1024, files: 500, projectBytes: 10 * 1024 * 1024, sharedBytes: 1536 * 1024, gitBytes: 25 * 1024 * 1024 };
 const IDLE_DELETE_MS = 30 * 24 * 60 * 60 * 1000;
+const DEMO_IDLE_DELETE_MS = 24 * 60 * 60 * 1000; // demo projects are throwaway
+const idleLimit = (p) => (/^huddle-demo-/.test(p.name) ? DEMO_IDLE_DELETE_MS : IDLE_DELETE_MS);
 const SWEEP_MS = 60 * 1000;
 const MSGS_BYTES = 1024 * 1024;
 
@@ -69,7 +91,7 @@ function timingSafeEqual(a, b) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     try {
       if (!env.HUDDLE_SECRET) throw httpError(500, 'server is missing HUDDLE_SECRET');
@@ -91,6 +113,7 @@ export default {
           email: accounts.emailConfigured(acctCfg(env)), checks: [{ name: 'API', ok: true }, doCheck] }), { headers: { 'content-type': 'text/html; charset=utf-8' } });
       }
       if (url.pathname.startsWith('/auth/') || url.pathname.startsWith('/api/me')) {
+        if (request.method === 'POST') await limited(env, request, 'auth');
         const body = request.method === 'POST' ? await request.json().catch(() => ({})) : {};
         const r = await accounts.handle(acctCfg(env), url.origin, { method: request.method, url, cookie: request.headers.get('cookie'), body });
         if (r) return reply(r);
@@ -98,6 +121,7 @@ export default {
       // GitHub's webhook for a project's repository: the project checks the signature itself
       const hook = url.pathname.match(/^\/api\/hooks\/github\/([\w.-]{1,64})$/);
       if (hook && request.method === 'POST') {
+        await limited(env, request, 'hook', hook[1]);
         const headers = new Headers(request.headers);
         headers.set('x-huddle-project', hook[1]);
         headers.set('x-huddle-cred', JSON.stringify({ kind: 'none' }));
@@ -108,6 +132,7 @@ export default {
       // Slack's slash command and button presses for a project (the project checks Slack's signature)
       const sl = url.pathname.match(/^\/api\/slack\/([\w.-]{1,64})\/(command|interact)$/);
       if (sl && request.method === 'POST') {
+        await limited(env, request, 'hook', sl[1]);
         const headers = new Headers(request.headers);
         headers.set('x-huddle-project', sl[1]);
         headers.set('x-huddle-cred', JSON.stringify({ kind: 'none' }));
@@ -117,10 +142,12 @@ export default {
       }
       // screenshots, privacy and terms pages, icons
       if (request.method === 'GET' && env.ASSETS && !url.pathname.startsWith('/api/')) {
-        const a = await env.ASSETS.fetch(new Request(new URL(url.pathname.includes('.') ? url.pathname : url.pathname + '.html', url.origin)));
+        const page = /^\/j\/[\w-]{12}\/?$/.test(url.pathname) ? '/j.html' : url.pathname; // /j/<invite>: how to join
+        const a = await env.ASSETS.fetch(new Request(new URL(page.includes('.') ? page : page + '.html', url.origin)));
         if (a.ok) return a;
       }
       if (url.pathname === '/api/new' && request.method === 'POST') {
+        await limited(env, request, 'new');
         const body = await request.json().catch(() => ({}));
         const slug = String(body.name || 'project').toLowerCase().replace(/[^a-z0-9.-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'project';
         const rand = [...crypto.getRandomValues(new Uint8Array(4))].map(b => b.toString(16).padStart(2, '0')).join('');
@@ -130,6 +157,7 @@ export default {
       // a short invite: which project it opens, with that project's token
       const short = url.pathname.match(/^\/api\/invite\/([\w-]{12})$/);
       if (short && request.method === 'GET') {
+        await limited(env, request, 'invite');
         const r = await indexGet(env, 'invite:' + short[1]);
         if (!r.project) throw httpError(404, 'no such invite');
         if (r.personal) return json({ server: url.origin, project: r.project, personal: true });
@@ -145,7 +173,13 @@ export default {
       const cred = timingSafeEqual(tok, await projectToken(env, name)) ? { kind: 'project', ...(who || {}) }
         : tok.startsWith('hm_') ? { kind: 'member', token: tok, ...(who || {}) }
         : who ? { kind: 'user', ...who } : { kind: 'none' };
-      if (cred.kind === 'none' && m[2] !== 'redeem') throw httpError(401, 'bad token or no such project');
+      if (cred.kind === 'none') {
+        if (m[2] !== 'redeem') {
+          await limited(env, request, 'redeem', 'bad:' + clientIp(request)); // guessing tokens costs the same as guessing codes
+          throw httpError(401, 'bad token or no such project');
+        }
+        await limited(env, request, 'redeem');
+      }
       const stub = env.PROJECTS.get(env.PROJECTS.idFromName(name));
       const headers = new Headers(request.headers);
       headers.set('x-huddle-project', name);
@@ -158,10 +192,22 @@ export default {
       if (m[2] === 'member-invite' && res.ok) await indexPut(env, 'invite:' + (await res.clone().json()).inviteCode, { project: name, personal: true });
       return res;
     } catch (e) {
-      return json({ error: e.message }, e.code >= 400 && e.code < 600 ? e.code : 500);
+      const status = e.code >= 400 && e.code < 600 ? e.code : 500;
+      if (status >= 500) reportError(env, ctx, request, e);
+      return json({ error: status === 500 && !e.code ? 'internal error' : e.message }, status);
     }
   },
 };
+
+// Unexpected failures: one structured line in Workers Logs, plus a chat message when ERROR_WEBHOOK
+// (a Slack or Discord webhook) is set. Only the route shape goes out, never tokens or bodies.
+function reportError(env, ctx, request, e) {
+  const route = new URL(request.url).pathname.replace(/\/p\/[\w.-]+\//, '/p/:project/').replace(/\/invite\/[\w-]+/, '/invite/:code');
+  console.error(JSON.stringify({ level: 'error', route, method: request.method, message: String(e.message).slice(0, 300), stack: String(e.stack || '').split('\n').slice(0, 4).join(' | ') }));
+  if (!env.ERROR_WEBHOOK || !ctx) return;
+  const text = `huddle error on ${request.method} ${route}: ${String(e.message).slice(0, 200)}`;
+  ctx.waitUntil(fetch(env.ERROR_WEBHOOK, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, content: text }) }).catch(() => {}));
+}
 
 export class HuddleProject extends DurableObject {
   constructor(ctx, env) {
@@ -247,7 +293,7 @@ export class HuddleProject extends DurableObject {
 
   // locks need sweeping while they exist; otherwise just come back to clean up an abandoned project
   async schedule() {
-    let want = this.busy() ? now() + SWEEP_MS : this.p.lastActive + IDLE_DELETE_MS;
+    let want = this.busy() ? now() + SWEEP_MS : this.p.lastActive + idleLimit(this.p);
     // the daily digest has its own time
     const nd = core.features.nextWakeAt(this.p);
     if (nd) want = Math.min(want, nd + 1000);
@@ -256,8 +302,10 @@ export class HuddleProject extends DurableObject {
   }
 
   async alarm() {
+    // a rate-limit counter whose window has passed
+    if (!(await this.ctx.storage.get('meta')) && (await this.ctx.storage.get('hits'))) { await this.ctx.storage.deleteAll(); return; }
     const p = await this.load();
-    if (!Object.keys(p.locks).length && now() - p.lastActive > IDLE_DELETE_MS && !this.ctx.getWebSockets().length) {
+    if (!Object.keys(p.locks).length && now() - p.lastActive > idleLimit(p) && !this.ctx.getWebSockets().length) {
       await this.ctx.storage.deleteAll();
       this.p = null;
       return;
@@ -272,6 +320,16 @@ export class HuddleProject extends DurableObject {
     // an instance named "invite:<code>" only remembers which project a short invite opens
     const idxKey = request.headers.get('x-huddle-index');
     if (idxKey) {
+      if (request.method === 'POST' && idxKey.startsWith('rl:')) {
+        const { max, windowMs } = await request.json();
+        const t = Date.now();
+        const hits = ((await this.ctx.storage.get('hits')) || []).filter(x => t - x < windowMs);
+        const ok = hits.length < max;
+        if (ok) hits.push(t);
+        await this.ctx.storage.put('hits', hits);
+        await this.ctx.storage.setAlarm(t + windowMs + 1000); // forget the key once its window is over
+        return json({ ok });
+      }
       if (request.method === 'PUT') { await this.ctx.storage.put('invite', await request.json()); return json({ ok: true }); }
       if (request.method === 'DELETE') { await this.ctx.storage.deleteAll(); return json({ ok: true }); }
       return json((await this.ctx.storage.get('invite')) || {});

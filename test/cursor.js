@@ -21,7 +21,7 @@ const sh = (cwd, ...args) => {
 function person(name, pid, url, token, project, agent) {
   const root = path.join(tmp, name);
   fs.mkdirSync(path.join(root, '.huddle'), { recursive: true });
-  fs.writeFileSync(path.join(root, '.huddle', 'config.json'), JSON.stringify({ server: url, token, project, name, agent, summarize: false, notify: false }));
+  fs.writeFileSync(path.join(root, '.huddle', 'config.json'), JSON.stringify({ server: url, token, project, name, agent, summarize: false, notify: false, shareActivity: 'full' }));
   const env = { ...process.env, ...gitEnv, HUDDLE_SESSION: String(pid), HUDDLE_ROOT: root };
   const hook = (event, input) => {
     const r = spawnSync(process.execPath, [CLI, 'hook', event, '--agent', agent], { input: JSON.stringify({ workspace_roots: [root], conversation_id: 'conv-' + pid, ...input }), env, encoding: 'utf8' });
