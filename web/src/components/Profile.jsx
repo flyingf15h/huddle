@@ -46,13 +46,13 @@ export default function Profile() {
     } catch (x) { setErr(x.message); }
     setBusy(false);
   }
-  const [hue] = color(myName());
+  const pal = color(myName());
   return (
     <div className="overlay" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) S.profile = false; }}>
       <div className="sheet" role="dialog" aria-modal="true" aria-label="Your profile">
         <form onSubmit={save} style={{ display: 'grid', gap: 10 }}>
           <div className="pichead">
-            {picture ? <span className="av has-img big"><img src={picture} alt="" /></span> : <span className="av big" style={{ '--h': hue }}>{(display.trim() || myName())[0].toUpperCase()}</span>}
+            {picture ? <span className="av has-img big"><img src={picture} alt="" /></span> : <span className="av big" style={{ background: pal[0], color: pal[1] }}>{(display.trim() || myName())[0].toUpperCase()}</span>}
             <span className="picbtns"><label className="filebtn">Upload photo<input type="file" accept="image/*" hidden onChange={pick} /></label>{picture && <button type="button" className="link small" onClick={() => setPicture(null)}>Remove</button>}</span></div>
           <div><label htmlFor="pf-d" className="small muted">Display name</label><input id="pf-d" value={display} onChange={(e) => setDisplay(e.target.value)} maxLength={40} placeholder={myName()} autoComplete="name" style={{ width: '100%' }} /></div>
           <div><label htmlFor="pf-u" className="small muted">Username · what teammates use to send you work</label><input id="pf-u" value={username} onChange={(e) => setUsername(e.target.value)} maxLength={40} autoComplete="off" style={{ width: '100%' }} /></div>

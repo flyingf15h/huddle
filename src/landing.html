@@ -14,7 +14,7 @@
   if (/(^#|&)(invite|p|token|demo)\b/.test(h) || (known && !/[?&]about\b/.test(location.search))) location.replace('/app' + h);
 })();
 </script>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23d24a12'/%3E%3Ccircle cx='11' cy='13' r='4.2' fill='%23fffcf6'/%3E%3Ccircle cx='21' cy='13' r='4.2' fill='%23fffcf6' opacity='.85'/%3E%3Ccircle cx='16' cy='21' r='4.2' fill='%23fffcf6' opacity='.7'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%232d5fb8'/%3E%3Ccircle cx='11' cy='13' r='4.2' fill='%23fffcf6'/%3E%3Ccircle cx='21' cy='13' r='4.2' fill='%23fffcf6' opacity='.85'/%3E%3Ccircle cx='16' cy='21' r='4.2' fill='%23fffcf6' opacity='.7'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -147,31 +147,11 @@ footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
 .gal .phones { display: flex; gap: 14px; justify-content: center; }
 .gal .phones img { width: min(46%, 250px); border-radius: 22px; }
 @media (max-width: 800px) { .gal, .gal:nth-child(even) { grid-template-columns: 1fr; } .gal:nth-child(even) .gtext { order: 0; } }
-
-/* neutral, flat: the same language as the app (no glow, glass or gradient text) */
-:root { --page: #fafafa; --ink: #171717; --muted: #5d5d64; --faint: #8b8b93; --line: #ececee; --line-strong: #dcdce0; --card: #ffffff; --sunk: #f4f4f5;
-  --accent: #d24a12; --accent-ink: #fff; --accent-soft: rgba(210, 74, 18, .09); --accent-soft-ink: #b13d0c; --pop: var(--accent); --shadow: 0 1px 2px rgba(0, 0, 0, .04); }
-@media (prefers-color-scheme: dark) { :root { --page: #0a0a0b; --ink: #ededef; --muted: #9b9ba3; --faint: #6c6c75; --line: rgba(255, 255, 255, .08); --line-strong: rgba(255, 255, 255, .15);
-  --card: #111113; --sunk: #17171a; --accent: #ff7a3d; --accent-ink: #1c0d05; --accent-soft: rgba(255, 122, 61, .13); --accent-soft-ink: #ffa06e; --shadow: none; } }
-body::before { display: none; }
-nav { backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--page); border-bottom: 1px solid var(--line); }
-.btn { border-radius: 7px; transition: background .12s, border-color .12s; } .btn:hover { transform: none; }
-.btn.big { border-radius: 8px; padding: 11px 20px; }
-.eyebrow { border-radius: 0; background: none; color: var(--faint); padding: 0; font-weight: 500; letter-spacing: 0; }
-h1 { letter-spacing: -.04em; font-weight: 600; }
-h1 em { background: none; -webkit-text-fill-color: initial; color: var(--faint); }
-.shot { border-radius: 12px; box-shadow: none; backdrop-filter: none; background: none; padding: 0; }
-.shot img { display: block; width: 100%; height: auto; border-radius: 11px; }
-.card { backdrop-filter: none; -webkit-backdrop-filter: none; border-radius: 10px; box-shadow: none; }
-.card .ic { background: none; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; }
-.kicker { color: var(--faint); letter-spacing: .06em; font-weight: 600; font-size: 12px; }
-.works { font-weight: 500; }
-.gal img { box-shadow: none; border-radius: 10px; }
 </style>
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
-  <symbol id="logo" viewBox="0 0 32 32"><rect width="32" height="32" rx="9" fill="#d24a12"/><circle cx="11" cy="13" r="4.2" fill="#fffcf6"/><circle cx="21" cy="13" r="4.2" fill="#fffcf6" opacity=".85"/><circle cx="16" cy="21" r="4.2" fill="#fffcf6" opacity=".7"/></symbol>
+  <symbol id="logo" viewBox="0 0 32 32"><rect width="32" height="32" rx="9" fill="#2d5fb8"/><circle cx="11" cy="13" r="4.2" fill="#fffcf6"/><circle cx="21" cy="13" r="4.2" fill="#fffcf6" opacity=".85"/><circle cx="16" cy="21" r="4.2" fill="#fffcf6" opacity=".7"/></symbol>
 </defs></svg>
 
 <nav><div class="wrap">
@@ -191,7 +171,34 @@ h1 em { background: none; -webkit-text-fill-color: initial; color: var(--faint);
   </div>
   <p class="note">No sign-up. Nothing committed to your repo. Everyone keeps their own subscription.</p>
 
-  <div class="shot"><picture><source srcset="/shots/activity.webp" media="(prefers-color-scheme: dark)"><img src="/shots/activity-light.webp" alt="The huddle dashboard: three teammates, a live activity feed and the task list" width="1400" height="860"></picture></div>
+  <div class="shot" role="img" aria-label="The huddle dashboard: three teammates, a live activity feed and the task list">
+    <div class="bar"><i></i><i></i><i></i><span><span class="live"></span>acme-shop · 3 online</span></div>
+    <div class="body">
+      <div class="col side">
+        <div class="lbl">Team</div>
+        <div class="person"><span class="av a1">M</span><span><b>Maya</b><span>Building the Apple Pay button</span></span></div>
+        <div class="person"><span class="av a2">D</span><span><b>Dev <span class="tag">Codex</span></b><span>Adding refunds to the payments API</span></span></div>
+        <div class="person"><span class="av a3">S</span><span><b>Sam</b><span>Updating the checkout docs</span></span></div>
+        <div class="lbl" style="margin-top:22px">Being edited now</div>
+        <div class="lockrow">🔒 checkout/ApplePay.tsx</div>
+        <div class="lockrow">🔒 api/payments.ts</div>
+      </div>
+      <div class="col">
+        <div class="lbl">Activity</div>
+        <div class="ev"><span class="av a4">Y</span><div><div class="meta"><b>You</b> requested from the team · 9:41</div><p>Add Apple Pay to checkout. Card payments must keep working.</p></div></div>
+        <div class="ev"><span class="av a1">M</span><div><div class="meta"><b>Maya's Claude</b> split it into 4 tasks · 9:42</div><p>Button for Maya, session endpoint for Dev (most usage left), domain file for Sam.</p></div></div>
+        <div class="ev"><span class="av a2">D</span><div><div class="meta"><b>Dev's Codex</b> messaged Maya · 9:58</div><p>The endpoint returns <code>{ merchantSession }</code>. Amounts in cents.</p><div class="step">ran  npm test -- payments   ✓ 14 passed</div></div></div>
+        <div class="ev"><span class="av a1">M</span><div><div class="meta"><b>Maya's Claude</b> · 10:06</div><p>The button shows on supported devices and falls back to the card form everywhere else.</p></div></div>
+      </div>
+      <div class="col side">
+        <div class="lbl">Tasks · 2 of 4 done</div>
+        <div class="task"><b>Apple Pay session endpoint</b><span class="st-done">Done</span> <span style="color:var(--faint)">· reviewed, tests pass</span></div>
+        <div class="task"><b>Apple Pay button on checkout</b><span class="st-doing">Working on it</span></div>
+        <div class="task"><b>Domain verification file</b><span class="st-stuck">Stuck</span> <span style="color:var(--faint)">· needs a login</span></div>
+        <div class="task"><b>Fix the flaky cart test</b><span class="st-done">Done</span> <span style="color:var(--faint)">· PR #128</span></div>
+      </div>
+    </div>
+  </div>
   <div class="works"><span>Claude Code</span><span>OpenAI Codex</span><span>Cursor</span><span>GitHub</span><span>Slack</span><span>Discord</span><span>Self-hostable</span></div>
 </div></header>
 

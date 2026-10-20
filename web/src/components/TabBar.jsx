@@ -11,7 +11,7 @@ export default function TabBar() {
     <nav className="tabbar" aria-label="Pages">
       {TABS.map(([v, l]) => (
         <button key={v} className={S.view === v ? 'on' : ''} aria-current={S.view === v ? 'page' : undefined} onClick={() => go(v)}>
-          <Icon name={v} size={20} /><span>{l}</span>{v === 'tasks' && mine > 0 && <span className="navbadge">{mine}</span>}
+          <Icon name={v} size={20} /><span>{l}</span>{v === 'tasks' && mine > 0 && <span className="navbadge" style={{ background: 'var(--accent)' }}>{mine}</span>}
         </button>
       ))}
       <button onClick={() => (S.drawer = true)}><Icon name="menu" size={20} /><span>More</span></button>

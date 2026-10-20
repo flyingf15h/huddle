@@ -48,8 +48,8 @@ export default function Sidebar() {
         {NAV.map(([v, label]) => (
           <button key={v} className={S.view === v ? 'on' : ''} aria-current={S.view === v ? 'page' : undefined} onClick={() => go(v)}>
             <Icon name={v} /><span>{label}</span>
-            {v === 'health' && problems > 0 && <span className="navbadge bad">{problems}</span>}
-            {v === 'tasks' && openTasks > 0 && <span className="navbadge">{openTasks}</span>}
+            {v === 'health' && problems > 0 && <span className="navbadge">{problems}</span>}
+            {v === 'tasks' && openTasks > 0 && <span className="navbadge" style={{ background: 'var(--accent)' }}>{openTasks}</span>}
           </button>
         ))}
       </div>

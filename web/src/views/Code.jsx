@@ -95,7 +95,7 @@ export default function Code() {
               <select id="coderef" value={ref || ''} onChange={(e) => { setRef(e.target.value); setPath(null); loadTree(e.target.value, null); }}>{refs.map(x => <option key={x.owner + x.branch} value={x.owner + '/' + x.branch}>{x.owner}'s {x.branch} · {x.count} files · {ago(x.at)}</option>)}</select></div>
             <div className="tree">
               {tree.map((d, i) => d.dir ? <div className="dir" key={'d' + i}>{d.dir}/</div>
-                : <button key={d.f.path} data-nav className={d.f.path === path ? 'sel' : ''} style={{ paddingLeft: d.indent }} title={d.f.path} onClick={() => openFile(d.f.path, false)}>{lockOf(d.f.path) && <Icon name="lock" size={11} />} {d.name}</button>)}
+                : <button key={d.f.path} data-nav className={d.f.path === path ? 'sel' : ''} style={{ paddingLeft: d.indent }} title={d.f.path} onClick={() => openFile(d.f.path, false)}>{lockOf(d.f.path) ? '🔒 ' : ''}{d.name}</button>)}
               {skipped.length > 0 && <><div className="dir">not shown (binary or large)</div>{skipped.slice(0, 30).map(p => <div key={p} className="small muted" style={{ padding: '1px 14px 1px 26px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p}</div>)}</>}
             </div>
           </div>
@@ -105,7 +105,7 @@ export default function Code() {
               : path ? (
                 <>
                   <div className="crumb"><b className="mono" style={{ fontSize: 14 }}>{path}</b><span className="small muted">{label}</span>
-                    {lockOf(path) && <span className="livebar"><Icon name="lock" size={12} /> {lockOf(path).holderName} is editing</span>}
+                    {lockOf(path) && <span className="livebar">🔒 {lockOf(path).holderName} is editing</span>}
                     {liveCopy && <button className="small" onClick={() => openFile(path, !live)}>{live ? 'Show committed version' : 'Show live version'}</button>}</div>
                   <pre className="codebox">{content.split('\n').map((l, i) => <div key={i} className={'ln' + (i + 1 === hlLine ? ' hl' : '')}><span>{i + 1}</span><span>{l || ' '}</span></div>)}</pre>
                 </>
