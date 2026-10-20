@@ -11,8 +11,8 @@ function statusPage(info) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>huddle status</title>
 <style>
-:root { --bg: #faf7f0; --card: #fffdf8; --ink: #24211c; --muted: #5f5b53; --line: rgba(36, 33, 28, .14); --ok: #1f7a5c; --bad: #b42318; }
-@media (prefers-color-scheme: dark) { :root { --bg: #1d1b18; --card: #272420; --ink: #ece5da; --muted: #aaa398; --line: rgba(255, 255, 255, .12); --ok: #5cc49c; --bad: #f07a6a; } }
+:root { --bg: #f8f7f3; --card: #ffffff; --ink: #1b2333; --muted: #545c6c; --line: rgba(27, 35, 51, .14); --ok: #1f7a5c; --bad: #b42318; }
+@media (prefers-color-scheme: dark) { :root { --bg: #12161f; --card: #1b2130; --ink: #e6e9f0; --muted: #a2a9b8; --line: rgba(255, 255, 255, .12); --ok: #5cc49c; --bad: #f07a6a; } }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, sans-serif; }
 main { max-width: 560px; margin: 0 auto; padding: 48px 16px; }

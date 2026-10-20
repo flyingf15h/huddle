@@ -14,21 +14,21 @@
   if (/(^#|&)(invite|p|token|demo)\b/.test(h) || (known && !/[?&]about\b/.test(location.search))) location.replace('/app' + h);
 })();
 </script>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232f5d62'/%3E%3Ccircle cx='11' cy='13' r='4.2' fill='%23faf7f0'/%3E%3Ccircle cx='21' cy='13' r='4.2' fill='%23faf7f0' opacity='.85'/%3E%3Ccircle cx='16' cy='21' r='4.2' fill='%23faf7f0' opacity='.7'/%3E%3C/svg%3E">
-<meta name="theme-color" content="#faf7f0">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2324365e'/%3E%3Ccircle cx='11' cy='13' r='4.2' fill='%23f8f7f3'/%3E%3Ccircle cx='21' cy='13' r='4.2' fill='%23f8f7f3' opacity='.85'/%3E%3Ccircle cx='16' cy='21' r='4.2' fill='%23f8f7f3' opacity='.7'/%3E%3C/svg%3E">
+<meta name="theme-color" content="#f8f7f3">
 <style>
-/* the same colours as the app's default Cream theme, and Evening in dark mode */
+/* off-white and navy (a deep blue-black in dark mode) */
 :root {
-  --page: #faf7f0; --raised: #fffdf8; --rail: #f2ede2; --ink: #24211c; --muted: #5f5b53; --faint: #8a857b;
-  --line: rgba(36, 33, 28, .1); --line-strong: rgba(36, 33, 28, .18); --sunk: rgba(36, 33, 28, .04);
-  --accent: #2f5d62; --accent-ink: #fff; --ok: #1f7a5c; --bad: #b42318; --warn: #8a5a00;
+  --page: #f8f7f3; --raised: #ffffff; --rail: #e9edf3; --ink: #1b2333; --muted: #545c6c; --faint: #868c98;
+  --line: rgba(27, 35, 51, .1); --line-strong: rgba(27, 35, 51, .18); --sunk: rgba(27, 35, 51, .04);
+  --accent: #24365e; --accent-ink: #fff; --ok: #1f7a5c; --bad: #b42318; --warn: #8a5a00;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --page: #1d1b18; --raised: #272420; --rail: #161412; --ink: #ece5da; --muted: #aaa398; --faint: #7f796f;
+    --page: #12161f; --raised: #1b2130; --rail: #0d1118; --ink: #e6e9f0; --muted: #a2a9b8; --faint: #747c8c;
     --line: rgba(255, 255, 255, .08); --line-strong: rgba(255, 255, 255, .15); --sunk: rgba(255, 255, 255, .04);
-    --accent: #d9a066; --accent-ink: #1d1b18; --ok: #5cc49c; --bad: #f07a6a; --warn: #e8b04b;
+    --accent: #9db3e0; --accent-ink: #12161f; --ok: #5cc49c; --bad: #f07a6a; --warn: #e8b04b;
     color-scheme: dark;
   }
 }
@@ -58,7 +58,7 @@ h1 { font-size: clamp(34px, 5.4vw, 56px); line-height: 1.08; letter-spacing: -.0
 .note { margin-top: 14px; font-size: 14px; color: var(--faint); }
 
 /* the product, drawn like the real app */
-.shot { margin: 56px 0 0; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--page); overflow: hidden; text-align: left; box-shadow: 0 1px 2px rgba(36, 33, 28, .06), 0 16px 40px rgba(36, 33, 28, .08); }
+.shot { margin: 56px 0 0; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--page); overflow: hidden; text-align: left; box-shadow: 0 1px 2px rgba(27, 35, 51, .06), 0 16px 40px rgba(27, 35, 51, .08); }
 .shot .body { display: grid; grid-template-columns: 210px minmax(0, 1fr) 250px; min-height: 380px; font-size: 13.5px; }
 .col { padding: 14px 16px; } .col + .col { border-left: 1px solid var(--line); }
 .col.rail { background: var(--rail); }
@@ -139,7 +139,7 @@ footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
-  <symbol id="logo" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#2f5d62"/><circle cx="11" cy="13" r="4.2" fill="#faf7f0"/><circle cx="21" cy="13" r="4.2" fill="#faf7f0" opacity=".85"/><circle cx="16" cy="21" r="4.2" fill="#faf7f0" opacity=".7"/></symbol>
+  <symbol id="logo" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#24365e"/><circle cx="11" cy="13" r="4.2" fill="#f8f7f3"/><circle cx="21" cy="13" r="4.2" fill="#f8f7f3" opacity=".85"/><circle cx="16" cy="21" r="4.2" fill="#f8f7f3" opacity=".7"/></symbol>
 </defs></svg>
 
 <nav><div class="wrap">
