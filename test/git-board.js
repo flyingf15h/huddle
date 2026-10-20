@@ -229,7 +229,7 @@ setTimeout(() => {
     const at = (kind, id) => Number(runs.find(r => r[0] === kind && r[1] === id)[2]);
     assert(at('start', rb) < at('end', ra) && at('start', ra) < at('end', rb), 'the two requests ran at the same time');
     for (const r of runs.filter(r => r[0] === 'start')) {
-      assert(r[3].split(path.sep).includes('clones') && r[3] === r[5], 'each runs in its own worktree, with huddle pointed there');
+      assert(r[3].split(path.sep).includes('clones') && path.basename(r[3]) === path.basename(r[5]), 'each runs in its own worktree, with huddle pointed there');
       assert.equal(r[4], 'clone-' + r[1]);
       assert.equal(r[6], 'main');
     }

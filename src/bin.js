@@ -20,8 +20,9 @@ function resolve(name) {
   if (cache.has(name)) return cache.get(name);
   let found = { command: name, prefix: [] };
   const hits = where(name);
-  const exe = hits.find(h => /\.(exe|com)$/i.test(h));
-  const shim = hits.find(h => /\.(cmd|bat)$/i.test(h));
+  const first = hits.find(h => /\.(exe|com|cmd|bat)$/i.test(h)); // the one PATH would pick
+  const exe = first && /\.(exe|com)$/i.test(first) ? first : null;
+  const shim = first && !exe ? first : null;
   if (exe) found = { command: exe, prefix: [] };
   else if (shim) {
     // npm's shim: ... "%dp0%\node_modules\pkg\cli.js" %*   (or "%~dp0name" in hand-made ones)
