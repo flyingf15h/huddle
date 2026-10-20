@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>huddle: build in parallel with your team's AI agents</title>
-<meta name="description" content="For small teams where everyone codes with an AI agent. Your agents hand work to each other on their own, never overwrite each other's files, and ask each other before they guess.">
+<meta name="description" content="For small teams where everyone has their own AI subscription. Your agents share memory and skills, see each other's work in real time, split tasks between themselves, lock files while they edit them, and take over when someone runs out of usage.">
 <script>
 // people arriving with an invite or project link, or who already use huddle in this browser, go
 // straight to the app (/?about shows this page anyway)
@@ -37,6 +37,8 @@ h1, h2 { text-wrap: balance; }
 h2 { font-size: clamp(28px, 3.6vw, 42px); letter-spacing: -.025em; line-height: 1.12; margin: 0 0 14px; }
 .sub { color: var(--muted); font-size: 18px; max-width: 720px; margin: 0 0 40px; text-wrap: pretty; }
 section { padding: 120px 0 0; }
+.tint { margin-top: 120px; padding: 110px 0 40px; background: linear-gradient(180deg, #eef3ff, #f4f7ff 60%, var(--page)); border-top: 1px solid #dbe5ff; }
+.tint .window { border-color: #c9d7fb; box-shadow: 0 30px 70px -30px rgba(47, 107, 255, .35); }
 
 /* scroll progress */
 #progress { position: fixed; top: 0; left: 0; height: 2px; width: 100%; background: var(--signal); transform-origin: left; transform: scaleX(0); z-index: 50; }
@@ -61,18 +63,20 @@ nav .actions a.plain { text-decoration: none; color: var(--muted); } nav .action
 
 /* hero: a fine grid behind it that fades out at the edges */
 .hero { position: relative; padding: 88px 0 0; text-align: center; }
-.hero::before { content: ''; position: absolute; inset: 0 0 auto; height: 760px; z-index: -1; pointer-events: none;
+.net { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
+.hero .net { inset: 0 0 auto; height: 820px; z-index: -1; }
+.hero::before { content: none; position: absolute; inset: 0 0 auto; height: 760px; z-index: -1; pointer-events: none;
   background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px); background-size: 48px 48px; background-position: center -1px;
   -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 30%, transparent 75%); mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 30%, transparent 75%); }
-.pill { display: inline-flex; align-items: center; gap: 10px; padding: 5px 12px 5px 6px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--raised); font-size: 13.5px; color: var(--muted); margin-bottom: 26px; }
+.pill { display: inline-flex; align-items: center; gap: 10px; padding: 5px 12px 5px 6px; border: 1px solid color-mix(in srgb, var(--signal) 35%, transparent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--signal) 8%, transparent); border-radius: 999px; background: var(--raised); font-size: 13.5px; color: var(--muted); margin-bottom: 26px; }
 .pill b { font-family: var(--mono); font-size: 11.5px; font-weight: 600; letter-spacing: .04em; color: #fff; background: var(--signal); padding: 2px 8px; border-radius: 999px; }
 h1 { font-size: clamp(38px, 6.4vw, 72px); line-height: 1.02; letter-spacing: -.04em; margin: 0 auto 22px; max-width: 980px; font-weight: 750; }
-h1 .dim { color: var(--faint); }
+h1 .dim { color: var(--signal); }
 .lede { font-size: clamp(17px, 2vw, 20px); color: var(--muted); max-width: 700px; margin: 0 auto 32px; text-wrap: pretty; }
 .ctas { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
 .facts { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px 22px; margin: 22px 0 0; padding: 0; list-style: none; font-size: 14px; color: var(--muted); }
 .facts li { display: inline-flex; align-items: center; gap: 8px; }
-.facts svg { width: 15px; height: 15px; color: var(--ok); }
+.facts svg { width: 15px; height: 15px; color: var(--signal); }
 
 /* the tour: real screenshots that switch tabs by themselves, tilted until you scroll */
 .tour { margin: 64px auto 0; max-width: 1080px; perspective: 1600px; }
@@ -105,6 +109,8 @@ h1 .dim { color: var(--faint); }
 .step h3 { margin: 6px 0 8px; font-size: 24px; letter-spacing: -.015em; color: var(--faint); transition: color .3s; }
 .step p { margin: 0; color: var(--faint); font-size: 16.5px; max-width: 440px; transition: color .3s; }
 .step.on { border-left-color: var(--signal); }
+.step.on h3::after { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--signal); margin-left: 10px; vertical-align: middle; box-shadow: 0 0 0 0 rgba(47, 107, 255, .5); animation: ping 1.6s infinite; }
+@keyframes ping { 70% { box-shadow: 0 0 0 9px rgba(47, 107, 255, 0); } 100% { box-shadow: 0 0 0 0 rgba(47, 107, 255, 0); } }
 .step.on .n { color: var(--signal); } .step.on h3 { color: var(--ink); } .step.on p { color: var(--muted); }
 .stage { position: sticky; top: calc(50vh - 210px); height: 420px; }
 .window { height: 100%; border-radius: 12px; border: 1px solid var(--line-strong); background: var(--raised); box-shadow: 0 30px 70px -30px rgba(27, 35, 51, .3); overflow: hidden; display: flex; flex-direction: column; }
@@ -158,11 +164,11 @@ h1 .dim { color: var(--faint); }
 /* bento: small loops that show the idea instead of an icon */
 .bento { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px; }
 .cell { position: relative; grid-column: span 2; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--raised); padding: 22px; overflow: hidden; display: flex; flex-direction: column; transition: transform .2s, box-shadow .2s; }
-.cell:hover { transform: translateY(-3px); box-shadow: 0 18px 40px -22px rgba(27, 35, 51, .35); }
+.cell:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--signal) 50%, transparent); box-shadow: 0 18px 40px -22px rgba(47, 107, 255, .45); }
 .cell.wide { grid-column: span 4; } .cell.half { grid-column: span 3; }
 .cell h3 { margin: 0 0 6px; font-size: 18px; letter-spacing: -.01em; }
 .cell p { margin: 0; color: var(--muted); font-size: 15px; }
-.viz { height: 150px; margin: 0 -22px 18px; padding: 0 22px; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid var(--line); background: linear-gradient(var(--line) 1px, transparent 1px) 0 0 / 100% 24px, var(--page); margin-top: -22px; }
+.viz { height: 150px; margin: 0 -22px 18px; padding: 0 22px; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid #dbe5ff; background: radial-gradient(rgba(47, 107, 255, .16) 1px, transparent 1px) 0 0 / 16px 16px, #f1f5ff; margin-top: -22px; }
 /* locks: ben's agent takes the file, ana's agent is told to wait */
 .lockviz { display: grid; grid-template-columns: auto 1fr auto 1fr auto; align-items: center; gap: 10px; width: 100%; max-width: 560px; position: relative; }
 .agent { display: flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
@@ -274,12 +280,15 @@ summary::-webkit-details-marker { display: none; }
 summary::after { content: '+'; font-family: var(--mono); color: var(--faint); font-weight: 400; font-size: 20px; line-height: 1; transition: transform .2s; }
 details[open] summary::after { transform: rotate(45deg); }
 details p { color: var(--muted); margin: 10px 0 0; }
-.final { position: relative; text-align: center; padding: 150px 0 120px; }
-.final::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
-  background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px); background-size: 48px 48px;
-  -webkit-mask-image: radial-gradient(ellipse 55% 60% at 50% 55%, #000 20%, transparent 75%); mask-image: radial-gradient(ellipse 55% 60% at 50% 55%, #000 20%, transparent 75%); }
-.final h2 { margin: 0 auto 14px; max-width: 980px; font-size: clamp(32px, 4.6vw, 54px); }
-.final .sub { margin: 0 auto 32px; }
+.final { padding: 120px 0 110px; }
+.final .panel { position: relative; overflow: hidden; text-align: center; border-radius: 22px; padding: 96px 24px; color: #fff;
+  background: radial-gradient(120% 90% at 50% 0%, #2f6bff 0%, #1f3f9a 45%, #15244d 100%); box-shadow: 0 40px 90px -40px rgba(31, 63, 154, .7); }
+.final .panel .net { z-index: 0; } .final .panel > *:not(.net) { position: relative; z-index: 1; }
+.final h2 { margin: 0 auto 14px; max-width: 900px; font-size: clamp(32px, 4.6vw, 54px); color: #fff; }
+.final .sub { margin: 0 auto 32px; color: rgba(255, 255, 255, .78); }
+.final .btn { background: rgba(255, 255, 255, .08); border-color: rgba(255, 255, 255, .35); color: #fff; }
+.final .btn:hover { border-color: #fff; }
+.final .btn.primary { background: #fff; border-color: #fff; color: #15244d; box-shadow: 0 10px 30px -10px rgba(0, 0, 0, .4); }
 footer { border-top: 1px solid var(--line); padding: 26px 0 44px; color: var(--faint); font-size: 14px; }
 footer .wrap { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; }
 footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
@@ -322,10 +331,10 @@ footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
   <div class="actions"><a class="plain" href="/app">Open the app</a><a class="btn primary" href="/app#demo">Try the demo</a></div>
 </div></nav>
 
-<header class="hero"><div class="wrap">
+<header class="hero"><canvas class="net" id="heronet" aria-hidden="true"></canvas><div class="wrap">
   <div class="pill rv"><b>MULTIPLAYER</b>for Claude Code, Codex and Cursor</div>
   <h1 class="rv" style="--d:.05s">Build in parallel with your team's AI agents <span class="dim">without the merge chaos</span></h1>
-  <p class="lede rv" style="--d:.1s">For small teams where everyone codes with an AI agent. Your agents see what the others are doing, hand off work to each other on their own, lock files while they edit them, and ask each other before they guess.</p>
+  <p class="lede rv" style="--d:.1s">For small teams where everyone has their own AI subscription. Your agents share project memory and skills, see what the others are doing in real time, split complex tasks between themselves automatically, lock files while they edit them, and take over each other's work when someone runs out of usage.</p>
   <div class="ctas rv" style="--d:.15s">
     <a class="btn primary big" href="/app#demo">Watch agents team up <span class="arrow">→</span></a>
     <a class="btn big" href="#setup">Set up in a minute</a>
@@ -342,7 +351,7 @@ footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
       <button role="tab" aria-selected="false" aria-controls="tourframe" data-i="1">Tasks<i></i></button>
       <button role="tab" aria-selected="false" aria-controls="tourframe" data-i="2">Code<i></i></button>
       <button role="tab" aria-selected="false" aria-controls="tourframe" data-i="3">Usage<i></i></button>
-      <button role="tab" aria-selected="false" aria-controls="tourframe" data-i="4">Search<i></i></button>
+      <button role="tab" aria-selected="false" aria-controls="tourframe" data-i="4">Memory<i></i></button>
     </div>
     <p class="cap" id="tourcap" aria-live="polite"><b>Everything, live.</b> Every request, agent step and message across the team, with who is on what.</p>
     <div class="frame" id="tourframe" role="tabpanel">
@@ -350,7 +359,7 @@ footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
       <img src="/shots/tasks.webp" alt="huddle Tasks screen" width="1400" height="860">
       <img src="/shots/conflicts.webp" alt="huddle Code screen" width="1400" height="860">
       <img src="/shots/usage.webp" alt="huddle Usage screen" width="1400" height="860">
-      <img src="/shots/search.webp" alt="huddle Search screen" width="1400" height="860">
+      <img src="/shots/memory.webp" alt="huddle shared memory screen" width="1400" height="860">
     </div>
   </div>
 </div></header>
@@ -360,7 +369,7 @@ footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
   <span aria-hidden="true">Claude Code</span><span aria-hidden="true">OpenAI Codex</span><span aria-hidden="true">Cursor</span><span aria-hidden="true">GitHub</span><span aria-hidden="true">Slack</span><span aria-hidden="true">Discord</span><span aria-hidden="true">git worktrees</span><span aria-hidden="true">MCP</span><span aria-hidden="true">macOS</span><span aria-hidden="true">Linux</span><span aria-hidden="true">Windows</span>
 </div></div>
 
-<section id="how"><div class="wrap">
+<section id="how" class="tint"><div class="wrap">
   <p class="label rv">How it works</p>
   <h2 class="rv">From one prompt to merged code, with four agents working at once</h2>
   <div class="how">
@@ -471,25 +480,6 @@ footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
   </div>
 </div></section>
 
-<section><div class="wrap">
-  <p class="label rv">The difference</p>
-  <h2 class="rv">Four people with AI agents, with and without huddle</h2>
-  <div class="vs">
-    <div class="without rv"><h3>Without huddle</h3><ul>
-      <li><svg><use href="#no"/></svg>Two agents edit the same file and someone's hour of work disappears.</li>
-      <li><svg><use href="#no"/></svg>You keep asking in the group chat who's doing what.</li>
-      <li><svg><use href="#no"/></svg>The big feature sits with whoever started it.</li>
-      <li><svg><use href="#no"/></svg>Someone hits their usage limit and their half of the work stops.</li>
-    </ul></div>
-    <div class="with rv" style="--d:.1s"><h3>With huddle</h3><ul>
-      <li><svg><use href="#yes"/></svg>Files lock to the agent editing them. Nothing gets overwritten.</li>
-      <li><svg><use href="#yes"/></svg>Everyone sees every agent's work live, and agents ask each other directly.</li>
-      <li><svg><use href="#yes"/></svg>Big jobs get split across all of your agents automatically.</li>
-      <li><svg><use href="#yes"/></svg>Unfinished work moves to a teammate with usage to spare.</li>
-    </ul></div>
-  </div>
-</div></section>
-
 <div class="night" id="why"><div class="wrap">
   <p class="label rv">Why huddle</p>
   <h2 class="rv">Other tools run more agents. huddle gets them working together.</h2>
@@ -561,11 +551,12 @@ footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
   </div>
 </div></section>
 
-<section class="final"><div class="wrap">
+<section class="final"><div class="wrap"><div class="panel">
+  <canvas class="net" id="endnet" aria-hidden="true"></canvas>
   <h2 class="rv">Get every agent on your team on the same page</h2>
   <p class="sub rv">Watch a simulated team of three hand work to each other in your browser. No setup needed.</p>
   <div class="ctas rv"><a class="btn primary big" href="/app#demo">Watch agents team up <span class="arrow">→</span></a><a class="btn big" href="#setup">Set up in a minute</a></div>
-</div></section>
+</div></div></section>
 
 <footer><div class="wrap">
   <a class="brand" href="/?about" style="font-size:15px"><svg style="width:20px;height:20px"><use href="#logo"/></svg>huddle</a>
@@ -617,7 +608,7 @@ footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
     '<b>Work hands itself off.</b> Agents give tasks to whoever has the most usage left, and each is reviewed and tested before it lands.',
     '<b>Conflicts caught early.</b> huddle sees when two branches would collide and hands the merge to an agent.',
     '<b>What it costs.</b> Tokens and API-equivalent cost per person, model and task.',
-    '<b>Find anything.</b> Tasks, messages, decisions and shared code from one box.'];
+    '<b>Shared memory.</b> A project brief, team notes and skills that every agent reads before it starts.'];
   function show(i) {
     cur = (i + tabs.length) % tabs.length;
     tabs.forEach(function (t, j) { t.setAttribute('aria-selected', j === cur ? 'true' : 'false'); var b = t.querySelector('i'); b.style.animation = 'none'; void b.offsetWidth; b.style.animation = ''; });
@@ -649,6 +640,73 @@ footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
     es.forEach(function (e) { if (e.isIntersecting) setStep(Number(e.target.dataset.s)); });
   }, { rootMargin: '-45% 0px -45% 0px' });
   steps.forEach(function (s) { sio.observe(s); });
+
+
+  // the net: dots fly in from all over and settle into a loose grid, joined to their neighbours,
+  // drifting a little and leaning toward the cursor. Drawn only while on screen.
+  function net(canvas, opts) {
+    var ctx = canvas.getContext('2d'); if (!ctx) return;
+    var pts = [], w = 0, h = 0, dpr = 1, t0 = 0, mouse = null, raf = 0, visible = true;
+    function build() {
+      dpr = Math.min(2, window.devicePixelRatio || 1);
+      w = canvas.clientWidth; h = canvas.clientHeight;
+      canvas.width = w * dpr; canvas.height = h * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      pts = [];
+      var gap = opts.gap, cols = Math.ceil(w / gap) + 1, rows = Math.ceil(h / gap) + 1;
+      for (var r = 0; r < rows; r++) for (var c = 0; c < cols; c++) {
+        var x = c * gap + (r % 2 ? gap / 2 : 0) + (Math.random() - .5) * gap * .5, y = r * gap + (Math.random() - .5) * gap * .5;
+        var a = Math.random() * Math.PI * 2, far = Math.max(w, h) * (.4 + Math.random() * .6);
+        pts.push({ hx: x, hy: y, sx: w / 2 + Math.cos(a) * far, sy: h / 2 + Math.sin(a) * far, x: x, y: y, ph: Math.random() * 6.28, sp: .4 + Math.random() * .6, delay: Math.random() * .5 });
+      }
+      t0 = performance.now();
+    }
+    function fade(x, y) { // strongest in the middle, gone at the edges
+      if (!opts.vignette) return 1;
+      var dx = (x - w / 2) / (w * .55), dy = (y - h * opts.cy) / (h * .6), d = dx * dx + dy * dy;
+      // lighter behind the headline and text, fuller toward the sides, gone at the edges
+      var tx = (x - w / 2) / (w * .26), ty = (y - h * .42) / (h * .34), inText = tx * tx + ty * ty;
+      return Math.max(0, 1 - d * .55) * Math.min(1, .25 + inText * .75) * Math.max(0, 1 - Math.max(0, (y - h * .7) / (h * .3)));
+    }
+    function frame(now) {
+      raf = 0;
+      var t = (now - t0) / 1000;
+      ctx.clearRect(0, 0, w, h);
+      for (var i = 0; i < pts.length; i++) {
+        var p = pts[i], k = Math.min(1, Math.max(0, (t - p.delay) / 1.6)), e = 1 - Math.pow(1 - k, 4);
+        var dx = Math.sin(t * p.sp + p.ph) * 6, dy = Math.cos(t * p.sp * .8 + p.ph) * 6;
+        var x = p.sx + (p.hx + dx - p.sx) * e, y = p.sy + (p.hy + dy - p.sy) * e;
+        if (mouse) { var mx = mouse.x - x, my = mouse.y - y, md = Math.sqrt(mx * mx + my * my); if (md < 160) { x += mx / md * (160 - md) * .18; y += my / md * (160 - md) * .18; } }
+        p.x = x; p.y = y; p.k = e;
+      }
+      var max = opts.gap * 1.25;
+      ctx.lineWidth = 1;
+      for (var i = 0; i < pts.length; i++) {
+        var a = pts[i], fa = fade(a.x, a.y); if (fa <= 0) continue;
+        for (var j = i + 1; j < pts.length; j++) {
+          var b = pts[j], ddx = a.x - b.x, ddy = a.y - b.y; if (ddx > max || ddx < -max || ddy > max || ddy < -max) continue;
+          var d = Math.sqrt(ddx * ddx + ddy * ddy); if (d > max) continue;
+          var near = mouse ? Math.max(0, 1 - Math.hypot(mouse.x - a.x, mouse.y - a.y) / 220) : 0;
+          ctx.strokeStyle = 'rgba(' + opts.rgb + ',' + ((1 - d / max) * opts.line * fa * a.k * b.k * (1 + near * 2.5)).toFixed(3) + ')';
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+        }
+        var near2 = mouse ? Math.max(0, 1 - Math.hypot(mouse.x - a.x, mouse.y - a.y) / 200) : 0;
+        ctx.fillStyle = 'rgba(' + opts.rgb + ',' + (opts.dot * fa * (1 + near2 * 1.5)).toFixed(3) + ')';
+        ctx.beginPath(); ctx.arc(a.x, a.y, 1.6 + near2 * 1.4, 0, 6.283); ctx.fill();
+      }
+      if (visible && !still) raf = requestAnimationFrame(frame);
+    }
+    function start() { if (!raf) raf = requestAnimationFrame(frame); }
+    build();
+    if (still) { t0 = performance.now() - 5000; frame(performance.now()); }
+    else start();
+    new IntersectionObserver(function (es) { visible = es[0].isIntersecting; if (visible && !still) start(); }).observe(canvas);
+    var host = canvas.parentElement;
+    host.addEventListener('pointermove', function (e) { var r = canvas.getBoundingClientRect(); mouse = { x: e.clientX - r.left, y: e.clientY - r.top }; });
+    host.addEventListener('pointerleave', function () { mouse = null; });
+    var rt; addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(function () { build(); if (still) frame(performance.now()); }, 150); });
+  }
+  net(document.getElementById('heronet'), { gap: 54, rgb: '47,107,255', line: .32, dot: .55, vignette: true, cy: .38 });
+  net(document.getElementById('endnet'), { gap: 46, rgb: '255,255,255', line: .22, dot: .5, vignette: false });
 
   document.getElementById('copy').addEventListener('click', function () {
     var b = this; navigator.clipboard.writeText(document.getElementById('cmd').textContent).then(function () { b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1500); }, function () {});
