@@ -2,7 +2,7 @@
    A theme (src/lib/themes.js) sets --page, --raised, --rail, --rail-ink, --rail-active and --accent on
    :root; everything else follows from those and from the light or dark base below. Solid colours only. */
 :root {
-  --page: #faf9f7; --raised: #ffffff; --rail: #f1f0ed; --rail-ink: #1d1c1a; --rail-active: rgba(29, 28, 26, .08); --accent: #2d5b8a;
+  --page: #faf7f0; --raised: #fffdf8; --rail: #f2ede2; --rail-ink: #24211c; --rail-active: rgba(36, 33, 28, .08); --accent: #2f5d62;
   --bg: var(--page); --surface: var(--page); --sunk: rgba(29, 28, 26, .04); --wash: var(--page);
   --ink: #1d1c1a; --muted: #5f5c57; --faint: #8a8781; --line: rgba(29, 28, 26, .1); --line-strong: rgba(29, 28, 26, .18);
   --accent-ink: #ffffff; --accent-soft: color-mix(in srgb, var(--accent) 11%, transparent); --accent-soft-ink: color-mix(in srgb, var(--accent) 82%, #000);
@@ -19,9 +19,9 @@
   --radius: 8px; --radius-sm: 6px;
   color-scheme: light;
 }
-/* the dark base, for Ink, Midnight and Forest (and "system" at night before the script runs) */
+/* the dark base, for Evening, Tide and Dusk (and "system" at night before the script runs) */
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --page: #1b1b1a; --raised: #252524; --rail: #141413; --rail-ink: #e8e6e3; --rail-active: rgba(232, 230, 227, .09); --accent: #8db3e2;
+  --page: #1d1b18; --raised: #272420; --rail: #161412; --rail-ink: #ece5da; --rail-active: rgba(236, 229, 218, .09); --accent: #d9a066;
 } }
 :root[data-theme="dark"] {
   --sunk: rgba(255, 255, 255, .04);

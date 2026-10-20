@@ -1,5 +1,5 @@
 // Theme tiles, like Slack's: each shows its sidebar, page and accent. Used in the header menu and in
-// Team & settings. "Match my computer" picks Paper or Ink from the system setting.
+// Team & settings. "Match my computer" picks Cream or Evening from the system setting.
 import { S } from '../lib/state.js';
 import { useS } from '../lib/store.js';
 import { THEMES, resolveTheme, setThemePref, themePref } from '../lib/themes.js';
