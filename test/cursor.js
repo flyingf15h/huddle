@@ -152,6 +152,6 @@ console.log('All done, made made.txt');
     console.log('\nall good');
   } finally {
     proc.kill();
-    fs.rmSync(tmp, { recursive: true, force: true });
+    try { fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); } catch (e) { if (process.platform !== 'win32') throw e; } // (Windows keeps a folder busy while a stopped process exits)
   }
 })().catch(e => { console.error(e); process.exit(1); });

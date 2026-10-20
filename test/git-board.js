@@ -338,6 +338,6 @@ else if (p.includes('break the tests')) fs.writeFileSync('bad.txt', 'oops\\n');
     process.exitCode = 1;
   } finally {
     proc.kill();
-    fs.rmSync(tmp, { recursive: true, force: true });
+    try { fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); } catch (e) { if (process.platform !== 'win32') throw e; } // (Windows keeps a folder busy while a stopped process exits)
   }
 })();
