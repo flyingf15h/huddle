@@ -99,7 +99,7 @@ export default function Home() {
         <div className="hcard">
           <h2>Start your own</h2>
           <p className="muted">In your project's folder, run:</p>
-          <div className="cmd"><code>npx -y github:flyingf15h/huddle new</code></div>
+          <div className="cmd"><code>curl -fsSL {location.origin}/install.sh | sh</code></div>
           <button disabled={busy} onClick={demo}>Try a demo project</button>
         </div>
       </div>

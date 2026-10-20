@@ -8,8 +8,9 @@ import Icon from '../components/Icon.jsx';
 import DigestSettings from '../components/DigestSettings.jsx';
 import Automations from '../components/Automations.jsx';
 import SlackSetup from '../components/SlackSetup.jsx';
+import ThemePicker from '../components/ThemePicker.jsx';
 
-const TABS = [['team', 'Team & access'], ['rules', 'Rules'], ['integrations', 'Integrations'], ['notify', 'Notifications'], ['data', 'Data & privacy'], ['audit', 'Audit log']];
+const TABS = [['team', 'Team & access'], ['rules', 'Rules'], ['integrations', 'Integrations'], ['notify', 'Notifications'], ['look', 'Appearance'], ['data', 'Data & privacy'], ['audit', 'Audit log']];
 const ROLE = { owner: 'Owner', member: 'Member', viewer: 'Viewer' };
 const KINDS = { approval: 'Needs approval', stuck: 'Task stuck', done: 'Request done', failed: 'Something failed', member: 'Someone joined', budget: 'Budget alert', cost: 'Cost spike or forecast', digest: 'Daily digest' };
 const lines = (t) => t.split('\n').map(x => x.trim()).filter(Boolean);
@@ -179,6 +180,11 @@ export default function Settings() {
 
         {tab === 'integrations' && <SlackSetup />}
         {tab === 'integrations' && <Automations />}
+
+        {tab === 'look' && (
+          <div className="panel"><h3>Theme</h3><p className="pdesc">Only changes how huddle looks in this browser.</p>
+            <div className="pbody"><ThemePicker /></div></div>
+        )}
 
         {tab === 'notify' && (
           <>

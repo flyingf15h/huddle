@@ -28,7 +28,7 @@ export default function Sidebar() {
     <nav id="rail" className={S.drawer ? 'open' : ''} aria-label="Project">
       <div className="rail-top" style={{ position: 'relative' }}>
         <button className="projbtn" aria-haspopup="menu" aria-expanded={projMenu} onClick={() => setProjMenu(!projMenu)}>
-          <svg className="plogo" viewBox="0 0 32 32"><rect width="32" height="32" rx="9" fill="var(--accent)" /><circle cx="11" cy="13" r="4.2" fill="var(--raised)" /><circle cx="21" cy="13" r="4.2" fill="var(--raised)" opacity=".85" /><circle cx="16" cy="21" r="4.2" fill="var(--raised)" opacity=".7" /></svg>
+          <svg className="plogo" viewBox="0 0 32 32"><rect width="32" height="32" rx="9" fill="var(--accent)" /><circle cx="11" cy="13" r="4.2" fill="#ffffff" /><circle cx="21" cy="13" r="4.2" fill="#ffffff" opacity=".85" /><circle cx="16" cy="21" r="4.2" fill="#ffffff" opacity=".7" /></svg>
           <span className="pn"><span id="pnameText">{prettyProject(auth.project)}</span><span className="pk">{S.demo ? 'Demo project' : 'huddle project'}</span></span>
           <Icon name="chevron" size={14} />
         </button>

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { S, auth, boot, go, goHome } from './lib/state.js';
 import { useS } from './lib/store.js';
 import { installKeys } from './lib/keys.js';
-import { water } from './lib/water.js';
+import { applyTheme, onSystemTheme } from './lib/themes.js';
 import { store } from './lib/words.js';
 import { stopDemo } from './lib/demo.js';
 import Home from './Home.jsx';
@@ -33,18 +33,9 @@ const darkQuery = matchMedia('(prefers-color-scheme: dark)');
 export default function App() {
   useS();
   const [screen, setScreen] = useState('loading');
-  const [theme, setTheme] = useState(store.get('huddle.theme') === 'cream' ? 'light' : store.get('huddle.theme'));
   const composer = useRef(null);
-  const isDark = theme === 'dark' || (theme !== 'light' && darkQuery.matches);
-
-  useEffect(() => {
-    if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme; else delete document.documentElement.dataset.theme;
-    water.set(isDark);
-    const h = () => { if (theme !== 'light' && theme !== 'dark') water.set(darkQuery.matches); };
-    darkQuery.addEventListener('change', h);
-    return () => darkQuery.removeEventListener('change', h);
-  }, [theme, isDark]);
-  const flipTheme = () => { const t = isDark ? 'light' : 'dark'; store.set('huddle.theme', t); setTheme(t); };
+  // the colour theme: what the person picked, or the system's light/dark when they chose "Match my computer"
+  useEffect(() => { applyTheme(S.themePref); return onSystemTheme(() => applyTheme(S.themePref)); }, [S.themePref]);
 
   useEffect(() => {
     const off = installKeys({ focusComposer: () => { if (S.view !== 'activity') go('activity'); setTimeout(() => composer.current && composer.current.focus(), 0); } });
@@ -63,7 +54,7 @@ export default function App() {
         <Sidebar />
         {S.drawer && <button className="scrim" aria-label="Close the menu" onClick={() => (S.drawer = false)}></button>}
         <div className="maincol">
-          <Header dark={isDark} flipTheme={flipTheme} />
+          <Header />
           {S.demo && <div id="demobar" role="status"><b>Demo project.</b><span className="grow">maya, dev and sam are simulated teammates (Claude Code, Codex and Cursor). Click around: nothing here touches a real codebase.</span><button onClick={() => { stopDemo(); goHome(); }}>Leave demo</button></div>}
           {S.fatal && <div id="catchup" role="alert"><span className="grow">{S.fatal}</span></div>}
           {S.catchup && <div id="catchup" role="status"><span className="grow">{S.catchup}</span><button aria-label="Dismiss" onClick={() => (S.catchup = '')}>×</button></div>}

@@ -5,6 +5,8 @@ import { useS } from '../lib/store.js';
 import { store } from '../lib/words.js';
 import Icon from './Icon.jsx';
 import Notifications from './Notifications.jsx';
+import ThemePicker from './ThemePicker.jsx';
+import { useEscape } from '../lib/hooks.js';
 
 const TITLES = { activity: 'Activity', tasks: 'Tasks', code: 'Code', brief: 'Brief & memory', usage: 'Usage & cost', health: 'Health', settings: 'Team & settings' };
 const DESC = { tasks: 'Every request and task, who has it and how far along it is', brief: "Shared memory files between your team's agents", code: "Everyone's shared branches, the GitHub repository and conflicts",
@@ -12,9 +14,10 @@ const DESC = { tasks: 'Every request and task, who has it and how far along it i
 const FILTERS = [['all', 'Everything', 'Every prompt, step, reply, message and file change'], ['key', 'Highlights', 'Requests, prompts, replies, messages and hand-offs'], ['talk', 'Messages', 'Only messages and requests']];
 const mac = /Mac|iPhone|iPad/.test(navigator.platform);
 
-export default function Header({ dark, flipTheme }) {
+export default function Header() {
   useS();
-  const [notesOpen, setNotesOpen] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false), [themeOpen, setThemeOpen] = useState(false);
+  useEscape(() => setThemeOpen(false), themeOpen);
   const unread = S.notes.filter(n => !n.read).length;
   const dnd = store.get('huddle.dnd') === '1';
   return (
@@ -38,7 +41,8 @@ export default function Header({ dark, flipTheme }) {
           <Icon name={dnd ? 'belloff' : 'bell'} size={19} />{unread > 0 && <span className="nbadge">{unread > 99 ? '99+' : unread}</span>}
         </button>
         {notesOpen && <Notifications close={() => setNotesOpen(false)} />}
-        <button className="ghost iconbtn hide-sm" aria-label={dark ? 'Switch to light' : 'Switch to dark'} title={dark ? 'Switch to light' : 'Switch to dark'} onClick={flipTheme}><Icon name={dark ? 'sun' : 'moon'} size={19} /></button>
+        <button className="ghost iconbtn hide-sm" aria-haspopup="dialog" aria-expanded={themeOpen} aria-label="Theme" title="Theme" onClick={() => { setThemeOpen(!themeOpen); setNotesOpen(false); }}><Icon name="palette" size={19} /></button>
+        {themeOpen && <><button className="clickaway" aria-label="Close" onClick={() => setThemeOpen(false)} /><div className="menu" role="dialog" aria-label="Theme" style={{ position: 'absolute', top: 44, right: 0, maxWidth: 'none' }}><div className="mh">Theme</div><ThemePicker compact /></div></>}
         <button className="ghost iconbtn hide-sm" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)" onClick={() => (S.shortcuts = true)}><Icon name="keyboard" size={19} /></button>
         <button className="ghost iconbtn hide-sm" aria-label="How huddle works" title="How huddle works" onClick={() => (S.help = true)}><Icon name="help" size={19} /></button>
         <button className="hide-sm" onClick={() => (S.invite = true)}>Invite people</button>
