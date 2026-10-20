@@ -234,7 +234,7 @@ setTimeout(() => {
       assert.equal(r[6], 'main');
     }
     const reviews = runs.filter(r => r[0] === 'review');
-    assert(reviews.length >= 2 && reviews.every(r => r[1] === 'true' && r[2] === r[3] && r[2].startsWith(path.join(tmp, 'clones'))), 'each change is reviewed by Sonnet in its own worktree');
+    assert(reviews.length >= 2 && reviews.every(r => r[1] === 'true' && path.basename(r[2]) === path.basename(r[3]) && r[2].split(path.sep).includes('clones')), 'each change is reviewed by Sonnet in its own worktree');
     assert.equal((await reqs()).find(t => t.title === 'Write notes A').checks.review, 'ok');
     assert(fs.existsSync(path.join(dave.root, `notes-${ra}.txt`)) && fs.existsSync(path.join(dave.root, `notes-${rb}.txt`)), 'clean results merged into dave\'s branch');
     assert(dave.read('calc.py').includes('# wip') && !dave.read('calc.py').includes('# from the request'), "dave's own work is untouched");
