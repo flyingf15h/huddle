@@ -5,6 +5,7 @@ import { store } from './words.js';
 
 export const THEMES = [
   { id: 'cream', name: 'Cream', dark: false, page: '#faf7f0', raised: '#fffdf8', rail: '#f2ede2', railInk: '#24211c', railActive: 'rgba(36, 33, 28, .08)', accent: '#2f5d62' },
+  { id: 'navy', name: 'Navy', dark: false, page: '#f8f7f3', raised: '#ffffff', rail: '#e9edf3', railInk: '#1b2333', railActive: 'rgba(27, 35, 51, .08)', accent: '#24365e' },
   { id: 'oat', name: 'Oat', dark: false, page: '#f8f5ee', raised: '#fffdf9', rail: '#e9e2d4', railInk: '#2a251e', railActive: 'rgba(42, 37, 30, .09)', accent: '#8a5a3c' },
   { id: 'matcha', name: 'Matcha', dark: false, page: '#f8f8f1', raised: '#fffffa', rail: '#e3e8d6', railInk: '#232a1c', railActive: 'rgba(35, 42, 28, .09)', accent: '#4c6b38' },
   { id: 'blush', name: 'Blush', dark: false, page: '#fbf7f3', raised: '#fffdfb', rail: '#f2e2dc', railInk: '#2e2220', railActive: 'rgba(46, 34, 32, .08)', accent: '#a04a58' },
