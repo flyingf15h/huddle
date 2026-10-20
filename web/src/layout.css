@@ -10,8 +10,8 @@ main[data-main] { min-height: 0; }
 .tabbar, .menubtn, .scrim { display: none; }
 
 /* overlays: search palette, shortcuts, toasts */
-.overlay { position: fixed; inset: 0; z-index: 80; background: var(--shade); backdrop-filter: blur(2px); display: grid; justify-items: center; align-items: start; padding: 10vh 16px 16px; }
-.palette { width: min(640px, 100%); background: var(--glass); backdrop-filter: blur(22px) saturate(1.3); border: 1px solid var(--line-strong); border-radius: 14px; box-shadow: var(--shadow-lg); overflow: hidden; display: flex; flex-direction: column; max-height: 72vh; }
+.overlay { position: fixed; inset: 0; z-index: 80; background: var(--shade); display: grid; justify-items: center; align-items: start; padding: 10vh 16px 16px; }
+.palette { width: min(640px, 100%); background: var(--glass); border: 1px solid var(--line-strong); border-radius: 14px; box-shadow: var(--shadow-lg); overflow: hidden; display: flex; flex-direction: column; max-height: 72vh; }
 .palette .pin { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); color: var(--muted); }
 .palette .pin input { flex: 1; border: 0; background: transparent; box-shadow: none; font-size: 16px; padding: 4px 0; color: var(--ink); }
 .palette .plist2 { overflow-y: auto; padding: 6px; }
@@ -23,7 +23,7 @@ main[data-main] { min-height: 0; }
 .palette .hit .ht { font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
 .palette .hit .hs { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; font-family: inherit; }
 .palette .pfoot { display: flex; gap: 14px; padding: 8px 14px; border-top: 1px solid var(--line); font-size: 12px; color: var(--faint); }
-.sheet { width: min(520px, 100%); background: var(--glass); backdrop-filter: blur(22px); border: 1px solid var(--line-strong); border-radius: 14px; box-shadow: var(--shadow-lg); padding: 18px 20px; }
+.sheet { width: min(520px, 100%); background: var(--glass); border: 1px solid var(--line-strong); border-radius: 14px; box-shadow: var(--shadow-lg); padding: 18px 20px; }
 .sheet h3 { margin: 0 0 12px; font-size: 16px; }
 .sclist { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; align-items: center; font-size: 14px; }
 
@@ -57,14 +57,14 @@ main[data-main] { min-height: 0; }
 /* phones and small tablets: the sidebar is a drawer, the views switch from a tab bar at the bottom */
 @media (max-width: 760px) {
   #app:not([hidden]) { display: block; height: auto; min-height: 100vh; padding-bottom: calc(60px + env(safe-area-inset-bottom)); }
-  #rail { position: fixed; z-index: 70; inset: 0 auto 0 0; width: min(300px, 86vw); transform: translateX(-102%); transition: transform .2s ease; background: var(--glass); backdrop-filter: blur(20px); border-right: 1px solid var(--line-strong); }
+  #rail { position: fixed; z-index: 70; inset: 0 auto 0 0; width: min(300px, 86vw); transform: translateX(-102%); transition: transform .2s ease; background: var(--glass); border-right: 1px solid var(--line-strong); }
   #rail.open { transform: none; box-shadow: var(--shadow-lg); }
   #rail .navlist { flex-direction: column; overflow: visible; }
   #rail #team { display: block; overflow-y: auto; }
   #rail .prow { width: auto; }
   .scrim { display: block; position: fixed; inset: 0; z-index: 65; background: var(--shade); }
   .menubtn { display: inline-grid; }
-  header { position: sticky; top: 0; z-index: 30; padding: 6px 10px; min-height: 52px; gap: 6px; flex-wrap: nowrap; backdrop-filter: blur(14px); }
+  header { position: sticky; top: 0; z-index: 30; padding: 6px 10px; min-height: 52px; gap: 6px; flex-wrap: nowrap; }
   header h1 { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   header #filters, .searchbtn .label, .searchbtn .kbdk, .hide-sm, .conn { display: none; }
   .searchbtn { min-width: 0; width: 36px; height: 36px; padding: 0; justify-content: center; }
@@ -73,7 +73,7 @@ main[data-main] { min-height: 0; }
   #feed { max-height: none; overflow: visible; }
   #composer { position: sticky; bottom: calc(60px + env(safe-area-inset-bottom)); z-index: 20; padding: 8px 10px; }
   #side { border-top: 1px solid var(--line); padding: 14px 12px 24px; }
-  .tabbar { display: flex; position: fixed; z-index: 60; left: 0; right: 0; bottom: 0; height: calc(60px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom); background: var(--glass-bar); backdrop-filter: blur(18px); border-top: 1px solid var(--line-strong); }
+  .tabbar { display: flex; position: fixed; z-index: 60; left: 0; right: 0; bottom: 0; height: calc(60px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom); background: var(--glass-bar); border-top: 1px solid var(--line-strong); }
   .tabbar button { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border: 0; background: none; border-radius: 0; font-size: 11px; font-weight: 500; color: var(--muted); padding: 6px 0; min-height: 44px; position: relative; }
   .tabbar button.on { color: var(--accent); }
   .tabbar .navbadge { position: absolute; top: 4px; left: calc(50% + 6px); margin: 0; }
@@ -97,7 +97,7 @@ main[data-main] { min-height: 0; }
 .bars .bar i { display: block; width: 100%; background: var(--accent); border-radius: 4px 4px 0 0; opacity: .9; }
 .bars .bar:hover i { opacity: 1; }
 .axis { display: flex; justify-content: space-between; margin: 4px 0 8px; }
-.chartTip { position: fixed; z-index: 90; transform: translate(-50%, calc(-100% - 8px)); pointer-events: none; background: var(--glass); backdrop-filter: blur(14px); border: 1px solid var(--line-strong); border-radius: 8px; padding: 6px 10px; font-size: 12.5px; box-shadow: var(--shadow); white-space: nowrap; }
+.chartTip { position: fixed; z-index: 90; transform: translate(-50%, calc(-100% - 8px)); pointer-events: none; background: var(--glass); border: 1px solid var(--line-strong); border-radius: 8px; padding: 6px 10px; font-size: 12.5px; box-shadow: var(--shadow); white-space: nowrap; }
 .hbar { display: grid; grid-template-columns: minmax(90px, 160px) 1fr auto; gap: 10px; align-items: center; padding: 5px 0; font-size: 13.5px; }
 .hbar .who { display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hbar .track { height: 10px; background: var(--sunk); border-radius: 0 4px 4px 0; overflow: hidden; }

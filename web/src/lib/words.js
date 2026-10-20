@@ -9,8 +9,7 @@ const fullDate = (t) => new Date(t).toLocaleString([], { weekday: 'short', month
 const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} }, del(k) { try { localStorage.removeItem(k); } catch {} } };
 // distinct, white-text-safe colours so people are easy to tell apart
 // light pinks, each with its own deep letter colour, so people are still easy to tell apart
-const PALETTE = [['#fbd3e0', '#8f2350'], ['#ffd6dc', '#94283f'], ['#f3d3ea', '#7a2a63'], ['#fcdccf', '#8c3a2a'], ['#f8c6d8', '#7d1f47'], ['#efd5f2', '#6f2a7a'], ['#fde4ec', '#a0305c'], ['#f6d0d6', '#7f2a36']];
-const color = (name) => { let h = 2166136261; for (const c of String(name)) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return PALETTE[(h >>> 0) % PALETTE.length]; };
+const color = (name) => { let h = 2166136261; for (const c of String(name)) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return [(h >>> 0) % 360]; };
 function shortTitle(text, n = 62) {
   let t = String(text || '').split('\n').map(l => l.trim()).find(Boolean) || '';
   for (let k = 0; k < 3; k++) {
@@ -159,5 +158,5 @@ function stepWords(text) {
   return verbs[w.verb] ? `${verbs[w.verb]} ${arg}`.trim() : `${w.verb.charAt(0).toUpperCase()}${w.verb.slice(1)} ${arg}`.trim();
 }
 
-export { esc, ago, clock, fullDate, store, PALETTE, color, shortTitle, EFFORT_WORD, statusWord, toolWords, summarize, md,
+export { esc, ago, clock, fullDate, store, color, shortTitle, EFFORT_WORD, statusWord, toolWords, summarize, md,
   tidyTitle, titleParts, bestTitle, goalTitle, agoShort, stuckReason, fmtDur, fmtNum, tokenSum, tokensAll, cleanStatus, stepWords };

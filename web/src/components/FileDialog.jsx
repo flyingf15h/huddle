@@ -29,7 +29,7 @@ export default function FileDialog() {
   return (
     <dialog ref={dlg} onClose={() => (S.fileOpen = null)} onClick={(e) => { if (e.target === dlg.current) dlg.current.close(); }}>
       <div className="dlg-head"><h3 className="mono">{o ? o.path : ''}</h3><span className="grow"></span>
-        <span className="small muted">{f && <>v{f.version} · saved by {f.byName} {ago(f.at)}{f.lock ? ' · 🔒 ' + f.lock.holderName + ' is editing' : ''}{f.branch ? ' · ⎇ ' + f.branch : ''}</>}</span>
+        <span className="small muted">{f && <>v{f.version} · saved by {f.byName} {ago(f.at)}{f.lock ? ' · ' + f.lock.holderName + ' is editing' : ''}{f.branch ? ' · on ' + f.branch : ''}</>}</span>
         <button onClick={() => dlg.current.close()}>Close</button></div>
       <div className="dlg-body">{error ? <div style={{ padding: 12 }}>{error}</div> : <pre className="codebox">{lines.map((l, i) => <div key={i} className={'ln' + (i >= hl[0] && i < hl[1] ? ' hl' : '')}><span>{i + 1}</span><span>{l || ' '}</span></div>)}</pre>}</div>
     </dialog>

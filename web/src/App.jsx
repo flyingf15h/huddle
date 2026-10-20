@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from 'react';
 import { S, auth, boot, go, goHome } from './lib/state.js';
 import { useS } from './lib/store.js';
 import { installKeys } from './lib/keys.js';
-import { water } from './lib/water.js';
 import { store } from './lib/words.js';
 import { stopDemo } from './lib/demo.js';
 import Home from './Home.jsx';
@@ -37,11 +36,8 @@ export default function App() {
 
   useEffect(() => {
     if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme; else delete document.documentElement.dataset.theme;
-    water.set(isDark);
-    const h = () => { if (theme !== 'light' && theme !== 'dark') water.set(darkQuery.matches); };
-    darkQuery.addEventListener('change', h);
-    return () => darkQuery.removeEventListener('change', h);
   }, [theme, isDark]);
+  useEffect(() => { const h = () => setTheme((t) => t); darkQuery.addEventListener('change', h); return () => darkQuery.removeEventListener('change', h); }, []);
   const flipTheme = () => { const t = isDark ? 'light' : 'dark'; store.set('huddle.theme', t); setTheme(t); };
 
   useEffect(() => {
