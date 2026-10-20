@@ -4,7 +4,7 @@
 //   /  or Ctrl+K   search          ?   all shortcuts
 //   g then a t c b u h s           go to Activity, Tasks, Code, Brief, Usage, Health, Settings
 //   c              new request     j / k   next / previous item     Esc   close what's open
-import { S, go } from './state.svelte.js';
+import { S, go } from './state.js';
 
 export const SHORTCUTS = [
   ['/', 'Search the project'], ['Ctrl K', 'Search the project'], ['c', 'New request'], ['j / k', 'Next / previous item'],

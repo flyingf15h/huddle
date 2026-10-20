@@ -1,7 +1,7 @@
 // The activity feed as rows to draw: day dividers, one-line notes (the same note repeated in a
 // stretch shows once with a count), and Slack-style turns that group what one author did within
 // ten minutes. A person and their agent are separate authors.
-import { S, myName, claudeOf, aiName, toolOf, sessionName } from './state.svelte.js';
+import { S, myName, claudeOf, aiName, toolOf, sessionName } from './state.js';
 
 export const TURN_KINDS = new Set(['msg', 'prompt', 'reply', 'tool', 'end']);
 const ROW_KINDS = new Set([...TURN_KINDS, 'goal', 'plan']);

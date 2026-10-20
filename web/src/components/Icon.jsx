@@ -1,7 +1,5 @@
-<script>
-  // One stroke icon set for the whole dashboard (24px grid, drawn with currentColor).
-  let { name, size = 18 } = $props();
-  const P = {
+// One stroke icon set for the whole dashboard (24px grid, drawn with currentColor).
+const P = {
     activity: '<path d="M4 6.5h16M4 12h16M4 17.5h10"/>',
     tasks: '<path d="M9 6.5h11M9 12h11M9 17.5h11"/><path d="M3.5 6.5l1.2 1.2L7 5.4M3.5 12l1.2 1.2L7 10.9"/><circle cx="5" cy="17.5" r="1.3"/>',
     code: '<path d="M8.5 7.5L4 12l4.5 4.5M15.5 7.5L20 12l-4.5 4.5"/>',
@@ -34,5 +32,6 @@
     conflict: '<path d="M6 4v6a6 6 0 0 0 6 6h0a6 6 0 0 1 6 6"/><path d="M18 4v6a6 6 0 0 1-6 6"/><circle cx="6" cy="4" r="1.6"/><circle cx="18" cy="4" r="1.6"/>',
     keyboard: '<rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>',
   };
-</script>
-<svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{@html P[name] || ''}</svg>
+export default function Icon({ name, size = 18 }) {
+  return <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" dangerouslySetInnerHTML={{ __html: P[name] || '' }} />;
+}

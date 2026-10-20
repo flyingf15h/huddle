@@ -2,6 +2,7 @@
 // that change it: the API, the live event stream, sign-in and the list of projects this browser and
 // account know. Views read S and call these functions; they never fetch on their own except for
 // view-specific data (code trees, stats), which they keep locally.
+import { reactive } from './store.js';
 import { store, shortTitle, cleanStatus, toolWords, summarize, ago, clock, setTeamNames, statusWord } from './words.js';
 
 // ---------- where we are: project, token, name ----------
@@ -22,10 +23,10 @@ export const keys = readJson('huddle.keys', {});
 export const prettyProject = (p) => String(p || '').replace(/-[0-9a-f]{6,8}$/, '');
 export const saveKnown = () => store.set('huddle.projects', JSON.stringify(known));
 
-export const auth = $state({ token: null, project: null, name: store.get('huddle.name') === 'human' ? '' : (store.get('huddle.name') || '') });
+export const auth = reactive({ token: null, project: null, name: store.get('huddle.name') === 'human' ? '' : (store.get('huddle.name') || '') });
 export const VIEWS = ['activity', 'tasks', 'code', 'brief', 'usage', 'health', 'settings'];
 
-export const S = $state({
+export const S = reactive({
   view: VIEWS.includes(params.get('v')) ? params.get('v') : 'activity',
   conn: 'connecting',            // 'live' | 'reconnecting' | 'connecting'
   agents: {}, locks: {}, files: {}, settings: {}, aliases: {}, usage: {}, approvals: [], projectSettings: {}, problems: [], members: [],

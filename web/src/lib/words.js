@@ -1,5 +1,5 @@
 // Words, times and markdown, carried over from the old single-file dashboard (web/legacy).
-// Pure functions only; anything that reads project state lives in state.svelte.js.
+// Pure functions only; anything that reads project state lives in state.js.
 let teamNames = [];
 export const setTeamNames = (n) => { teamNames = n; };
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));

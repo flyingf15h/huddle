@@ -1,6 +1,6 @@
 // The demo project: a real project on this server filled with a simulated team (Claude Code, Codex and
 // Cursor users), kept moving while the tab is open so every page has something to show.
-import { auth, known, saveKnown, S } from './state.svelte.js';
+import { auth, known, saveKnown, S } from './state.js';
 import { store } from './words.js';
 
 const DEMO_TEAM = [{ name: 'maya', tool: 'claude', five: 34 }, { name: 'dev', tool: 'codex', five: 71 }, { name: 'sam', tool: 'cursor', five: 12 }];

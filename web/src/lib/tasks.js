@@ -1,5 +1,5 @@
 // Tasks as people read them, and what can be done to them; shared by the side panel and the Tasks view.
-import { S, api, loadBoard, myName, keys, auth } from './state.svelte.js';
+import { S, api, loadBoard, myName, keys, auth } from './state.js';
 import { bestTitle, stuckReason as stuckReasonRaw } from './words.js';
 
 export const COLUMNS = [['todo', 'To do'], ['doing', 'In progress'], ['blocked', 'Stuck'], ['done', 'Done']];
