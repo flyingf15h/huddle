@@ -95,6 +95,10 @@ export default function Tasks() {
                 <div className="row" style={{ margin: 0 }}>{open.owner ? <><Avatar name={open.owner} sm /><span>{dn(open.owner)}</span><button className="link small" onClick={() => { S.who = open.owner; go('activity'); }}>See their work</button></> : <span className="muted">Unassigned: the next free agent takes it</span>}</div>
                 {open.detail && open.detail.trim() !== open.title.trim() && <><div className="lbl">Details</div><div className="detail">{open.detail}</div></>}
                 {waitsOn(open).length > 0 && <><div className="lbl">Waiting for</div>{waitsOn(open).map(w => <div key={w.id}><button className="link" onClick={() => (S.openTask = w.id)}>{titleOf(w).title}</button></div>)}</>}
+                {open.waitsFor && open.waitsFor.length > 0 && open.status === 'todo' && <><div className="lbl">Held back</div><div className="small muted">Touches the same files as work in progress: {open.waitsFor.map(w => `${w.title} (${w.file})`).join('; ')}. It starts when that finishes.</div></>}
+                {open.diff && open.diff.files && <><div className="lbl">Changes</div><div className="row" style={{ margin: 0 }}><button onClick={() => (S.diffOpen = open.id)}>Review changes ({open.diff.files.length} file{open.diff.files.length === 1 ? '' : 's'} <span className="dadd">+{open.diff.add}</span> <span className="ddel">−{open.diff.del}</span>)</button>
+                  {open.diff.review && <span className={'pill ' + (open.diff.review.verdict === 'approved' ? 'ok' : 'warn')}>{open.diff.review.verdict === 'approved' ? 'Approved' : 'Changes requested'}</span>}
+                  {open.diff.left && <span className="pill warn" title={open.diff.branch || ''}>Left on a branch</span>}</div></>}
                 {open.paths && open.paths.length > 0 && <><div className="lbl">Works in</div><div className="mono small">{open.paths.join(', ')}</div></>}
                 {(checks(open).length > 0 || (open.checks && open.checks.pr)) && (
                   <><div className="lbl">Checks</div>

@@ -37,7 +37,7 @@ export const S = reactive({
   filter: 'all', who: null,      // activity feed filter and person
   openTask: null,                // task shown in the details panel (Tasks view and side panel)
   search: false, shortcuts: false, invite: false, help: false, drawer: false, profile: false,
-  demo: false, fatal: '', contact: null, settingsTab: null, askTo: null, fileOpen: null, codeOpen: null, briefOpen: null, feedJump: null, catchup: '', demoStatus: '', digestShow: null, digests: [], digestRecipient: false,
+  demo: false, fatal: '', contact: null, settingsTab: null, askTo: null, fileOpen: null, diffOpen: null, codeOpen: null, briefOpen: null, feedJump: null, catchup: '', demoStatus: '', digestShow: null, digests: [], digestRecipient: false,
 });
 
 // the name I go by in this project, after any merge ("Fei" -> "tszfei")

@@ -16,7 +16,7 @@ const topModel = (s) => Object.entries(s.models).sort((a, b) => (b[1].input + b[
 export default function Usage() {
   useS();
   const [stats, setStats] = useState(null), [since, setSince] = useState(0), [costs, setCosts] = useState(null), [err, setErr] = useState(''), [range, setRange] = useState(30), [tip, setTip] = useState(null);
-  const [budget, setBudget] = useState(''), [alertPct, setAlertPct] = useState(80), [prices, setPrices] = useState(''), [msg, setMsg] = useState(''), [showTable, setShowTable] = useState(false);
+  const [budget, setBudget] = useState(''), [alertPct, setAlertPct] = useState(80), [prices, setPrices] = useState(''), [msg, setMsg] = useState(''), [showTable, setShowTable] = useState(false), [al, setAl] = useState(null);
   const budgetSet = useRef(false);
 
   async function load() {
@@ -24,6 +24,7 @@ export default function Usage() {
       const [s, c] = await Promise.all([api('stats'), api('costs')]);
       setStats(s.stats); setSince(s.since); setCosts(c);
       if (!budgetSet.current && c.budget) { setBudget(String(c.budget.monthly)); setAlertPct(c.budget.alertPct); budgetSet.current = true; }
+      setAl(a => a || c.alerts);
       setPrices(Object.entries(c.custom || {}).map(([m, p]) => `${m}: ${p.join(', ')}`).join('\n'));
     } catch (e) { setErr(e.message); }
   }
@@ -36,7 +37,7 @@ export default function Usage() {
     try {
       const p = {};
       for (const line of prices.split('\n').map(l => l.trim()).filter(Boolean)) { const [m, rest] = line.split(':'); const n = (rest || '').split(',').map(Number); if (m && n.length >= 2 && n.every(isFinite)) p[m.trim()] = n; else throw new Error(`Couldn't read "${line}". Write: model: input, output, cache read, cache write (dollars per million tokens)`); }
-      await api('cost-settings', { budget: Number(budget) > 0 ? { monthly: Number(budget), alertPct: Number(alertPct) } : null, prices: p });
+      await api('cost-settings', { budget: Number(budget) > 0 ? { monthly: Number(budget), alertPct: Number(alertPct) } : null, prices: p, alerts: al });
       setMsg('Saved.'); await load();
     } catch (e) { setMsg(e.message); }
   }
@@ -65,6 +66,8 @@ export default function Usage() {
           <div className="tile"><div className="k">Cost this month</div><div className="v">{money(costs.monthSpend)}</div></div>
           <div className="tile"><div className="k">{costs.budget ? 'Monthly budget' : 'Cost, all time'}</div><div className="v">{costs.budget ? money(costs.budget.monthly) : money(costs.total)}</div>
             {costs.budget && <div className="progress" style={{ maxWidth: 'none', marginTop: 6 }} role="progressbar" aria-valuenow={Math.round(budgetPct)} aria-valuemin={0} aria-valuemax={100} aria-label="Budget used"><span style={{ width: budgetPct + '%', background: budgetPct >= 100 ? 'var(--bad)' : budgetPct >= costs.budget.alertPct ? 'var(--warn)' : 'var(--ok)' }}></span></div>}</div>
+          {costs.trend && costs.trend.projected != null && <div className="tile"><div className="k">On course for</div><div className="v">{money(costs.trend.projected)}</div><div className="small faint">this month at the current pace{costs.budget && costs.trend.projected > costs.budget.monthly ? ', over budget' : ''}</div></div>}
+          {costs.trend && costs.trend.avg > 0 && <div className="tile"><div className="k">Today vs usual day</div><div className="v">{money(costs.trend.today)}</div><div className="small faint">usual {money(costs.trend.avg)}{costs.trend.today > costs.trend.avg * 1.5 ? ', running high' : ''}</div></div>}
           <div className="tile"><div className="k">Time with agents</div><div className="v">{fmtDur(sum(p => p.own))}</div></div>
           <div className="tile"><div className="k">Prompts</div><div className="v">{fmtNum(sum(p => p.s.turns))}</div></div>
           <div className="tile"><div className="k">Tokens processed</div><div className="v">{fmtNum(sum(p => p.all))}</div></div>
@@ -113,6 +116,12 @@ export default function Usage() {
             <div className="pbody fieldset">
               <div style={{ display: 'flex', gap: 10, alignItems: 'end', flexWrap: 'wrap' }}><div><label htmlFor="bud">Monthly budget ($)</label><input id="bud" type="number" min="0" step="10" value={budget} onChange={(e) => setBudget(e.target.value)} placeholder="No budget" /></div><div><label htmlFor="bpct">Alert at (%)</label><input id="bpct" type="number" min="10" max="99" value={alertPct} onChange={(e) => setAlertPct(e.target.value)} /></div></div>
               <div><label htmlFor="prc">Custom prices</label><textarea id="prc" value={prices} onChange={(e) => setPrices(e.target.value)} placeholder="gpt-5.5-codex: 1.25, 10" spellCheck={false} /><div className="hintline">One model per line: <code>name: input, output, cache read, cache write</code>, dollars per million tokens.</div></div>
+              {al && <div><span className="lbl2">Cost alerts</span>
+                <div className="checks" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 8 }}>
+                  <label><input type="checkbox" checked={!!al.spike} onChange={(e) => setAl({ ...al, spike: e.target.checked })} />A day costs <input type="number" min="1.2" step="0.1" style={{ width: 70, margin: '0 4px' }} value={al.spikeMultiple} onChange={(e) => setAl({ ...al, spikeMultiple: e.target.value })} aria-label="Spike multiple" />times the usual and at least $<input type="number" min="0" style={{ width: 70, margin: '0 4px' }} value={al.spikeMinUsd} onChange={(e) => setAl({ ...al, spikeMinUsd: e.target.value })} aria-label="Spike minimum dollars" /></label>
+                  <label><input type="checkbox" checked={!!al.forecast} onChange={(e) => setAl({ ...al, forecast: e.target.checked })} />The month is on course to pass the budget</label>
+                  <label><input type="checkbox" checked={!!al.task} onChange={(e) => setAl({ ...al, task: e.target.checked })} />One task costs more than $<input type="number" min="0.5" style={{ width: 70, margin: '0 4px' }} value={al.taskUsd} onChange={(e) => setAl({ ...al, taskUsd: e.target.value })} aria-label="Task dollars" /></label></div>
+                <div className="hintline">Owners are told in the bell, by email and in any Slack or webhook channel that listens for cost alerts.</div></div>}
             </div><div className="pactions"><span className={'small' + (msg && msg !== 'Saved.' ? ' err' : '')}>{msg}</span><button className="primary" onClick={saveCost}>Save</button></div></div>
         )}
       </div>

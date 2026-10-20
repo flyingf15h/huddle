@@ -518,7 +518,8 @@ ol.steps { padding-left: 20px; } ol.steps li { margin-bottom: 10px; }
 .fieldset label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
 .fieldset .hintline { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
 .fieldset textarea { width: 100%; min-height: 84px; font-family: var(--mono, ui-monospace, monospace); font-size: 12.5px; resize: vertical; }
-.fieldset input[type=url], .fieldset input[type=text] { width: 100%; }
+.fieldset input[type=url], .fieldset input[type=text], .fieldset input[type=password] { width: 100%; }
+.fieldset .row input[type=text], .fieldset div[style*="flex"] input[type=text] { width: auto; }
 button.danger { border-color: var(--bad); color: var(--bad); background: transparent; font-weight: 600; }
 button.danger:hover { background: var(--bad-soft); border-color: var(--bad); }
 .pactions { display: flex; gap: 8px; align-items: center; justify-content: flex-end; padding: 0 16px 14px; flex-wrap: wrap; }
@@ -660,3 +661,23 @@ dialog { background: var(--glass); backdrop-filter: blur(22px) saturate(1.3); bo
   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #07122e; --surface: #081431; --raised: #0f1f48; --sunk: #050d24; --wash: #07122e; } }
   :root[data-theme="dark"] { --bg: #07122e; --surface: #081431; --raised: #0f1f48; --sunk: #050d24; --wash: #07122e; }
 }
+
+/* diff review */
+.diffdlg { width: min(1100px, 96vw); height: min(780px, 92vh); padding: 0; display: none; flex-direction: column; }
+.diffdlg[open] { display: flex; }
+.diffdlg .dlg-body { flex: 1; overflow: hidden; }
+.difffiles { width: 260px; flex: none; overflow: auto; border-right: 1px solid var(--line); display: flex; flex-direction: column; }
+.difffiles button { display: flex; flex-direction: column; gap: 2px; text-align: left; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: none; padding: 8px 12px; }
+.difffiles button.on { background: var(--ok-soft); }
+.difffiles .mono { overflow-wrap: anywhere; font-size: 12px; }
+.dadd { color: var(--ok); } .ddel { color: var(--bad); }
+.diffmain { flex: 1; overflow: auto; min-width: 0; }
+.codebox.diff { border: 0; border-radius: 0; font-size: 12.5px; }
+.codebox.diff .ln.add { background: color-mix(in srgb, var(--ok) 16%, transparent); }
+.codebox.diff .ln.del { background: color-mix(in srgb, var(--bad) 16%, transparent); }
+.codebox.diff .ln.hunk { color: var(--faint); background: var(--hl); }
+.codebox.diff .ln[title]:hover { outline: 1px solid var(--line); cursor: pointer; }
+.dcomment { margin: 2px 8px 4px 68px; padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--bg); font-family: inherit; white-space: normal; }
+.dcomment textarea { width: 100%; min-height: 60px; }
+.diffbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px 14px; border-top: 1px solid var(--line); }
+@media (max-width: 700px) { .difffiles { width: 130px; } }

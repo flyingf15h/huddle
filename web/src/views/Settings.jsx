@@ -6,10 +6,12 @@ import { ago, store } from '../lib/words.js';
 import Avatar from '../components/Avatar.jsx';
 import Icon from '../components/Icon.jsx';
 import DigestSettings from '../components/DigestSettings.jsx';
+import Automations from '../components/Automations.jsx';
+import SlackSetup from '../components/SlackSetup.jsx';
 
 const TABS = [['team', 'Team & access'], ['rules', 'Rules'], ['integrations', 'Integrations'], ['notify', 'Notifications'], ['data', 'Data & privacy'], ['audit', 'Audit log']];
 const ROLE = { owner: 'Owner', member: 'Member', viewer: 'Viewer' };
-const KINDS = { approval: 'Needs approval', stuck: 'Task stuck', done: 'Request done', failed: 'Something failed', member: 'Someone joined', budget: 'Budget alert' };
+const KINDS = { approval: 'Needs approval', stuck: 'Task stuck', done: 'Request done', failed: 'Something failed', member: 'Someone joined', budget: 'Budget alert', cost: 'Cost spike or forecast', digest: 'Daily digest' };
 const lines = (t) => t.split('\n').map(x => x.trim()).filter(Boolean);
 const iAmDemo = () => !!store.get('huddle.demo.' + auth.project);
 const groupOf = (e) => e.action === 'command' ? 'commands' : ['owner', 'invite', 'invite-revoke', 'join', 'remove', 'role', 'github', 'account'].includes(e.action) ? 'access' : 'changes';
@@ -171,6 +173,9 @@ export default function Settings() {
             {ps.repo && msg.repo && <p className={'small' + (msg.repo.bad ? ' err' : '')} style={{ padding: '0 16px 12px' }}>{msg.repo.t}</p>}
           </div>
         )}
+
+        {tab === 'integrations' && <SlackSetup />}
+        {tab === 'integrations' && <Automations />}
 
         {tab === 'notify' && (
           <>
