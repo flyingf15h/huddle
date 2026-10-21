@@ -62,10 +62,22 @@ nav .actions a.plain { text-decoration: none; color: var(--muted); } nav .action
 .btn .arrow { transition: transform .15s; } .btn:hover .arrow { transform: translateX(3px); }
 
 /* hero: a fine grid behind it that fades out at the edges */
-.hero { position: relative; padding: 88px 0 0; text-align: center; }
-.netted { position: relative; }
-.netted > .wrap { position: relative; z-index: 1; }
-.snet { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; z-index: 0; -webkit-mask-image: linear-gradient(transparent, #000 14%, #000 82%, transparent); mask-image: linear-gradient(transparent, #000 14%, #000 82%, transparent); }
+.hero { position: relative; padding: 64px 0 0; text-align: center; }
+.cloud { position: absolute; display: block; pointer-events: none; }
+.herogrid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); gap: 24px; align-items: center; text-align: left; }
+.herotext .ctas, .herotext .facts { justify-content: flex-start; }
+.herotext .lede { margin-left: 0; }
+.herotext h1 { margin-left: 0; font-size: clamp(38px, 5.2vw, 66px); }
+.art { position: relative; height: 560px; margin-right: -40px; }
+.art .cloud { inset: 0; width: 100%; height: 100%; }
+@media (max-width: 960px) { .herogrid { grid-template-columns: minmax(0, 1fr); text-align: center; } .herotext .ctas, .herotext .facts { justify-content: center; } .herotext .lede, .herotext h1 { margin-left: auto; } .art { height: 300px; margin: 0 -24px 12px; order: -1; } }
+.dotfield { position: relative; padding-bottom: 40px; }
+.dotfield::before, .dotfield .spot { content: ''; position: absolute; inset: 40px 0 0; pointer-events: none; background-size: 22px 22px; }
+.dotfield::before { background-image: radial-gradient(rgba(36, 54, 94, .13) 1px, transparent 1.3px);
+  -webkit-mask-image: linear-gradient(transparent, #000 12%, #000 88%, transparent); mask-image: linear-gradient(transparent, #000 12%, #000 88%, transparent); }
+.dotfield .spot { background-image: radial-gradient(rgba(47, 107, 255, .7) 1.3px, transparent 1.7px);
+  -webkit-mask-image: radial-gradient(300px circle at var(--mx, 30%) var(--my, 20%), #000, transparent 75%); mask-image: radial-gradient(300px circle at var(--mx, 30%) var(--my, 20%), #000, transparent 75%); }
+.dotfield > .wrap { position: relative; z-index: 1; }
 .hero::before { content: ''; position: absolute; inset: 0 0 auto; height: 760px; z-index: -1; pointer-events: none;
   background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px); background-size: 48px 48px; background-position: center -1px;
   -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 30%, transparent 75%); mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 30%, transparent 75%); }
@@ -282,13 +294,15 @@ summary::after { content: '+'; font-family: var(--mono); color: var(--faint); fo
 details[open] summary::after { transform: rotate(45deg); }
 details p { color: var(--muted); margin: 10px 0 0; }
 .final { padding: 120px 0 110px; }
-.final .panel { position: relative; overflow: hidden; text-align: center; border-radius: 22px; padding: 96px 24px; color: #fff;
-  background: radial-gradient(120% 90% at 50% 0%, #2f6bff 0%, #1f3f9a 45%, #15244d 100%); box-shadow: 0 40px 90px -40px rgba(31, 63, 154, .7); }
+.final .panel { position: relative; overflow: hidden; text-align: center; border-radius: 22px; padding: 104px 24px; color: #fff;
+  background: radial-gradient(90% 70% at 50% 110%, #1b2b55 0%, transparent 70%), #0d1424; border: 1px solid #1f2b47; box-shadow: 0 40px 90px -45px rgba(13, 20, 36, .8); }
+.final .panel .cloud { inset: 0; width: 100%; height: 100%; z-index: 0; opacity: .9; }
+.final .panel > *:not(.cloud) { position: relative; z-index: 1; }
 .final h2 { margin: 0 auto 14px; max-width: 900px; font-size: clamp(32px, 4.6vw, 54px); color: #fff; }
 .final .sub { margin: 0 auto 32px; color: rgba(255, 255, 255, .78); }
 .final .btn { background: rgba(255, 255, 255, .08); border-color: rgba(255, 255, 255, .35); color: #fff; }
 .final .btn:hover { border-color: #fff; }
-.final .btn.primary { background: #fff; border-color: #fff; color: #15244d; box-shadow: 0 10px 30px -10px rgba(0, 0, 0, .4); }
+.final .btn.primary { background: #fff; border-color: #fff; color: #0d1424; box-shadow: 0 10px 30px -10px rgba(0, 0, 0, .4); }
 footer { border-top: 1px solid var(--line); padding: 26px 0 44px; color: var(--faint); font-size: 14px; }
 footer .wrap { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; }
 footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
@@ -332,6 +346,9 @@ footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
 </div></nav>
 
 <header class="hero"><div class="wrap">
+  <div class="herogrid">
+  <div class="herotext">
+
   <div class="pill rv"><b>MULTIPLAYER</b>for Claude Code, Codex and Cursor</div>
   <h1 class="rv" style="--d:.05s">Build in parallel with your team's AI agents <span class="dim">without the merge chaos</span></h1>
   <p class="lede rv" style="--d:.1s">For small teams where everyone has their own AI subscription. Your agents share project memory and skills, see what the others are doing in real time, split complex tasks between themselves automatically, and take over each other's work when someone runs out of usage.</p>
@@ -344,22 +361,25 @@ footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
     <li><svg><use href="#yes"/></svg>Everyone keeps their own agent and plan</li>
     <li><svg><use href="#yes"/></svg>Mac, Linux and Windows</li>
   </ul>
+  </div>
+  <div class="art" aria-hidden="true"><canvas class="cloud" id="herocloud"></canvas></div>
+  </div>
 
   <div class="tour playing rv" id="tour" style="--dwell: 2.8s; --d:.25s">
     <div class="tabs" role="tablist" aria-label="huddle screens">
       <button role="tab" aria-selected="true" aria-controls="tourframe" data-i="0">Activity<i></i></button>
       <button role="tab" aria-selected="false" aria-controls="tourframe" data-i="1">Tasks<i></i></button>
-      <button role="tab" aria-selected="false" aria-controls="tourframe" data-i="2">Code<i></i></button>
-      <button role="tab" aria-selected="false" aria-controls="tourframe" data-i="3">Usage<i></i></button>
-      <button role="tab" aria-selected="false" aria-controls="tourframe" data-i="4">Memory<i></i></button>
+      <button role="tab" aria-selected="false" aria-controls="tourframe" data-i="2">Memory<i></i></button>
+      <button role="tab" aria-selected="false" aria-controls="tourframe" data-i="3">Code<i></i></button>
+      <button role="tab" aria-selected="false" aria-controls="tourframe" data-i="4">Usage<i></i></button>
     </div>
     <p class="cap" id="tourcap" aria-live="polite"><b>Everything, live.</b> Every request, agent step and message across the team, with who is on what.</p>
     <div class="frame" id="tourframe" role="tabpanel">
       <img src="/shots/activity.webp" alt="huddle Activity screen" width="1400" height="860" class="on" fetchpriority="high">
       <img src="/shots/tasks.webp" alt="huddle Tasks screen" width="1400" height="860">
+      <img src="/shots/memory.webp" alt="huddle shared memory screen" width="1400" height="860">
       <img src="/shots/conflicts.webp" alt="huddle Code screen" width="1400" height="860">
       <img src="/shots/usage.webp" alt="huddle Usage screen" width="1400" height="860">
-      <img src="/shots/memory.webp" alt="huddle shared memory screen" width="1400" height="860">
     </div>
   </div>
 </div></header>
@@ -416,7 +436,7 @@ footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
   </div>
 </div></section>
 
-<section id="features" class="netted"><canvas class="snet" aria-hidden="true"></canvas><div class="wrap">
+<section id="features" class="dotfield"><div class="spot" aria-hidden="true"></div><div class="wrap">
   <p class="label rv">Features</p>
   <h2 class="rv">Everything a small team needs to ship together</h2>
   <p class="sub rv">Each person keeps the agent they like. huddle is the layer that makes them a team.</p>
@@ -552,6 +572,7 @@ footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
 </div></section>
 
 <section class="final"><div class="wrap"><div class="panel">
+  <canvas class="cloud" id="endcloud" aria-hidden="true"></canvas>
   <h2 class="rv">Get every agent on your team on the same page</h2>
   <p class="sub rv">Watch a simulated team of three hand work to each other in your browser. No setup needed.</p>
   <div class="ctas rv"><a class="btn primary big" href="/app#demo">Watch agents team up <span class="arrow">→</span></a><a class="btn big" href="#setup">Set up in a minute</a></div>
@@ -605,9 +626,9 @@ footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
   var cap = document.getElementById('tourcap'), cur = 0, timer = null, DWELL = 2800;
   var CAPS = ['<b>Everything, live.</b> Every request, agent step and message across the team, with who is on what.',
     '<b>Work hands itself off.</b> Agents give tasks to whoever has the most usage left, and each is reviewed and tested before it lands.',
+    '<b>Shared memory.</b> A project brief, team notes and skills that every agent reads before it starts.',
     '<b>Conflicts caught early.</b> huddle sees when two branches would collide and hands the merge to an agent.',
-    '<b>What it costs.</b> Tokens and API-equivalent cost per person, model and task.',
-    '<b>Shared memory.</b> A project brief, team notes and skills that every agent reads before it starts.'];
+    '<b>What it costs.</b> Tokens and API-equivalent cost per person, model and task.'];
   function show(i) {
     cur = (i + tabs.length) % tabs.length;
     tabs.forEach(function (t, j) { t.setAttribute('aria-selected', j === cur ? 'true' : 'false'); var b = t.querySelector('i'); b.style.animation = 'none'; void b.offsetWidth; b.style.animation = ''; });
@@ -643,51 +664,89 @@ footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
 
 
 
-  // dot nets behind a section: links between dots draw themselves in as you scroll through it,
-  // sweeping from the top, and undraw if you scroll back up
-  document.querySelectorAll('.snet').forEach(function (canvas) {
+
+  // dot clouds: a few thousand points that turn in 3D and morph between abstract shapes.
+  // The hero's shape follows the scroll; the closing panel's drifts through them on its own.
+  function cloud(canvas, opts) {
     var ctx = canvas.getContext('2d'); if (!ctx) return;
-    var host = canvas.parentElement, pts = [], edges = [], w = 0, h = 0, dirty = true, shown = false;
-    function build() {
-      var dpr = Math.min(2, window.devicePixelRatio || 1);
-      w = host.clientWidth; h = host.clientHeight;
-      canvas.width = w * dpr; canvas.height = h * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      var gap = 46, seed = 7;
-      function rnd() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; } // the same net every time
-      pts = []; edges = [];
-      for (var y = 10; y < h; y += gap) for (var x = 10; x < w; x += gap) pts.push({ x: x + (rnd() - .5) * gap * .55, y: y + (rnd() - .5) * gap * .55 });
-      var max = gap * 1.45;
-      for (var i = 0; i < pts.length; i++) for (var j = i + 1; j < pts.length; j++) {
-        var a = pts[i], b = pts[j], dx = a.x - b.x, dy = a.y - b.y, d = Math.sqrt(dx * dx + dy * dy);
-        if (d < max && rnd() < .55) edges.push({ a: a, b: b, at: Math.min(a.y, b.y) / h + rnd() * .08 });
-      }
-      edges.sort(function (e, f) { return e.at - f.at; });
-    }
-    // fainter in the middle column, where the cards are, stronger toward the sides
-    function side(x) { var c = Math.abs(x - w / 2) / (w / 2); return .25 + .75 * Math.min(1, c * 1.4); }
-    function draw() {
-      dirty = false;
-      var r = host.getBoundingClientRect();
-      var p = Math.min(1.1, Math.max(0, (innerHeight * .9 - r.top) / (r.height * .85)));
+    var N = opts.n, TAU = Math.PI * 2, GOLD = Math.PI * (3 - Math.sqrt(5));
+    function sphere(i) { var y = 1 - 2 * (i + .5) / N, r = Math.sqrt(1 - y * y), a = i * GOLD; return [Math.cos(a) * r, y, Math.sin(a) * r]; }
+    function torus(i) { var u = (i / N) * TAU * 23, v = i * GOLD * 7, R = .72, r = .32 + .08 * Math.sin(3 * u);
+      return [(R + r * Math.cos(v)) * Math.cos(u), r * Math.sin(v) + .18 * Math.sin(2 * u), (R + r * Math.cos(v)) * Math.sin(u)]; }
+    function wave(i) { var side = Math.ceil(Math.sqrt(N)), x = (i % side) / side * 2.6 - 1.3, z = Math.floor(i / side) / side * 2.6 - 1.3;
+      return [x, .32 * Math.sin(2.6 * x + 1) * Math.cos(2.2 * z) + .12 * Math.sin(5 * (x + z)), z]; }
+    function knot(i) { var t = (i / N) * TAU, k = i * GOLD * 3, cx = Math.sin(t) + 2 * Math.sin(2 * t), cy = Math.cos(t) - 2 * Math.cos(2 * t), cz = -Math.sin(3 * t), r = .5;
+      return [(cx + r * Math.cos(k)) / 3.2, (cy + r * Math.sin(k)) / 3.2, (cz + r * Math.cos(k + 1)) / 3.2]; }
+    function blob(i) { var p = sphere(i), th = Math.acos(p[1]), ph = Math.atan2(p[2], p[0]), m = 1 + .32 * Math.sin(3 * th) * Math.cos(4 * ph) + .18 * Math.sin(5 * ph + th);
+      return [p[0] * m * .85, p[1] * m * .85, p[2] * m * .85]; }
+    var MAKERS = { sphere: sphere, torus: torus, wave: wave, knot: knot, blob: blob };
+    var SHAPES = opts.shapes.map(function (name) {
+      var a = new Float32Array(N * 3), fn = MAKERS[name];
+      for (var i = 0; i < N; i++) { var p = fn(i); a[i * 3] = p[0]; a[i * 3 + 1] = p[1]; a[i * 3 + 2] = p[2]; }
+      return a;
+    });
+    var seed = new Float32Array(N); for (var i = 0; i < N; i++) seed[i] = Math.random() * TAU;
+    var w = 0, h = 0, raf = 0, visible = true, t0 = performance.now(), mouse = { x: 0, y: 0 }, mx = 0, my = 0;
+    function size() { var dpr = Math.min(2, window.devicePixelRatio || 1); w = canvas.clientWidth; h = canvas.clientHeight; canvas.width = w * dpr; canvas.height = h * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); }
+    function ease(x) { return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; }
+    function frame(now) {
+      raf = 0;
+      var t = (now - t0) / 1000;
+      var L = SHAPES.length, stage = Math.max(0, opts.stage(t)), k = Math.floor(stage), f = ease(stage - k), A = SHAPES[k % L], B = SHAPES[(k + 1) % L];
+      mx += (mouse.x - mx) * .05; my += (mouse.y - my) * .05;
+      var ry = t * .18 + stage * .9 + mx * .5, rx = .35 + Math.sin(t * .2) * .12 + my * .3, cy = Math.cos(ry), sy = Math.sin(ry), cx = Math.cos(rx), sx = Math.sin(rx);
+      var S = Math.min(w, h) * opts.scale, ox = w * opts.cx, oy = h * opts.cy;
       ctx.clearRect(0, 0, w, h);
-      for (var i = 0; i < pts.length; i++) {
-        var q = pts[i], on = q.y / h < p;
-        ctx.fillStyle = on ? 'rgba(47,107,255,' + (.45 * side(q.x)).toFixed(3) + ')' : 'rgba(27,35,51,' + (.12 * side(q.x)).toFixed(3) + ')';
-        ctx.beginPath(); ctx.arc(q.x, q.y, on ? 1.8 : 1.3, 0, 6.283); ctx.fill();
+      for (var i = 0; i < N; i++) {
+        var j = i * 3, wob = .025 * Math.sin(t * 1.3 + seed[i]);
+        var x = A[j] + (B[j] - A[j]) * f, y = A[j + 1] + (B[j + 1] - A[j + 1]) * f, z = A[j + 2] + (B[j + 2] - A[j + 2]) * f;
+        x += x * wob; y += y * wob; z += z * wob;
+        var x1 = x * cy - z * sy, z1 = x * sy + z * cy, y1 = y * cx - z1 * sx, z2 = y * sx + z1 * cx;
+        var persp = 2.6 / (2.6 + z2), px = ox + x1 * S * persp, py = oy + y1 * S * persp;
+        var d = (1 - z2) / 2; if (d < 0) d = 0; if (d > 1) d = 1; // 1 = nearest
+        var r = (.6 + d * 1.5) * opts.dot;
+        ctx.fillStyle = d > .62 ? opts.near : d > .35 ? opts.mid : opts.far;
+        ctx.globalAlpha = (opts.alpha[0] + d * opts.alpha[1]) * opts.fade(px, py, w, h);
+        ctx.fillRect(px - r / 2, py - r / 2, r, r);
       }
-      ctx.lineWidth = 1;
-      for (var k = 0; k < edges.length; k++) {
-        var e = edges[k], f = Math.min(1, Math.max(0, (p - e.at) * 12)); if (f <= 0) break;
-        ctx.strokeStyle = 'rgba(47,107,255,' + (.28 * side((e.a.x + e.b.x) / 2)).toFixed(3) + ')';
-        ctx.beginPath(); ctx.moveTo(e.a.x, e.a.y); ctx.lineTo(e.a.x + (e.b.x - e.a.x) * f, e.a.y + (e.b.y - e.a.y) * f); ctx.stroke();
-      }
+      ctx.globalAlpha = 1;
+      if (visible && !still) raf = requestAnimationFrame(frame);
     }
-    function tick() { if (shown && !dirty) { dirty = true; requestAnimationFrame(draw); } }
-    build(); draw();
-    new IntersectionObserver(function (es) { shown = es[0].isIntersecting; if (shown) tick(); }).observe(host);
-    addEventListener('scroll', tick, { passive: true });
-    var rt; addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(function () { build(); draw(); }, 150); });
+    function go() { if (!raf) raf = requestAnimationFrame(frame); }
+    size(); frame(performance.now()); go();
+    new IntersectionObserver(function (es) { visible = es[0].isIntersecting; if (visible && !still) go(); }).observe(canvas);
+    addEventListener('pointermove', function (e) { mouse.x = e.clientX / innerWidth - .5; mouse.y = e.clientY / innerHeight - .5; }, { passive: true });
+    if (still) addEventListener('scroll', function () { requestAnimationFrame(frame); }, { passive: true });
+    var rt; addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(function () { size(); frame(performance.now()); }, 150); });
+  }
+  // hero: a new shape for every ~60% of a screen scrolled, starting as a sphere
+  cloud(document.getElementById('herocloud'), {
+    n: 2600, shapes: ['sphere', 'torus', 'wave', 'knot', 'blob'], scale: .42, cx: .5, cy: .5, dot: 1.7,
+    near: '#2f6bff', mid: '#4b6fc9', far: '#24365e', alpha: [.16, .72],
+    stage: function (t) { return Math.min(4, Math.max(0, scrollY / 250)) + .06 * Math.sin(t * .5); },
+    fade: function () { return 1; }
   });
+  // closing panel: keeps morphing by itself, slowly
+  cloud(document.getElementById('endcloud'), {
+    n: 2200, shapes: ['blob', 'torus', 'knot', 'sphere'], scale: .7, cx: .86, cy: .55, dot: 1.8,
+    near: '#a9c1ff', mid: '#7393dc', far: '#3a4f86', alpha: [.12, .7],
+    stage: function (t) { return t / 6; },
+    fade: function (x, y, w) { return Math.min(1, Math.max(.12, (x / w - .45) * 2.6)); } // clear of the text
+  });
+
+  // the Features spotlight: follows the cursor over the section, drifts slowly otherwise
+  (function () {
+    var sec = document.getElementById('features'), spot = sec.querySelector('.spot'), over = false, t0 = performance.now(), on = false;
+    sec.addEventListener('pointermove', function (e) { over = true; var r = sec.getBoundingClientRect(); spot.style.setProperty('--mx', (e.clientX - r.left) + 'px'); spot.style.setProperty('--my', (e.clientY - r.top) + 'px'); });
+    sec.addEventListener('pointerleave', function () { over = false; });
+    if (still) return;
+    function drift(now) {
+      if (!on) return;
+      if (!over) { var t = (now - t0) / 1000; spot.style.setProperty('--mx', (50 + 38 * Math.sin(t * .23)) + '%'); spot.style.setProperty('--my', (45 + 35 * Math.sin(t * .31 + 1)) + '%'); }
+      requestAnimationFrame(drift);
+    }
+    new IntersectionObserver(function (es) { var was = on; on = es[0].isIntersecting; if (on && !was) requestAnimationFrame(drift); }).observe(sec);
+  })();
 
   document.getElementById('copy').addEventListener('click', function () {
     var b = this; navigator.clipboard.writeText(document.getElementById('cmd').textContent).then(function () { b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1500); }, function () {});
