@@ -209,6 +209,8 @@ function folderMcpServers(root) {
     Object.assign(out, ((all.projects || {})[root] || {}).mcpServers || {});
   } catch {}
   delete out.huddle;   // the clone gets its own huddle server
+  // an editor's server (Unity, Blender) would change the person's open project, not the clone's branch
+  for (const [name, spec] of Object.entries(out)) if (require('./apps').isEditorServer(name, spec)) delete out[name];
   return out;
 }
 
@@ -879,4 +881,4 @@ function listenWs(client, since, onEvent) {
   });
 }
 
-module.exports = { detectTests, neededCommands, needsAPerson, runAutopilot, createRunner, claimRunner, releaseRunner, pick, makeClone, landClone, normMode, getMode, MODES, MODE_WORDS, DEFAULT_MODE, planPrompt, taskPrompt, board };
+module.exports = { folderMcpServers, detectTests, neededCommands, needsAPerson, runAutopilot, createRunner, claimRunner, releaseRunner, pick, makeClone, landClone, normMode, getMode, MODES, MODE_WORDS, DEFAULT_MODE, planPrompt, taskPrompt, board };

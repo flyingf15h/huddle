@@ -772,9 +772,12 @@ const routes = {
     if (b.membersCanInvite !== undefined) p.projectSettings.membersCanInvite = b.membersCanInvite !== false;
     // how finished background work arrives: merged into the person's branch, or as a GitHub pull request
     if (b.delivery !== undefined) p.projectSettings.delivery = b.delivery === 'pr' ? 'pr' : 'merge';
+    // editors the team's agents drive through MCP (huddle apps): each teammate's folder gets their servers
+    if (b.apps !== undefined) p.projectSettings.apps = [...new Set((Array.isArray(b.apps) ? b.apps : []).map(String).filter(x => ['unity', 'blender'].includes(x)))];
     const said = { testCommand: (v) => v ? `test command: ${v}` : 'test command: guessed', crossReview: (v) => `review by another vendor: ${v === false ? 'off' : 'on'}`, review: (v) => `review before merging: ${v === false ? 'off' : 'on'}`,
       sharedToken: (v) => v === false ? 'switched the shared invite off' : 'switched the shared invite on', membersCanInvite: (v) => `members can invite: ${v === false ? 'no' : 'yes'}`,
-      delivery: (v) => v === 'pr' ? 'finished work opens a pull request' : "finished work merges into its person's branch" };
+      delivery: (v) => v === 'pr' ? 'finished work opens a pull request' : "finished work merges into its person's branch",
+      apps: (v) => `editors: ${(Array.isArray(v) && v.length ? v : ['none']).join(', ')}` };
     audit(p, a.name, 'settings', Object.keys(b).filter(k => said[k]).map(k => said[k](b[k])).join('; '));
     p.emit('project-setting', { settings: p.projectSettings, byName: a.name });
     return { ok: true, settings: p.projectSettings };

@@ -47,6 +47,12 @@ export default function Code() {
     setRef(k);
     await loadTree(k, cur.current.path);
   }
+  // your own branch only; it comes back the next time your agent finishes a turn with new commits
+  const unpublish = async () => {
+    const br = ref.slice(ref.indexOf('/') + 1);
+    if (!confirm(`Stop sharing ${br}? Teammates stop seeing it here. Your own copy isn't touched, and new commits share it again.`)) return;
+    try { await api('git-forget', { branch: br }); setRef(null); await loadRefs(); } catch (e) { setMsg(e.message); }
+  };
   async function loadRepo(fresh) {
     setLoadingRepo(true); setRepoErr('');
     try { setRepo(await api('repo' + (fresh ? '?fresh=1' : ''))); } catch (e) { setRepoErr(e.message); }
@@ -93,6 +99,7 @@ export default function Code() {
           <div id="codeside">
             <div className="ref"><label htmlFor="coderef">Branch</label>
               <select id="coderef" value={ref || ''} onChange={(e) => { setRef(e.target.value); setPath(null); loadTree(e.target.value, null); }}>{refs.map(x => <option key={x.owner + x.branch} value={x.owner + '/' + x.branch}>{x.owner}'s {x.branch} · {x.count} files · {ago(x.at)}</option>)}</select></div>
+            {ref && ref.split('/')[0] === myName() && <button className="link small" style={{ padding: '0 14px 6px', textAlign: 'left' }} onClick={unpublish}>Stop sharing this branch</button>}
             <div className="tree">
               {tree.map((d, i) => d.dir ? <div className="dir" key={'d' + i}>{d.dir}/</div>
                 : <button key={d.f.path} data-nav className={d.f.path === path ? 'sel' : ''} style={{ paddingLeft: d.indent }} title={d.f.path} onClick={() => openFile(d.f.path, false)}>{lockOf(d.f.path) && <><span className="lockic" aria-label="locked"><Icon name="lock" size={13} /></span> </>}{d.name}</button>)}

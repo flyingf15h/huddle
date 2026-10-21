@@ -12,6 +12,7 @@ const { requestTitle } = require('./core');
 const policy = require('./policy');
 const codex = require('./codex');
 const cursor = require('./cursor');
+const apps = require('./apps');
 
 // Claude Code edits with these; Codex edits with apply_patch (one patch can touch several files)
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'apply_patch']);
@@ -209,6 +210,8 @@ async function autoPublish(client, cfg, st) {
 
 // One line saying what a tool call does, e.g. "Bash: npm test" or "Edit: src/app.js".
 function toolSummary(name, input = {}, cwd) {
+  const hit = apps.match(name);
+  if (hit) return apps.summary(hit, input);
   const short = name.replace(/^mcp__huddle__/, '').replace(/^mcp__/, '');
   const root = process.env.CLAUDE_PROJECT_DIR || cwd || '';
   if (name === 'apply_patch') return `Edit: ${codex.patchFiles(input.command || input.patch || '').join(', ')}`.slice(0, 300);
@@ -523,6 +526,44 @@ async function lockOne(client, cfg, file) {
   return null;
 }
 
+// Before a call that changes something in Unity or Blender: lock the files it names, and remind the
+// agent (at most once a minute) which of the editor's files teammates are working on.
+async function editorPre(hit, input, client, cfg) {
+  if (!apps.changes(hit, input.tool_input || {})) return null;
+  let note = null;
+  for (const rel of apps.targets(hit, input.tool_input || {}, cfg.root)) {
+    const r = await lockOne(client, cfg, path.join(cfg.root, ...rel.split('/')));
+    if (r && r.hookSpecificOutput && r.hookSpecificOutput.permissionDecision === 'deny') return r;
+    note = note || r;
+  }
+  const st = sessionState(cfg, client.agent);
+  const warned = st.data.editorWarnAt || {};
+  if (note || Date.now() - (warned[hit.id] || 0) < 60000) return note;
+  st.data.editorWarnAt = { ...warned, [hit.id]: Date.now() };
+  st.save();
+  const s = await client.get('state').catch(() => null);
+  const theirs = s ? s.locks.filter(l => l.holder !== client.agent.id && (l.dir || hit.app.files.test(l.path))) : [];
+  return theirs.length ? ctx('PreToolUse', `Teammates are working on these files, so don't change or save them through ${hit.app.label}: ` +
+    theirs.map(l => `${l.path} (${l.holderName})`).join(', ') + '. Changes made in the editor are locked when they reach disk.') : null;
+}
+
+// After such a call: the editor's files that now differ on disk are locked for this agent, like an
+// edit would be. One someone else holds can't be refused any more, so the agent is told to undo it.
+async function editorPost(hit, client, cfg) {
+  const st = sessionState(cfg, client.agent);
+  const mine = new Set(st.data.editorLocked || []);
+  const clash = [];
+  for (const rel of apps.changedFiles(cfg.root, hit.app).filter(f => !mine.has(f)).slice(0, 40)) {
+    const r = await lockOne(client, cfg, path.join(cfg.root, ...rel.split('/')));
+    if (r && r.hookSpecificOutput && r.hookSpecificOutput.permissionDecision === 'deny') clash.push(r.hookSpecificOutput.permissionDecisionReason.replace(/\. It is read-only[\s\S]*$/, ''));
+    else mine.add(rel);
+  }
+  st.data.editorLocked = [...mine].slice(-200);
+  st.save();
+  return clash.length ? `huddle: this ${hit.app.label} change touched files a teammate is working on: ${clash.join('; ')}. ` +
+    `Undo it in ${hit.app.label} (or revert the file with git) and ask them with huddle_send before changing it again.` : '';
+}
+
 const handlers = {
   async 'session-start'(input, client, cfg) {
     const s = await client.post('hello', { build: build(), handoffs: true, tool: agentKind() });
@@ -546,6 +587,7 @@ const handlers = {
     st.data.handoffAt = Math.max(0, ...handoffs.map(h => h.at));
     st.data.sessionHead = st.data.commitsSeen = gitx.isRepo(cfg.root) ? gitx.head(cfg.root) : null;
     st.data.edited = [];
+    st.data.editorLocked = [];
     st.save();
     if (gitx.isRepo(cfg.root)) await Promise.race([gitx.fetchAll(client, cfg.root).then(() => gitx.reportConflicts(client, cfg.root)).catch(() => {}), new Promise(r => setTimeout(r, 4000))]);
     // shown to the person in their terminal, so they can see this session is in the huddle
@@ -554,11 +596,15 @@ const handlers = {
     const mine = build();
     const newer = mine && s.agents.filter(a => a.online && a.build && a.build.at > mine.at).sort((x, y) => y.build.at - x.build.at)[0];
     const back = catchUp(cfg, s, b, client.agent.name);
+    // the editors this project uses (huddle apps): register their MCP servers here if they're missing
+    const editors = ((s.projectSettings || {}).apps || []).filter(id => apps.APPS[id]);
+    const added = editors.length && !process.env.HUDDLE_AUTOPILOT ? apps.install(cfg.root, agentKind(), editors) : [];
     const notice = `huddle: this session is in "${cfg.project.replace(/-[0-9a-f]{6,8}$/, '')}" as ${client.agent.name}` +
       ` · ${others.length ? others.join(', ') + ' online' : 'nobody else online'}` +
       ` · your Claude ${mode === 'full' ? 'is active for the team (answers the other Claudes, takes its tasks)' : mode === 'off' ? 'does not take requests (/autopilot to change)' : 'takes requests only (/autopilot to change)'}` +
       (newer ? ` · ${newer.name} runs a newer huddle; run \`huddle update\` and restart Claude` : '') +
-      (back ? `\n${back}` : '');
+      (back ? `\n${back}` : '') +
+      (added.length ? `\nhuddle added the ${added.map(id => apps.APPS[id].label).join(' and ')} tools this project uses. Restart to load them; \`huddle apps\` shows the one-time editor setup.` : '');
     return withNotice(notice, ctx('SessionStart',
       `You are "${client.agent.name}" in huddle project "${client.cfg.project}", shared with other AI coding agents (Claude Code and Codex) working in the same codebase from other machines.\n` +
       (nameLine(s, client.agent.name) ? nameLine(s, client.agent.name) + '\n' : '') +
@@ -573,6 +619,7 @@ const handlers = {
       'Messages from other agents show up in your context automatically.\n' +
       'The team shares knowledge through huddle instead of git: the PROJECT.md brief (huddle_project), memory notes (huddle_remember / huddle_recall) and skills (huddle_save_skill). ' +
       'When you learn something another agent would otherwise have to rediscover (a gotcha, a decision, how to run or test something), save it.\n\n' +
+      (editors.length ? `This project uses ${editors.map(id => apps.APPS[id].label).join(' and ')} through MCP. Files you change through the editor (scenes, prefabs, assets, .blend files) are locked for you when they reach disk, like edits; a file a teammate holds must not be changed or saved from the editor. Save the scene or file when a step is done so teammates get it.\n\n` : '') +
       teamSummary(s, client.agent) + '\n' + branchSummary(s, client, cfg) + '\n\n' +
       (recentHandoffs(handoffs, client.agent.name) ? recentHandoffs(handoffs, client.agent.name) + '\n\n' : '') +
       board.briefing(b, client.agent.name) + '\n\n' + shared.briefing(sh)));
@@ -585,6 +632,8 @@ const handlers = {
       const rule = policy.deniedBy((cachedSettings(cfg.root) || {}).policy, Array.isArray(cmd) ? cmd.join(' ') : cmd);
       return rule ? deny(`This project never allows \`${rule}\` (set by the project owner in huddle). Find another way, or ask your user to run it themselves.`) : null;
     }
+    const hit = !cfg.clone && apps.match(input.tool_name);
+    if (hit) return editorPre(hit, input, client, cfg);
     if (!EDIT_TOOLS.has(input.tool_name)) return null;
     // a Codex patch can write several files: each is locked, and one refusal refuses the patch
     let note = null;
@@ -612,6 +661,11 @@ const handlers = {
         if (e.code !== 'ENOENT' && e.status !== 403) notes.push(`huddle could not share ${rel}: ${e.message}`);
       }
     }
+    const hit = !cfg.clone && apps.match(input.tool_name);
+    if (hit && apps.changes(hit, input.tool_input || {})) {
+      const warn = await editorPost(hit, client, cfg);
+      if (warn) notes.push(warn);
+    }
     // Codex's tool calls come from here rather than its transcript
     const extra = agentKind() !== 'claude' && !input.noStep && sharingLevel(cfg) !== 'off' && !sessionState(cfg, client.agent).data.private
       ? [{ kind: 'tool', tool: input.tool_name === 'exec_command' ? 'Bash' : input.tool_name, text: policy.redact(toolSummary(input.tool_name === 'exec_command' ? 'Bash' : input.tool_name, input.tool_input || {}, input.cwd)) }] : [];
@@ -628,6 +682,7 @@ const handlers = {
     // whatever is left from the previous turn goes out (or is dropped) under that turn's privacy
     const items = pendingActivity(input, cfg, st);
     st.data.private = isPrivate;
+    st.data.editorLocked = []; // locks can lapse between turns, so editor files are checked afresh
     st.data.turnStart = st.data.turnStart || Date.now();
     if (input.transcript_path && st.data.usageFile !== input.transcript_path) newUsage(input, st); // start counting from here
     if (input.session_id && st.data.conversation !== input.session_id) {

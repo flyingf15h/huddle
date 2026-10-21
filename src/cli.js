@@ -105,6 +105,9 @@ Day to day:
   huddle export [--out FILE]    everything the project holds, as JSON (owner)
   huddle audit                  who changed what, and every command background agents ran
   huddle problems               crashes and failures reported from teammates' computers
+  huddle apps [add|remove unity|blender]
+                                editors the team's agents use through MCP: registers their server
+                                for everyone and locks the scenes and assets they change
   huddle tests ["CMD"] [--review on|off]
                                 what checks background work before it merges: the test
                                 command (default: guessed) and a Sonnet review
@@ -434,7 +437,8 @@ function installHooks(root, dir, projectRoot) {
   };
   add('SessionStart', null, 'session-start');
   add('UserPromptSubmit', null, 'prompt');
-  add('PreToolUse', 'Edit|Write|MultiEdit|NotebookEdit|Bash', 'pre');
+  // (Unity and Blender MCP calls too: files they name are locked first, see apps.js)
+  add('PreToolUse', 'Edit|Write|MultiEdit|NotebookEdit|Bash|mcp__.*([Bb]lender|[Uu]nity).*', 'pre');
   add('PostToolUse', '*', 'post');
   add('Stop', null, 'stop');
   add('SessionEnd', null, 'session-end');
@@ -1020,6 +1024,43 @@ async function cmdApprove({ pos, flags }) {
   console.log(r.approval.status === 'approved' ? `approved: ${r.approval.command}` : `said no to: ${r.approval.command}`);
 }
 
+// `huddle apps`: the editors (Unity, Blender) the team's agents drive through their MCP servers
+async function cmdApps({ pos }) {
+  const apps = require('./apps');
+  const client = humanClient();
+  const root = client.cfg.root, agent = folderAgent(root);
+  const [verb, ...names] = pos;
+  const ids = names.map(n => n.toLowerCase());
+  const bad = ids.filter(id => !apps.APPS[id]);
+  if (bad.length) return console.log(`huddle knows ${Object.keys(apps.APPS).join(' and ')}, not ${bad.join(', ')}.`);
+  let on = ((await client.get('state')).projectSettings || {}).apps || [];
+  if (verb === 'add' || verb === 'remove') {
+    if (!ids.length) return console.log(`huddle apps ${verb} unity|blender`);
+    on = verb === 'add' ? [...new Set([...on, ...ids])] : on.filter(id => !ids.includes(id));
+    on = (await client.post('project-setting', { apps: on })).settings.apps || [];
+    if (verb === 'remove') for (const id of ids) apps.uninstall(root, agent, id);
+    const added = verb === 'add' ? apps.install(root, agent, ids) : [];
+    for (const id of ids) {
+      const a = apps.APPS[id];
+      if (verb === 'remove') { console.log(`${a.label}: off for the team (its MCP server was removed from this folder)`); continue; }
+      console.log(`${a.label}: on for the team. ${added.includes(id) ? 'Its MCP server is registered here' : apps.registered(root, agent, id) ? 'This folder already had its MCP server' : 'Couldn\'t register its MCP server here; is the agent\'s command line installed?'}; teammates get it at their next session.`);
+    }
+    if (verb === 'add') console.log('\nRestart your agent to load the new tools, then do the one-time editor setup below.\n');
+    else return;
+  } else if (verb) return console.log('huddle apps [add|remove unity|blender]');
+  const detected = Object.keys(apps.APPS).filter(id => !on.includes(id) && apps.APPS[id].detect(root));
+  if (!on.length) console.log('No editors are on for this project.');
+  for (const id of on) {
+    const a = apps.APPS[id];
+    const up = a.port ? await apps.listening(a.port) : null;
+    console.log(`${a.label}: on · MCP server ${apps.registered(root, agent, id) ? 'registered here' : 'not registered here (run huddle apps add ' + id + ')'}` +
+      (up === null ? '' : up ? ` · Blender is listening on port ${a.port}` : ` · nothing is listening on port ${a.port} yet`));
+    a.setup.forEach((step, i) => console.log(`  ${i + 1}. ${step}`));
+  }
+  if (detected.length) console.log(`\nThis folder looks like a ${detected.map(id => apps.APPS[id].label).join(' and ')} project: huddle apps add ${detected.join(' ')}`);
+  if (on.length) console.log('\nChanges made through the editor (scenes, prefabs, assets, .blend files) are locked like edits once they reach disk.\nBackground Claudes don\'t get editor tools: they work in their own copy, and the editor has your folder open.');
+}
+
 async function cmdTests({ pos, flags }) {
   const client = humanClient();
   const body = {};
@@ -1499,7 +1540,7 @@ async function main() {
   const args = parseArgs(rest);
   const cmds = {
     server: cmdServer, new: cmdNew, join: cmdJoin, leave: cmdLeave, status: cmdStatus, send: cmdSend, inbox: cmdInbox,
-    lock: cmdLock, unlock: cmdUnlock, watch: cmdWatch, invite: cmdInvite, open: cmdOpen, approve: cmdApprove, tests: cmdTests, _summarize: cmdSummarize,
+    lock: cmdLock, unlock: cmdUnlock, watch: cmdWatch, invite: cmdInvite, open: cmdOpen, approve: cmdApprove, tests: cmdTests, apps: cmdApps, _summarize: cmdSummarize,
     project: cmdProject, sharing: cmdSharing, doctor: cmdDoctor, 'ai-name': cmdAiName, update: cmdUpdate, permissions: cmdPermissions, tidy: cmdTidy, handoff: cmdHandoff, handoffs: cmdHandoff,
     sync: cmdSync, branches: cmdBranches, branch: cmdBranch, publish: cmdPublish, fetch: cmdFetch, merge: cmdMerge,
     ask: cmdAsk, board: cmdBoard, autopilot: cmdAutopilot, worker: cmdWorker, unpublish: cmdUnpublish, forget: cmdForget, 'same-person': cmdSamePerson, link: cmdLink, unlink: cmdUnlink, statusline: cmdStatusline, memory: cmdMemory, memories: cmdMemory, skill: cmdSkill, skills: cmdSkill,

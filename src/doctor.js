@@ -67,6 +67,23 @@ async function doctor({ installDir, hookMark }) {
   const onPath = spawnSync(process.platform === 'win32' ? 'where' : 'which', ['huddle'], { encoding: 'utf8' }).status === 0;
   add(onPath ? 'ok' : 'warn', onPath ? '`huddle` is on your PATH' : '`huddle` isn\'t on your PATH', `use \`npx -y github:flyingf15h/huddle <command>\`, or run: node "${cliPath}" <command>`);
 
+  // editors the project uses through MCP (huddle apps)
+  const editors = ((state && state.projectSettings) || {}).apps || [];
+  if (editors.length) {
+    const apps = require('./apps');
+    add(has('uvx') ? 'ok' : 'bad', has('uvx') ? 'uv is installed (the Unity and Blender MCP servers run with it)' : 'uv isn\'t installed, so the editor MCP servers can\'t start', 'install uv: https://docs.astral.sh/uv/getting-started/installation/');
+    for (const id of editors) {
+      const a = apps.APPS[id];
+      if (!a) continue;
+      const reg = apps.registered(cfg.root, agent, id);
+      add(reg ? 'ok' : 'bad', reg ? `${a.label}'s MCP server is registered here` : `${a.label}'s MCP server isn't registered here`, `run \`huddle apps add ${id}\`, then restart your agent`);
+      if (a.port) {
+        const up = await apps.listening(a.port);
+        add(up ? 'ok' : 'warn', up ? `${a.label} is listening on port ${a.port}` : `nothing is listening on port ${a.port}`, `open ${a.label} and start its MCP add-on (\`huddle apps\` has the steps)`);
+      }
+    }
+  }
+
   // privacy: what is shared, and which sensitive files here are kept private
   const sharing = raw.shareActivity || 'tools';
   const cap = state && state.projectSettings && state.projectSettings.maxSharing;

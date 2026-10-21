@@ -13,7 +13,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node test/e2e.js && node test/git-board.js && node test/accounts.js && node test/codex.js && node test/product.js && node test/cursor.js && node test/worker.js && node test/cross.js && node test/privacy.js"
+    "test": "node test/e2e.js && node test/git-board.js && node test/accounts.js && node test/codex.js && node test/product.js && node test/cursor.js && node test/worker.js && node test/cross.js && node test/privacy.js && node test/apps.js"
   },
   "license": "MIT",
   "repository": "github:flyingf15h/huddle"

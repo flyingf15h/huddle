@@ -1,6 +1,6 @@
 // Team & settings: people and access, rules, integrations (GitHub), notifications, data, audit log.
 import { useEffect, useState } from 'react';
-import { S, auth, known, saveKnown, api, loadMe, loadNotes, isOwner, dn, prettyProject, forgetProject, goHome } from '../lib/state.js';
+import { S, auth, known, saveKnown, api, loadMe, loadNotes, isOwner, dn, prettyProject, forgetProject, goHome, people } from '../lib/state.js';
 import { useS } from '../lib/store.js';
 import { ago, store } from '../lib/words.js';
 import Avatar from '../components/Avatar.jsx';
@@ -9,6 +9,7 @@ import DigestSettings from '../components/DigestSettings.jsx';
 import Automations from '../components/Automations.jsx';
 import SlackSetup from '../components/SlackSetup.jsx';
 import ThemePicker from '../components/ThemePicker.jsx';
+import Editors from '../components/Editors.jsx';
 
 const TABS = [['team', 'Team & access'], ['rules', 'Rules'], ['integrations', 'Integrations'], ['notify', 'Notifications'], ['look', 'Appearance'], ['data', 'Data & privacy'], ['audit', 'Audit log']];
 const ROLE = { owner: 'Owner', member: 'Member', viewer: 'Viewer' };
@@ -60,6 +61,11 @@ export default function Settings() {
     if (key === 'sharedToken' && !on && !confirm('Switch the shared invite off? Anyone still using it (including their agents) loses access until they join with a personal invite.')) return;
     await api('project-setting', { [key]: on }); await loadMe();
   };
+  // names huddle has seen: fold one person's two names together, or drop someone who left
+  const [into, setInto] = useState({});
+  const samePerson = run('names', async (from) => { if (!into[from]) return; await api('merge-person', { from, into: into[from] }); say('names', `${from} is now shown as ${into[from]}.`); });
+  const forgetName = run('names', async (name) => { if (!confirm(`Remove ${name} from the team list? Their past work stays.`)) return; await api('forget-agent', { name }); say('names', `Removed ${name}.`); });
+  const tidyNames = run('names', async () => { const r = await api('tidy', {}); say('names', r.merged && r.merged.length ? `Merged ${r.merged.length} name${r.merged.length === 1 ? '' : 's'} that differed only in capitals.` : 'Nothing to tidy.'); });
   const linkAccount = run('acct', async () => { await api('link-account', {}); say('acct', 'Linked. This project now opens from your account, and you get its notifications by email.'); await loadTab(); await loadNotes(); });
   const soleOwner = S.me.accounts && S.me.via === 'member' && owner && members.length > 1 && members.filter(m => m.role === 'owner').length < 2;
   const leave = async () => {
@@ -131,6 +137,13 @@ export default function Settings() {
             ) : !S.account.user && (S.account.email || S.account.github) ? (
               <div className="panel"><h3>Sign in</h3><p className="pdesc">Sign in from the home screen to carry your projects between browsers and get email notifications.</p><div className="pbody"><button onClick={goHome}>Go to the home screen</button></div></div>
             ) : null}
+            {owner && <div className="panel"><h3>Names on the team</h3><p className="pdesc">Everyone huddle has seen in this project. If one person shows up under two names (a laptop and a desktop, say), fold them together. Remove someone who has left; their past work stays.</p>
+              <div className="plist">{people().map(p => (
+                <div className="srow" key={p.name}><Avatar name={p.name} sm /><span className="grow"><b>{dn(p.name)}</b><span className="sub">{p.online ? 'online now' : 'last seen ' + ago(p.lastSeen)}</span></span>
+                  <select aria-label={`Same person as`} value={into[p.name] || ''} onChange={(e) => setInto({ ...into, [p.name]: e.target.value })}><option value="">Same person as…</option>{people().filter(q => q.name !== p.name).map(q => <option key={q.name} value={q.name}>{dn(q.name)}</option>)}</select>
+                  <button className="ghost" disabled={!into[p.name]} onClick={() => samePerson(p.name)}>Merge</button>
+                  <button className="ghost" disabled={p.online} title={p.online ? 'Online right now' : ''} onClick={() => forgetName(p.name)}>Remove</button></div>))}</div>
+              <div className="pactions"><M k="names" /><button onClick={tidyNames}>Merge names that differ only in capitals</button></div></div>}
             <div className="panel"><h3>Leave this project</h3><p className="pdesc">{iAmDemo() ? 'The demo is removed from your projects. You can open a fresh one from the home screen any time.' : soleOwner ? "You're the only owner. Make someone else an owner above first, so the team still has one." : S.me.accounts && S.me.via === 'member' ? "Your access ends right away, and you'd need a new invite to come back. Your past work stays in the project." : 'This project is removed from this browser. Anyone with the shared invite, you included, can still open it again.'} To also disconnect your computer, run <code>huddle leave</code> in the project folder.</p>
               <div className="pactions" style={{ paddingTop: 12 }}><M k="leave" /><button className="danger" disabled={soleOwner} onClick={leave}>Leave {prettyProject(auth.project)}</button></div></div>
           </>
@@ -178,6 +191,7 @@ export default function Settings() {
           </div>
         )}
 
+        {tab === 'integrations' && <Editors />}
         {tab === 'integrations' && <SlackSetup />}
         {tab === 'integrations' && <Automations />}
 

@@ -45,6 +45,11 @@ export default function Brief() {
     try { await api('memory', { title: mt.trim(), text: mx.trim() }); setAdding(false); setMt(''); setMx(''); setMsg(''); await loadShared(); } catch (e) { setMsg(e.message); }
   };
   const forget = async (id) => { await api('forget', { id }).catch(() => {}); await loadShared(); };
+  const [sk, setSk] = useState(null);
+  const addSkill = async () => {
+    if (!sk.name.trim() || !sk.description.trim() || !sk.body.trim()) return setMsg('Give it a name, when to use it, and the steps.');
+    try { await api('skill', sk); setSk(null); setMsg(''); await loadShared(); } catch (e) { setMsg(e.message); }
+  };
   const delSkill = async (name) => { await api('skill-delete', { name }).catch(() => {}); await loadShared(); };
   const pick = (t) => { setTab(t); setQuery(''); };
 
@@ -61,7 +66,7 @@ export default function Brief() {
           <span style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             {tab === 'doc' && !editing && <button className="primary" onClick={() => { setDraft(doc ? doc.text : ''); setEditing(true); setMsg(''); }}>{doc ? 'Edit brief' : 'Write brief'}</button>}
             {tab === 'memory' && <><input type="search" placeholder="Search memory" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search memory" /><button className="primary" onClick={() => setAdding(true)}>New memory</button></>}
-            {tab === 'skills' && sh && sh.skills.length > 0 && <input type="search" placeholder="Search skills" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search skills" />}
+            {tab === 'skills' && <>{sh && sh.skills.length > 0 && <input type="search" placeholder="Search skills" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search skills" />}<button className="primary" onClick={() => setSk({ name: '', description: '', body: '' })}>New skill</button></>}
           </span>
         </div>
         {!sh ? <p className="muted">Loading…</p> : tab === 'doc' ? (
@@ -94,11 +99,18 @@ export default function Brief() {
           </>
         ) : (
           <>
+            {sk && (
+              <div className="newmem"><b>A how-to every agent can follow</b>
+                <input value={sk.name} onChange={(e) => setSk({ ...sk, name: e.target.value })} placeholder="Name, e.g. release-build" maxLength={64} aria-label="Skill name" />
+                <input value={sk.description} onChange={(e) => setSk({ ...sk, description: e.target.value })} placeholder="When to use it, e.g. When asked to ship a new build to testers" aria-label="When to use it" />
+                <textarea value={sk.body} onChange={(e) => setSk({ ...sk, body: e.target.value })} placeholder="The steps, in Markdown" style={{ minHeight: 120 }} aria-label="Steps" />
+                <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center' }}><button className="primary" onClick={addSkill}>Save</button><button onClick={() => setSk(null)}>Cancel</button><span className="err small">{msg}</span></div></div>
+            )}
             {skills.map(k => (
               <details className="mem" key={k.name} open={!!query || openId === k.name}><summary data-nav><Chev /><span className="mt">{k.name}</span><span className="mw">{k.byName} · {ago(k.at)}</span><span className="mp">{k.description}</span></summary>
                 <div className="mb"><p>{k.description}</p><pre>{k.body}</pre><div className="macts"><button className="link small" onClick={() => delSkill(k.name)}>Delete</button></div></div></details>
             ))}
-            {!skills.length && <p className="muted">{query ? `No skill mentions “${query}”.` : 'No shared skills yet. An agent can save one with huddle_save_skill.'}</p>}
+            {!skills.length && <p className="muted">{query ? `No skill mentions “${query}”.` : 'No shared skills yet. Add one here, or an agent can save one with huddle_save_skill.'}</p>}
           </>
         )}
       </div>
