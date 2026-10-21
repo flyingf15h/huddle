@@ -129,3 +129,21 @@ main[data-main] { min-height: 0; }
 .clickaway:hover { background: transparent; }
 .lockic { display: inline-flex; vertical-align: -2px; color: var(--muted); }
 .livebar svg, .lockic svg { vertical-align: -2px; }
+
+/* ---------- the landing page's feel: signal blue, mono labels, a dot grid behind content, soft motion ---------- */
+.railhead, #side h2 { font-family: var(--mono); font-size: 11.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--signal); }
+.railhead .count { color: var(--muted); }
+#side h2 .count { letter-spacing: 0; text-transform: none; }
+.navlist button.on::before { content: ''; position: absolute; left: -10px; top: 7px; bottom: 7px; width: 3px; border-radius: 0 3px 3px 0; background: var(--signal); }
+.maincol { background-image: radial-gradient(color-mix(in srgb, var(--ink) 9%, transparent) 1px, transparent 1.3px); background-size: 22px 22px; }
+button.primary { box-shadow: 0 1px 0 rgba(255, 255, 255, .15) inset, 0 6px 16px -6px color-mix(in srgb, var(--accent) 60%, transparent); }
+button.primary:hover { box-shadow: 0 1px 0 rgba(255, 255, 255, .15) inset, 0 10px 22px -8px color-mix(in srgb, var(--accent) 70%, transparent); }
+.conn.live { color: var(--signal); } .conn.live::before { background: var(--signal); }
+main[data-main], .pageview { animation: rise .28s cubic-bezier(.2, .7, .2, 1); }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+#login::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px); background-size: 48px 48px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 55% at 50% 0%, #000 25%, transparent 75%); mask-image: radial-gradient(ellipse 70% 55% at 50% 0%, #000 25%, transparent 75%); }
+@keyframes live { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--signal) 55%, transparent); } 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+#side h2 button, #side h2 a { font-family: inherit; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, sans-serif; text-transform: none; letter-spacing: 0; font-size: 13px; }
+.turn.toyou { box-shadow: inset 2px 0 0 var(--signal); background: color-mix(in srgb, var(--signal) 8%, transparent); }

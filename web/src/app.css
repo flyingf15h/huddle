@@ -2,7 +2,8 @@
    A theme (src/lib/themes.js) sets --page, --raised, --rail, --rail-ink, --rail-active and --accent on
    :root; everything else follows from those and from the light or dark base below. Solid colours only. */
 :root {
-  --page: #faf7f0; --raised: #fffdf8; --rail: #f2ede2; --rail-ink: #24211c; --rail-active: rgba(36, 33, 28, .08); --accent: #2f5d62;
+  --page: #f8f7f3; --raised: #ffffff; --rail: #e9edf3; --rail-ink: #1b2333; --rail-active: rgba(27, 35, 51, .08); --accent: #24365e;
+  --signal: #2f6bff; --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, "Cascadia Mono", Consolas, monospace;
   --bg: var(--page); --surface: var(--page); --sunk: rgba(29, 28, 26, .04); --wash: var(--page);
   --ink: #1d1c1a; --muted: #5f5c57; --faint: #8a8781; --line: rgba(29, 28, 26, .1); --line-strong: rgba(29, 28, 26, .18);
   --accent-ink: #ffffff; --accent-soft: color-mix(in srgb, var(--accent) 11%, transparent); --accent-soft-ink: color-mix(in srgb, var(--accent) 82%, #000);
@@ -21,9 +22,10 @@
 }
 /* the dark base, for Evening, Tide and Dusk (and "system" at night before the script runs) */
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --page: #1d1b18; --raised: #272420; --rail: #161412; --rail-ink: #ece5da; --rail-active: rgba(236, 229, 218, .09); --accent: #d9a066;
+  --page: #0f1729; --raised: #18223a; --rail: #0a101e; --rail-ink: #e6ebf5; --rail-active: rgba(143, 176, 255, .12); --accent: #8fb0ff;
 } }
 :root[data-theme="dark"] {
+  --signal: #8fb0ff;
   --sunk: rgba(255, 255, 255, .04);
   --ink: #e8e6e3; --muted: #a9a59f; --faint: #7f7c76; --line: rgba(255, 255, 255, .08); --line-strong: rgba(255, 255, 255, .15);
   --accent-ink: #111; --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent); --accent-soft-ink: color-mix(in srgb, var(--accent) 75%, #fff);
@@ -271,7 +273,7 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; grid-template
 .empty .acts { display: flex; gap: 8px; justify-content: center; margin-top: 14px; flex-wrap: wrap; }
 
 /* ---------- composer ---------- */
-#composer { padding: 12px 20px 16px; border-top: 1px solid var(--line); background: var(--bg); }
+#composer { padding: 12px 20px 16px; border-top: 1px solid var(--line); background: var(--page); }
 .cbox { background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 10px 12px 8px; transition: border-color .15s, box-shadow .15s; }
 .cbox:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow); }
 .ctop { display: flex; align-items: center; gap: 8px; }
