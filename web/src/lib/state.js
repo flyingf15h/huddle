@@ -24,10 +24,14 @@ export const prettyProject = (p) => String(p || '').replace(/-[0-9a-f]{6,8}$/, '
 export const saveKnown = () => store.set('huddle.projects', JSON.stringify(known));
 
 export const auth = reactive({ token: null, project: null, name: store.get('huddle.name') === 'human' ? '' : (store.get('huddle.name') || '') });
-export const VIEWS = ['activity', 'tasks', 'timeline', 'code', 'brief', 'gallery', 'builds', 'usage', 'health', 'settings'];
+export const VIEWS = ['overview', 'activity', 'tasks', 'studio', 'settings'];
+// pages that became tabs inside another page (and Code, which is gone): old links and shortcuts still land somewhere
+const MOVED = { brief: ['studio', 'brief'], timeline: ['studio', 'timeline'], gallery: ['studio', 'gallery'], builds: ['studio', 'builds'], usage: ['settings', 'usage'], health: ['settings', 'health'], code: ['overview'] };
+const where = (v) => MOVED[v] || [VIEWS.includes(v) ? v : 'overview'];
+const startAt = where(params.get('v'));
 
 export const S = reactive({
-  view: VIEWS.includes(params.get('v')) ? params.get('v') : 'activity',
+  view: startAt[0], studioTab: startAt[0] === 'studio' && startAt[1] || 'brief',
   conn: 'connecting',            // 'live' | 'reconnecting' | 'connecting'
   agents: {}, locks: {}, files: {}, settings: {}, aliases: {}, usage: {}, approvals: [], projectSettings: {}, problems: [], members: [],
   board: { goals: [], tasks: [], version: 0 }, shared: null, entries: [], conflicts: [],
@@ -37,7 +41,7 @@ export const S = reactive({
   filter: 'all', who: null,      // activity feed filter and person
   openTask: null,                // task shown in the details panel (Tasks view and side panel)
   search: false, shortcuts: false, invite: false, help: false, drawer: false, profile: false,
-  demo: false, fatal: '', contact: null, settingsTab: null, askTo: null, fileOpen: null, diffOpen: null, codeOpen: null, briefOpen: null, feedJump: null, catchup: '', demoStatus: '', digestShow: null, digests: [], digestRecipient: false,
+  demo: false, fatal: '', contact: null, settingsTab: startAt[0] === 'settings' && startAt[1] || null, askTo: null, fileOpen: null, diffOpen: null, codeOpen: null, briefOpen: null, feedJump: null, catchup: '', demoStatus: '', digestShow: null, digests: [], digestRecipient: false,
 });
 
 // the name I go by in this project, after any merge ("Fei" -> "tszfei")
@@ -54,8 +58,10 @@ export function api(ep, body) {
 
 // ---------- the address bar: #p=<project>&v=<view> ----------
 export function go(view, extra = {}) {
-  if (!VIEWS.includes(view)) view = 'activity';
-  S.view = view;
+  const [v, tab] = where(view);
+  S.view = v;
+  if (tab && v === 'studio') S.studioTab = tab;
+  if (tab && v === 'settings') S.settingsTab = tab;
   S.drawer = false;
   if (extra.task !== undefined) S.openTask = extra.task;
   setHash();
@@ -63,7 +69,7 @@ export function go(view, extra = {}) {
 export function setHash() {
   const h = new URLSearchParams();
   if (auth.project) h.set('p', auth.project);
-  if (auth.project && S.view !== 'activity') h.set('v', S.view);
+  if (auth.project && S.view !== 'overview') h.set('v', S.view);
   history.replaceState(null, '', h.toString() ? '#' + h : location.pathname);
 }
 export function goHome() { store.del('huddle.last'); history.replaceState(null, '', location.pathname); location.reload(); }

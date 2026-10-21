@@ -11,7 +11,7 @@ import SlackSetup from '../components/SlackSetup.jsx';
 import ThemePicker from '../components/ThemePicker.jsx';
 import Editors from '../components/Editors.jsx';
 
-const TABS = [['team', 'Team & access'], ['rules', 'Rules'], ['integrations', 'Integrations'], ['notify', 'Notifications'], ['look', 'Appearance'], ['data', 'Data & privacy'], ['audit', 'Audit log']];
+export const TABS = [['team', 'team'], ['usage', 'usage'], ['health', 'health'], ['integrations', 'integrations'], ['rules', 'rules'], ['notify', 'notifications'], ['look', 'appearance'], ['data', 'data'], ['audit', 'audit log']];
 const ROLE = { owner: 'Owner', member: 'Member', viewer: 'Viewer' };
 const KINDS = { approval: 'Needs approval', stuck: 'Task stuck', done: 'Request done', failed: 'Something failed', member: 'Someone joined', budget: 'Budget alert', cost: 'Cost spike or forecast', digest: 'Daily digest' };
 const lines = (t) => t.split('\n').map(x => x.trim()).filter(Boolean);
@@ -22,9 +22,9 @@ function Toggle({ label, sub, on, onChange, first, disabled }) {
   return <div className="switchrow" style={first ? { borderTop: 0 } : undefined}><span className="grow"><b>{label}</b><span>{sub}</span></span><button className="toggle" role="switch" aria-checked={!!on} aria-label={label} disabled={disabled} onClick={() => onChange(!on)}></button></div>;
 }
 
-export default function Settings() {
+// the tab bar lives in SettingsPage; this draws one tab's content
+export default function Settings({ tab }) {
   useS();
-  const [tab, setTab] = useState(S.settingsTab || 'team');
   const [members, setMembers] = useState([]), [invites, setInvites] = useState([]), [audit, setAudit] = useState([]), [afilter, setAfilter] = useState('all'), [msg, setMsg] = useState({});
   const ps = S.projectSettings || {};
   const [pol, setPol] = useState({ allow: '', deny: '', priv: '', sharing: 'full', delivery: 'merge', test: '' });
@@ -34,7 +34,6 @@ export default function Settings() {
   const say = (k, t, bad) => setMsg(m => ({ ...m, [k]: t ? { t, bad } : null }));
   const run = (k, fn) => async (...a) => { say(k, ''); try { await fn(...a); } catch (e) { say(k, "Couldn't save: " + e.message, true); } };
 
-  useEffect(() => { if (S.settingsTab) { setTab(S.settingsTab); S.settingsTab = null; } });
   // rules mirror what the server has, until the person edits
   useEffect(() => {
     const p = ps.policy || {}, r = ps.retention || {};
@@ -104,7 +103,6 @@ export default function Settings() {
   return (
     <main data-main style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
       <div className="pageview">
-        <div className="seg ptabs" role="tablist" style={{ flexWrap: 'wrap' }}>{TABS.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
         {msg.load && <p className="err">{msg.load.t}</p>}
 
         {tab === 'team' && (

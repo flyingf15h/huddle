@@ -1,0 +1,10 @@
+// One word and one colour for where each teammate's agent is: waiting on someone, working, idle or away.
+import { S, cardLine } from './state.js';
+
+export function teamState(p) {
+  if (S.approvals.some(a => a.owner === p.name) || S.board.tasks.some(t => t.owner === p.name && t.status === 'blocked')) return { tone: 'w', word: 'waiting on you' };
+  if (!p.online) return { tone: 'off', word: 'away' };
+  if (cardLine(p).busy || S.board.tasks.some(t => t.owner === p.name && t.status === 'doing') || p.clones.length) return { tone: 'a', word: 'working' };
+  return { tone: 'idle', word: 'idle' };
+}
+export const openTaskCount = (me) => S.board.tasks.filter(t => t.status === 'blocked' || (t.owner === me && t.status !== 'done')).length;

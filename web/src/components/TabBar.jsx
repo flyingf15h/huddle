@@ -3,7 +3,7 @@ import { S, go, myName } from '../lib/state.js';
 import { useS } from '../lib/store.js';
 import Icon from './Icon.jsx';
 
-const TABS = [['activity', 'Activity'], ['tasks', 'Tasks'], ['code', 'Code'], ['usage', 'Usage']];
+const TABS = [['overview', 'Overview'], ['activity', 'Activity'], ['tasks', 'Tasks'], ['studio', 'Studio']];
 export default function TabBar() {
   useS();
   const mine = S.board.tasks.filter(t => t.status === 'blocked' || (t.owner === myName() && t.status !== 'done')).length;

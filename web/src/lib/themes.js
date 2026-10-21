@@ -12,7 +12,7 @@ export const THEMES = [
   { id: 'mist', name: 'Mist', dark: false, page: '#f7f8f6', raised: '#ffffff', rail: '#e3e9ec', railInk: '#1e262b', railActive: 'rgba(30, 38, 43, .08)', accent: '#33688f' },
   { id: 'lilac', name: 'Lilac', dark: false, page: '#f9f7f6', raised: '#ffffff', rail: '#e8e3ef', railInk: '#25212d', railActive: 'rgba(37, 33, 45, .08)', accent: '#6650a0' },
   { id: 'espresso', name: 'Espresso', dark: false, page: '#faf7f0', raised: '#fffdf8', rail: '#2c2521', railInk: '#efe6da', railActive: 'rgba(239, 230, 218, .12)', accent: '#9a5b34' },
-  { id: 'night', name: 'Night', dark: true, page: '#0f1729', raised: '#18223a', rail: '#0a101e', railInk: '#e6ebf5', railActive: 'rgba(143, 176, 255, .12)', accent: '#8fb0ff' },
+  { id: 'night', name: 'Night', dark: true, page: '#07090e', raised: '#11151f', rail: '#0b0e15', railInk: '#e6ebf5', railActive: 'rgba(168, 186, 252, .1)', accent: '#a8bafc' },
   { id: 'evening', name: 'Evening', dark: true, page: '#1d1b18', raised: '#272420', rail: '#161412', railInk: '#ece5da', railActive: 'rgba(236, 229, 218, .09)', accent: '#d9a066' },
   { id: 'tide', name: 'Tide', dark: true, page: '#141b1e', raised: '#1c2529', rail: '#0e1416', railInk: '#dfeae9', railActive: 'rgba(223, 234, 233, .09)', accent: '#62b5ad' },
   { id: 'dusk', name: 'Dusk', dark: true, page: '#1c1820', raised: '#26212b', rail: '#151118', railInk: '#ebe3f0', railActive: 'rgba(235, 227, 240, .09)', accent: '#c4a0e0' },

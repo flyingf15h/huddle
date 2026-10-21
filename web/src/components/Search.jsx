@@ -5,10 +5,11 @@ import { ago } from '../lib/words.js';
 import Icon from './Icon.jsx';
 
 const COMMANDS = [
-  { title: 'Go to Activity', run: () => go('activity') }, { title: 'Go to Tasks', run: () => go('tasks') },
-  { title: 'Go to Code', run: () => go('code') }, { title: 'Go to Brief & memory', run: () => go('brief') },
-  { title: 'Go to Usage & cost', run: () => go('usage') }, { title: 'Go to Health', run: () => go('health') },
-  { title: 'Go to Team & settings', run: () => go('settings') }, { title: 'Invite people', run: () => (S.invite = true) },
+  { title: 'Go to Overview', run: () => go('overview') }, { title: 'Go to Activity', run: () => go('activity') }, { title: 'Go to Tasks', run: () => go('tasks') },
+  { title: 'Go to the brief and memory', run: () => go('brief') }, { title: 'Go to the timeline', run: () => go('timeline') },
+  { title: 'Go to the gallery', run: () => go('gallery') }, { title: 'Go to builds', run: () => go('builds') },
+  { title: 'Go to usage and cost', run: () => go('usage') }, { title: 'Go to health', run: () => go('health') },
+  { title: 'Go to settings', run: () => go('settings') }, { title: 'Invite people', run: () => (S.invite = true) },
   { title: 'Keyboard shortcuts', run: () => (S.shortcuts = true) },
 ];
 const KIND = { request: 'Request', task: 'Task', message: 'Message', prompt: 'Prompt', reply: 'Reply', step: 'Step', brief: 'Brief', memory: 'Memory', skill: 'Skill', handoff: 'Hand-off', file: 'Live file', code: 'Code' };
@@ -40,7 +41,7 @@ export default function Search() {
     if (ref.task) return go('tasks', { task: ref.task });
     if (ref.goal) { const t = S.board.tasks.find(x => x.goalId === ref.goal); return go('tasks', { task: t ? t.id : null }); }
     if (ref.memory || ref.skill || ref.brief) { S.briefOpen = ref; return go('brief'); }
-    if (ref.path || ref.file) { S.codeOpen = ref; return go('code'); }
+    if (ref.path || ref.file) { S.fileOpen = { path: ref.path || ref.file, branch: ref.branch || null }; return; }
     S.who = null; S.filter = 'all'; S.feedJump = r.at;
     go('activity');
   };

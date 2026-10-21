@@ -1,6 +1,7 @@
 // Column widths and which panels are open, remembered per browser. Applied as CSS variables on
 // <html> (--rail-w, --side-w, --detail-w) and two classes (rail-mini, side-closed).
 import { store } from './words.js';
+import { touch } from './store.js';
 
 const LIMITS = { rail: [200, 420, 264], side: [260, 600, 340], detail: [300, 680, 380] };
 const KEY = 'huddle.layout';
@@ -15,7 +16,8 @@ function apply() {
   r.classList.toggle('rail-mini', !!L.railMini);
   r.classList.toggle('side-closed', !!L.sideClosed);
 }
-const save = () => { store.set(KEY, JSON.stringify(L)); apply(); };
+// components that lay out differently with the sidebar folded away (pages move to tabs) re-render on change
+const save = () => { store.set(KEY, JSON.stringify(L)); apply(); touch(); };
 apply();
 
 export const layout = () => L;

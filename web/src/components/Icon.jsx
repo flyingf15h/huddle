@@ -1,6 +1,8 @@
 // One stroke icon set for the whole dashboard (24px grid, drawn with currentColor).
 const P = {
     activity: '<path d="M4 6.5h16M4 12h16M4 17.5h10"/>',
+    overview: '<rect x="4" y="4.5" width="7" height="6" rx="1"/><rect x="13" y="4.5" width="7" height="6" rx="1"/><rect x="4" y="13" width="16" height="6.5" rx="1"/>',
+    studio: '<path d="M5 4.5h10.5L19 8v11.5H5z"/><path d="M8.5 15.5l2.5-3 2 2 1.5-1.5 1.5 2.5"/>',
     tasks: '<path d="M9 6.5h11M9 12h11M9 17.5h11"/><path d="M3.5 6.5l1.2 1.2L7 5.4M3.5 12l1.2 1.2L7 10.9"/><circle cx="5" cy="17.5" r="1.3"/>',
     code: '<path d="M8.5 7.5L4 12l4.5 4.5M15.5 7.5L20 12l-4.5 4.5"/>',
     brief: '<path d="M5 4.5h10.5L19 8v11.5H5z"/><path d="M8.5 11h7M8.5 14.5h7M8.5 8h4"/>',

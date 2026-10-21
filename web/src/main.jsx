@@ -1,5 +1,6 @@
 import './app.css';
 import './layout.css';
+import './terminal.css';
 import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
 import './lib/layout.js';

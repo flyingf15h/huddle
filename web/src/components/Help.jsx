@@ -15,7 +15,7 @@ const ITEMS = [
   ['git', 'Code, conflicts and GitHub', "Browse everyone's shared code, see merge conflicts before they happen, and connect your GitHub repository for branches, checks and pull requests."],
 ];
 const TOUR = [
-  { el: '#rail .navlist', t: 'Pages', p: 'Activity shows everything as it happens. Tasks is the board. Code, Brief & memory, Usage & cost, Health and settings are the rest.' },
+  { el: '#rail .navlist', t: 'Pages', p: 'Overview is what is running and what needs you. Activity shows everything as it happens, Tasks is the board, Studio holds the brief, timeline, gallery and builds, and Settings holds the team, usage and health.' },
   { el: '#team', t: 'Who is working', p: 'What each person and their agent are doing, and how much usage they have left. Click someone to see only their activity.' },
   { el: '#feed', t: 'Activity', p: 'Prompts, agent steps and replies, and messages, newest at the bottom.', view: 'activity' },
   { el: '#composer', t: 'New request', p: "Send work to the team, and one agent splits it up by remaining usage, or to one person's agent." },

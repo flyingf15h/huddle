@@ -22,7 +22,7 @@
 }
 /* the dark base, for Evening, Tide and Dusk (and "system" at night before the script runs) */
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --page: #0f1729; --raised: #18223a; --rail: #0a101e; --rail-ink: #e6ebf5; --rail-active: rgba(143, 176, 255, .12); --accent: #8fb0ff;
+  --page: #07090e; --raised: #11151f; --rail: #0b0e15; --rail-ink: #e6ebf5; --rail-active: rgba(168, 186, 252, .1); --accent: #a8bafc;
 } }
 :root[data-theme="dark"] {
   --signal: #8fb0ff;

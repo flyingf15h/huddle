@@ -10,7 +10,6 @@ import Icon from '../components/Icon.jsx';
 import Composer from '../components/Composer.jsx';
 import Resizer from '../components/Resizer.jsx';
 import SidePanel from '../components/SidePanel.jsx';
-import FileDialog from '../components/FileDialog.jsx';
 
 const openFile = (path, branch) => { S.fileOpen = { path, branch: branch || null }; };
 
@@ -111,7 +110,6 @@ export default forwardRef(function Activity(_, composerRef) {
       </section>
       <SidePanel />
       <Resizer which="side" label="Resize the side panel" />
-      <FileDialog />
     </main>
   );
 });
