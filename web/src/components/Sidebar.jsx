@@ -33,7 +33,7 @@ export default function Sidebar() {
           <button key={v} className={S.view === v ? 'on' : ''} aria-current={S.view === v ? 'page' : undefined} onClick={() => go(v)} title={`${label} (${i + 1})`}>
             <span className="l">{label}</span>
             {v === 'tasks' && openTasks > 0 && <span className="n">({openTasks})</span>}
-            {v === 'settings' && problems > 0 && <span className="n bad" title={`${problems} health problem${problems === 1 ? '' : 's'}`}>({problems})</span>}
+            {v === 'studio' && problems > 0 && <span className="n bad" title={`${problems} health problem${problems === 1 ? '' : 's'}`}>({problems})</span>}
           </button>
         ))}
       </div>

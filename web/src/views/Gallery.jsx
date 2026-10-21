@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { S, api, dn, myName, isOwner } from '../lib/state.js';
 import { useS } from '../lib/store.js';
+import Shell from '../components/Shell.jsx';
 import { useLive, useEscape } from '../lib/hooks.js';
 import { ago } from '../lib/words.js';
 
@@ -42,7 +43,7 @@ async function shrink(file) {
   throw new Error('That image is too large even after shrinking it.');
 }
 
-export default function Gallery() {
+export default function Gallery({ bare }) {
   useS();
   const [items, setItems] = useState([]), [open, setOpen] = useState(null), [big, setBig] = useState(null), [msg, setMsg] = useState(''), [filter, setFilter] = useState('all');
   const file = useRef(null);
@@ -62,8 +63,7 @@ export default function Gallery() {
   const shown = items.filter(m => filter === 'all' || m.source === filter).slice().reverse();
 
   return (
-    <main data-main style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
-      <div className="pageview">
+    <Shell bare={bare}>
         <div className="kbar">
           <div className="seg sm" role="group" aria-label="Show">{['all', ...sources].map(s => <button key={s} className={filter === s ? 'on' : ''} onClick={() => setFilter(s)}>{s === 'all' ? 'Everything' : s[0].toUpperCase() + s.slice(1)}</button>)}</div>
           <span className="grow"></span>
@@ -72,7 +72,6 @@ export default function Gallery() {
         {msg && <p className="err small">{msg}</p>}
         {shown.length ? <div className="ggrid">{shown.map(m => <Thumb key={m.id} m={m} onOpen={setOpen} />)}</div>
           : <div className="empty"><h3>No images yet</h3><p style={{ margin: '0 auto', maxWidth: 460 }}>Screenshots agents take in Unity, Godot, Blender or Figma show up here by themselves. Agents can share any other image with huddle_share_image, and you can add your own.</p></div>}
-      </div>
       {open && (
         <div className="overlay" role="dialog" aria-modal="true" aria-label={open.caption || 'Image'} onClick={() => setOpen(null)}>
           <div className="glight" onClick={(e) => e.stopPropagation()}>
@@ -84,6 +83,6 @@ export default function Gallery() {
           </div>
         </div>
       )}
-    </main>
+    </Shell>
   );
 }

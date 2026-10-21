@@ -3,12 +3,13 @@
 import { useEffect, useState } from 'react';
 import { S, api, dn, myName, isOwner } from '../lib/state.js';
 import { useS } from '../lib/store.js';
+import Shell from '../components/Shell.jsx';
 import { useLive } from '../lib/hooks.js';
 import { ago } from '../lib/words.js';
 
 const isWeb = (b) => /^web/i.test(b.platform || '') || /itch\.io\/embed|\.html?($|\?)|github\.io|netlify\.app|vercel\.app|pages\.dev/i.test(b.url);
 
-export default function Builds() {
+export default function Builds({ bare }) {
   useS();
   const [builds, setBuilds] = useState([]), [playing, setPlaying] = useState(null), [form, setForm] = useState({ url: '', title: '', platform: 'web', notes: '' }), [msg, setMsg] = useState(''), [copied, setCopied] = useState(null);
   const load = () => api('builds').then(r => setBuilds(r.builds.slice().reverse())).catch(e => setMsg(e.message));
@@ -20,8 +21,7 @@ export default function Builds() {
   const viewer = S.me.role === 'viewer';
 
   return (
-    <main data-main style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
-      <div className="pageview">
+    <Shell bare={bare}>
         {builds.map((b, i) => (
           <div className="panel" key={b.id}>
             <div className="srow" style={{ borderTop: 0, flexWrap: 'wrap' }}>
@@ -44,7 +44,6 @@ export default function Builds() {
           <div><label htmlFor="b-t">Name</label><input id="b-t" type="text" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Prototype 3, boss fight playable" /></div>
           <div><label htmlFor="b-n">What to try (optional)</label><input id="b-n" type="text" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="New jump feel, second level" /></div>
           <div className="pactions" style={{ padding: 0 }}>{msg && <span className="small err">{msg}</span>}<button className="primary" disabled={!form.url.trim() || !form.title.trim()} onClick={add}>Add build</button></div></div></div>}
-      </div>
-    </main>
+    </Shell>
   );
 }

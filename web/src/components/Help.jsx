@@ -10,9 +10,9 @@ const ITEMS = [
   ['join', 'See what everyone is doing', 'The team list shows what each person and their agent are working on. Every agent is told when someone starts something new.'],
   ['lock', 'No overwrites', 'A file an agent is editing is locked for everyone else. Whole folders can be locked for bigger changes.'],
   ['send', 'Hand off work', "Send a request to the team and one agent splits it into tasks, or send it to one person's agent. Each runs as its own agent in the background."],
-  ['tasks', 'Track progress and cost', 'The Tasks board shows who owns what and how far along it is, and Usage shows what the tokens would cost.'],
+  ['tasks', 'Track progress and cost', "The Tasks board shows who owns what and how far along it is, and Studio's usage tab shows what the tokens would cost."],
   ['brief', 'Shared brief and memory', 'Every agent reads the project brief, team memory and skills when it starts. Search finds anything the team has said or done.'],
-  ['git', 'Code, conflicts and GitHub', "Browse everyone's shared code, see merge conflicts before they happen, and connect your GitHub repository for branches, checks and pull requests."],
+  ['git', 'Conflicts and GitHub', "See merge conflicts before they happen, and connect your GitHub repository for branches, checks and pull requests, all in Studio's github tab."],
 ];
 const TOUR = [
   { el: '#rail .navlist', t: 'Pages', p: 'Overview is what is running and what needs you. Activity shows everything as it happens, Tasks is the board, Studio holds the brief, timeline, gallery and builds, and Settings holds the team, usage and health.' },
@@ -96,7 +96,7 @@ export default function Help() {
               <tr><th>Requests only</th><td>Runs requests and answers messages sent to your agent. Leaves team tasks to others.</td></tr>
               <tr><th>Off</th><td>Nothing runs in the background. Requests and messages wait until you open your agent in the project.</td></tr></tbody></table>
               <span className="small muted">Requests never need approval. Commands outside the allowed list always do, in every mode.</span></div>
-            <div className="ovfoot"><button onClick={() => { S.help = false; seen(); }}>Close</button><button className="primary" onClick={start}>Take the tour</button></div>
+            <div className="ovfoot"><button className="ghost" style={{ marginRight: 'auto' }} onClick={() => { S.help = false; seen(); S.shortcuts = true; }}>keyboard shortcuts (?)</button><button onClick={() => { S.help = false; seen(); }}>Close</button><button className="primary" onClick={start}>Take the tour</button></div>
           </div>
         </div>
       )}

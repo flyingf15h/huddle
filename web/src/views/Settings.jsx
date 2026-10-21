@@ -11,7 +11,7 @@ import SlackSetup from '../components/SlackSetup.jsx';
 import ThemePicker from '../components/ThemePicker.jsx';
 import Editors from '../components/Editors.jsx';
 
-export const TABS = [['team', 'team'], ['usage', 'usage'], ['health', 'health'], ['integrations', 'integrations'], ['rules', 'rules'], ['notify', 'notifications'], ['look', 'appearance'], ['data', 'data'], ['audit', 'audit log']];
+export const TABS = [['team', 'team'], ['integrations', 'integrations'], ['rules', 'rules'], ['notify', 'notifications'], ['look', 'appearance'], ['data', 'data'], ['audit', 'audit log']];
 const ROLE = { owner: 'Owner', member: 'Member', viewer: 'Viewer' };
 const KINDS = { approval: 'Needs approval', stuck: 'Task stuck', done: 'Request done', failed: 'Something failed', member: 'Someone joined', budget: 'Budget alert', cost: 'Cost spike or forecast', digest: 'Daily digest' };
 const lines = (t) => t.split('\n').map(x => x.trim()).filter(Boolean);

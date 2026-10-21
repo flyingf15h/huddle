@@ -1,6 +1,6 @@
 // The header. With the sidebar open: the page name, its description and (on Activity) the feed filters.
 // With the sidebar folded away it carries what the sidebar did: the project, the team's status lights and
-// invite. Either way: search, notifications, theme, shortcuts, help and [ new request ].
+// invite. Either way: search, the inbox, help (which has the keyboard shortcuts) and [ new request ].
 import { useState } from 'react';
 import { S, go, people, dn, myName } from '../lib/state.js';
 import { useS } from '../lib/store.js';
@@ -8,22 +8,18 @@ import { store } from '../lib/words.js';
 import { teamState } from '../lib/team.js';
 import Icon from './Icon.jsx';
 import Notifications from './Notifications.jsx';
-import ThemePicker from './ThemePicker.jsx';
 import ProjectMenu from './ProjectMenu.jsx';
-import { useEscape } from '../lib/hooks.js';
 import { toggleRail, toggleSide, layout } from '../lib/layout.js';
 
 const TITLES = { overview: 'overview', activity: 'activity', tasks: 'tasks', studio: 'studio', settings: 'settings' };
-const DESC = { overview: "what's running and what needs you", activity: 'every prompt, reply and message as it happens', tasks: 'every request and task, who has it and how far along it is',
-  studio: 'the brief, timeline, gallery, builds and github', settings: 'people, usage, health, integrations and rules' };
+const DESC = { overview: "what's running and what needs you", activity: 'every prompt, reply and message as it happens', studio: 'manage your project', settings: 'people, integrations, rules and appearance' };
 const FILTERS = [['all', 'everything', 'Every prompt, step, reply, message and file change'], ['key', 'highlights', 'Requests, prompts, replies, messages and hand-offs'], ['talk', 'messages', 'Only messages and requests']];
 const mac = /Mac|iPhone|iPad/.test(navigator.platform);
 export const newRequest = () => { if (S.view !== 'activity') go('activity'); setTimeout(() => dispatchEvent(new Event('huddle:compose')), 0); };
 
 export default function Header() {
   useS();
-  const [notesOpen, setNotesOpen] = useState(false), [themeOpen, setThemeOpen] = useState(false);
-  useEscape(() => setThemeOpen(false), themeOpen);
+  const [notesOpen, setNotesOpen] = useState(false);
   const unread = S.notes.filter(n => !n.read).length;
   const dnd = store.get('huddle.dnd') === '1';
   const mini = layout().railMini;
@@ -61,9 +57,6 @@ export default function Header() {
         </button>
         {notesOpen && <Notifications close={() => setNotesOpen(false)} />}
         {S.view === 'activity' && <button className="hbtn hide-sm" aria-label="Show or hide the side panel" title="Show or hide the side panel" onClick={toggleSide}>panel</button>}
-        <button className="hbtn hide-sm" aria-haspopup="dialog" aria-expanded={themeOpen} aria-label="Theme" title="Theme" onClick={() => { setThemeOpen(!themeOpen); setNotesOpen(false); }}>theme</button>
-        {themeOpen && <><button className="clickaway" aria-label="Close" onClick={() => setThemeOpen(false)} /><div className="menu" role="dialog" aria-label="Theme" style={{ position: 'absolute', top: 44, right: 0, maxWidth: 'none' }}><div className="mh">theme</div><ThemePicker compact /></div></>}
-        <button className="hbtn hide-sm" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)" onClick={() => (S.shortcuts = true)}>keys</button>
         <button className="hbtn hide-sm" aria-label="How huddle works" title="How huddle works" onClick={() => (S.help = true)}>help</button>
       </div>
       <button className="newreq" onClick={newRequest} title="New request (c)"><span className="br">[</span>new<span className="nrl"> request</span> <span className="key">(c)</span><span className="br">]</span></button>
