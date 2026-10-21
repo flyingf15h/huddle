@@ -17,14 +17,35 @@ On Windows: `irm https://huddle.sage-hill.workers.dev/install.ps1 | iex`. No sig
 
 ## What you get
 
-- **Nobody overwrites anybody.** While an agent edits a file, everyone else's copy is read-only and their agent is told who has it.
-- **Live edits.** Changes land on teammates' machines within a second or two, long before anyone commits.
-- **Agents that talk.** "Ask dev's agent if anyone is touching the schema" just works, and so does "tell sam I'm taking auth".
-- **Work that splits itself.** Describe a feature once. huddle plans it and hands each part to whoever has the most usage left in their 5-hour window.
-- **It keeps going while you're away.** Requests sent to your agent run in the background in their own git worktree. A second agent reviews the change, and it only merges if the tests pass.
-- **One memory for the team.** A project brief, notes and skills that every agent reads when it starts, so nobody rediscovers the same gotcha.
-- **Unity and Blender too.** Agents can build scenes and models inside the editor, and those files are locked so you never end up with two versions of a scene that can't be merged.
-- **A dashboard for all of it.** What everyone's agent is doing, tasks, the code on every branch, usage and cost, and every setting.
+**No collisions**
+- While an agent edits a file, everyone else's copy goes read-only and their agent is told who has it. Agents can claim a whole folder before a bigger change.
+- Edits land on teammates' machines within a second or two, long before anyone commits.
+- Each person's huddle warns when their branch would conflict with a teammate's, names the files, and one click hands the merge to an agent.
+
+**Agents that work as a team**
+- They message each other. "Ask dev's agent if anyone is touching the schema" just works, and so does "tell sam I'm taking auth".
+- Describe a feature once. huddle plans it and hands each part to whoever has the most usage left in their 5-hour window. If someone runs low or goes offline, their open work moves to someone else.
+- A project brief, team notes and skills that every agent reads when it starts, so nobody rediscovers the same gotcha.
+- When a session ends it leaves a hand-off note, so the next agent (yours or a teammate's) picks up where it stopped.
+
+**Work that keeps going while you're away**
+- Requests sent to your agent run in the background, each in its own git worktree, up to three at once, without touching what you're doing.
+- A second agent reviews every change (from a different vendor if your team has one) and the tests run before anything merges. Failing work waits on its own branch.
+- Prefer pull requests? Finished work can open one on GitHub, with the review and test results in the description.
+- Schedules ("look for flaky tests every Friday"), GitHub issues sent to the team as requests, and an always-on worker for a spare machine.
+
+**Unity and Blender**
+- Agents can build scenes, prefabs and models inside the editor, not just code. Scenes and .blend files are locked like any edit, so nobody ends up with two versions of a scene that can't be merged.
+
+**You stay in charge**
+- Commands that are always fine, commands no agent may ever run (`git push`, deploys), and files that never leave anyone's machine. Background agents ask before running anything else, and you approve from the dashboard, Slack or the terminal.
+- Personal invites with owner, member and viewer roles. Take anyone's access back in one click.
+- Secrets are stripped from everything shared, and an audit log records every setting change and every command a background agent ran.
+
+**See all of it**
+- A live dashboard: what each person's agent is doing, tasks, the code on everyone's branches, search across everything, and every setting.
+- What it costs: tokens priced per model, per person and task, with a monthly budget.
+- Alerts when work is stuck, needs approval or finishes, in the app, by email, on your desktop, or in Slack and Discord. Plus a daily digest.
 
 ## Quick start
 
