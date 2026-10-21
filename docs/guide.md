@@ -166,6 +166,16 @@ What huddle adds on top of the editor tools:
 
 Save in the editor when a step is done: huddle shares work through commits, and an unsaved scene only exists in that person's editor.
 
+## Game projects: hand-offs, gallery, builds, timeline and feature claims
+
+- **Godot and Figma** join Unity and Blender in `huddle apps`. Godot uses [godot-mcp](https://github.com/Coding-Solo/godot-mcp) (`.tscn` scenes are locked like Unity's). Figma uses Figma's own MCP server and only reads designs, so nothing is locked.
+- **Merging.** `huddle join` (and `huddle apps add`) set git up in your clone only, in `.git/info/attributes` and local git config: Unity scenes and prefabs merge with Unity's own UnityYAMLMerge when Unity is installed through the Hub, Godot's text scenes keep plain line endings, and binary art is never text-merged.
+- **Asset hand-off.** When an agent saves a model or texture in Blender and the project has Unity or Godot on, huddle opens a task, "Bring crate.blend into Unity", for whoever last worked in that engine. It needs the editor open, so background runs leave it for that person's own session. Saving the same file again doesn't open another task.
+- **Gallery.** Screenshots from editor tools (Blender's viewport, Unity's camera, Figma frames) go to the Gallery page instead of the activity feed. Agents add any other image with `huddle_share_image`, and people upload from the page. Images are kept up to 900 KB each, the newest 200 per project.
+- **Builds.** Agents share playable builds with `huddle_share_build`; people can add links on the Builds page. Each keeps its full link, and web builds (itch.io embeds, GitHub Pages, Netlify and similar) play right on the page.
+- **Timeline.** Set goals with deadlines on the Timeline page. "Draft with an agent" sends a request that writes the plan from the goals, the brief and the board, or write it yourself. Every agent gets the next goals and the plan at the start of a session and again whenever they change, and a nudge to finish and fix within three hours of a deadline. Agents read and update it with `huddle_timeline`.
+- **Feature claims.** An agent claims the feature it's on with `huddle_claim_feature` ("inventory: drag and drop", up to 12 files or a folder of at most 25), which locks only those files until it releases the claim or its session ends. A whole level or system stays open for others to work on. Current claims show on the Timeline page.
+
 ## Working together in real time
 
 GitHub isn't involved in any of this. Everything goes through the huddle server as it happens.

@@ -654,3 +654,23 @@ button.danger:hover { background: var(--bad-soft); border-color: var(--bad); }
 .dcomment textarea { width: 100%; min-height: 60px; }
 .diffbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px 14px; border-top: 1px solid var(--line); }
 @media (max-width: 700px) { .difffiles { width: 130px; } }
+
+/* timeline, gallery, builds */
+.plantext { margin: 0; white-space: pre-wrap; font: inherit; line-height: 1.55; }
+.ggrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.gthumb { all: unset; cursor: pointer; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; background: var(--panel, var(--bg)); }
+.gthumb:hover, .gthumb:focus-visible { border-color: var(--accent); }
+.gimg { aspect-ratio: 16 / 10; background: var(--code); display: block; }
+.gimg img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.gcap { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; min-width: 0; }
+.gcap b { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gcap span { font-size: 12px; color: var(--muted); }
+.glight { background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-sm); max-width: min(1100px, 94vw); max-height: 92vh; display: flex; flex-direction: column; overflow: hidden; }
+.glight img { max-width: 100%; max-height: calc(92vh - 70px); object-fit: contain; display: block; margin: 0 auto; background: var(--code); }
+.buildlink { display: flex; align-items: center; gap: 10px; padding: 0 16px 10px; min-width: 0; }
+.buildlink code { min-width: 0; overflow-wrap: anywhere; font-size: 12.5px; }
+.player { padding: 0 16px 16px; }
+.player iframe { width: 100%; aspect-ratio: 16 / 9; border: 1px solid var(--line); border-radius: var(--radius-sm); background: #000; display: block; }
+a.btn { display: inline-flex; align-items: center; text-decoration: none; color: inherit; border-radius: var(--radius-sm); border: 1px solid var(--line-strong); background: var(--raised); padding: 6px 12px; font-size: 13.5px; font-weight: 500; line-height: 1.35; }
+a.btn:hover { background: var(--sunk); }
+a.btn.ghost { border-color: transparent; background: transparent; }

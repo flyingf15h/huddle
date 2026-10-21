@@ -99,6 +99,16 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: { name: { type: 'string' } } } },
   { name: 'huddle_view', description: "See the live shared version of a file, including another agent's in-progress edits, with who changed it and when.",
     inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] } },
+  { name: 'huddle_claim_feature', description: 'Claim the specific feature or subsystem you are working on, e.g. "inventory: drag and drop" or "boss fight: phase 2 attacks", with the few files it touches. They are locked for you until you release the claim or your session ends, and teammates see the claim by name. Keep it narrow: a handful of files, never a whole level, system or shared folder, so others can still work on the rest of it.',
+    inputSchema: { type: 'object', properties: { feature: { type: 'string' }, paths: { type: 'array', items: { type: 'string' }, description: 'files it touches (up to 12), or a small folder that only this feature uses' } }, required: ['feature', 'paths'] } },
+  { name: 'huddle_release_feature', description: 'Release a feature you claimed (its files unlock). Omit feature to release all your claims.',
+    inputSchema: { type: 'object', properties: { feature: { type: 'string' } } } },
+  { name: 'huddle_share_image', description: "Put an image in the team's gallery: a screenshot, a render, concept art, a Figma export. Screenshots from Unity, Godot, Blender and Figma tools go there automatically; use this for any other image file.",
+    inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'png, jpg, webp or gif, under 900 KB' }, caption: { type: 'string' } }, required: ['path'] } },
+  { name: 'huddle_share_build', description: "Add a playable build to the team's Builds page: a link to a web build, an itch.io page, a download. Call it whenever you make a build someone can try.",
+    inputSchema: { type: 'object', properties: { url: { type: 'string' }, title: { type: 'string', description: 'e.g. "Prototype 3, boss fight playable"' }, platform: { type: 'string', description: 'web, windows, mac, linux, android…' }, notes: { type: 'string', description: 'what changed, what to try' } }, required: ['url', 'title'] } },
+  { name: 'huddle_timeline', description: "Read the team's timeline (goals with deadlines, and the plan to reach them). Pass plan to replace the plan, or done with a goal's name to mark it done.",
+    inputSchema: { type: 'object', properties: { plan: { type: 'string', description: 'the full new plan, plain lines under each goal' }, done: { type: 'string', description: 'name of a goal that is now done' } } } },
 ];
 
 function runMcp() {
@@ -228,6 +238,59 @@ function runMcp() {
         const wait = Math.min(Number(a.wait_seconds || 0), 600);
         const r = await client.post('inbox', { wait }, { timeout: (wait + 15) * 1000 });
         return r.messages.length ? formatMessages(r.messages, me) : (wait ? `no messages after ${wait}s` : 'no new messages');
+      }
+      case 'huddle_claim_feature': {
+        const feature = String(a.feature || '').trim().slice(0, 80);
+        const paths = (a.paths || []).map(String).filter(Boolean);
+        if (!feature || !paths.length) return 'name the feature and the files it touches';
+        if (paths.length > 12) return 'that is more than a feature; claim at most 12 files, the ones you are changing now';
+        const out = [];
+        for (const x of paths) {
+          const r0 = rel(x), dir = isDir(x, r0);
+          if (dir) {
+            let n = 0;
+            const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { if (n > 25) return; if (e.isDirectory()) walk(path.join(d, e.name)); else n++; } };
+            try { walk(path.join(cfg.root, r0)); } catch {}
+            if (n > 25) { out.push(`${r0}/ has more than 25 files, which is more than one feature; claim the files you are changing instead`); continue; }
+          }
+          const r = await client.post('lock', dir ? { path: r0 + '/', dir: true, branch: me.branch, note: 'feature: ' + feature }
+            : { path: r0, branch: me.branch, note: 'feature: ' + feature, hold: true, baseHash: hashFile(path.join(cfg.root, r0)) });
+          out.push(r.ok ? `claimed ${r0}${dir ? '/' : ''}` : `${r0}${dir ? '/' : ''} overlaps ${r.lock.path}, held by ${r.lock.holderName}${/^feature: /.test(r.lock.note || '') ? ` for "${r.lock.note.slice(9)}"` : ''}; work around it or ask them`);
+        }
+        return `"${feature}":\n${out.join('\n')}`;
+      }
+      case 'huddle_release_feature': {
+        const s = await client.get('state');
+        const mine = s.locks.filter(l => l.holder === me.id && /^feature: /.test(l.note || '') && (!a.feature || l.note === 'feature: ' + String(a.feature).trim()));
+        if (!mine.length) return 'no matching claim';
+        const r = await client.post('unlock', { paths: mine.map(l => l.path), branch: me.branch });
+        return 'released ' + r.released.join(', ');
+      }
+      case 'huddle_share_image': {
+        const f = path.resolve(cfg.root, String(a.path || ''));
+        const ext = path.extname(f).toLowerCase().slice(1);
+        const mime = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif' }[ext];
+        if (!mime) return 'png, jpg, webp or gif only';
+        let buf;
+        try { buf = fs.readFileSync(f); } catch { return `can't read ${a.path}`; }
+        if (buf.length > 900 * 1024) return 'that image is over 900 KB; save a smaller version (a screenshot or a downscaled render) and share that';
+        const r = await client.post('media', { data: buf.toString('base64'), mime, caption: a.caption || path.basename(f), source: 'shared', task: process.env.HUDDLE_TASK || null });
+        return `in the gallery (${r.media.id})`;
+      }
+      case 'huddle_share_build': {
+        const r = await client.post('build', { url: a.url, title: a.title, platform: a.platform, notes: a.notes });
+        return `on the Builds page: ${r.build.title} (${r.build.url})`;
+      }
+      case 'huddle_timeline': {
+        if (a.plan !== undefined) await client.post('timeline-plan', { text: a.plan });
+        if (a.done) {
+          const t = (await client.get('timeline')).timeline;
+          const m = t.milestones.find(x => x.title.toLowerCase() === String(a.done).trim().toLowerCase());
+          if (!m) return `no goal called "${a.done}"; goals: ${t.milestones.map(x => x.title).join(', ') || 'none yet'}`;
+          await client.post('timeline-milestone', { id: m.id, done: true });
+        }
+        const r = await client.get('timeline');
+        return r.briefing || 'No timeline yet. A person sets goals and deadlines in the dashboard (Timeline).';
       }
       case 'huddle_lock': {
         const out = [];

@@ -52,6 +52,38 @@ const APPS = {
     ],
     detect: (root) => unityRoots(root).length > 0,
   },
+  godot: {
+    label: 'Godot',
+    server: { type: 'stdio', command: 'npx', args: ['-y', '@coding-solo/godot-mcp'] },
+    known: /godot-mcp|better-godot-mcp|godot-mcp-server/i,
+    tools: new Set(['add_node', 'create_scene', 'export_mesh_library', 'get_debug_output', 'get_godot_version', 'get_project_info', 'get_uid', 'launch_editor',
+      'list_projects', 'load_sprite', 'run_project', 'save_scene', 'stop_project', 'update_project_uids']),
+    only: /^(add_node|create_scene|save_scene|load_sprite|export_mesh_library|get_godot_version|update_project_uids)$/,
+    reads: new Set(['get_debug_output', 'get_godot_version', 'get_project_info', 'get_uid', 'launch_editor', 'list_projects', 'run_project', 'stop_project']),
+    files: /\.(tscn|scn|tres|res|gd|gdshader|png|svg|wav|ogg|glb|gltf)$/i,
+    setup: [
+      'install Godot 4 and Node.js',
+      'if `godot` isn\'t on your PATH, set GODOT_PATH to the Godot executable before starting your agent',
+      'nothing to switch on inside Godot: the agent opens and runs the project itself',
+    ],
+    detect: (root) => godotRoots(root).length > 0,
+  },
+  figma: {
+    label: 'Figma',
+    // Figma's own remote server; agents sign in once. Codex reaches it through mcp-remote.
+    server: { type: 'http', url: 'https://mcp.figma.com/mcp' },
+    serverFor: { codex: { command: 'npx', args: ['-y', 'mcp-remote', 'https://mcp.figma.com/mcp'] }, cursor: { url: 'https://mcp.figma.com/mcp' } },
+    known: /mcp\.figma\.com|127\.0\.0\.1:3845|figma-developer-mcp|figma-context-mcp/i,
+    tools: new Set(['get_design_context', 'get_screenshot', 'get_metadata', 'get_variable_defs', 'get_code_connect_map', 'create_design_system_rules', 'get_figjam', 'whoami']),
+    only: /^(get_design_context|get_variable_defs|get_code_connect_map|get_figjam)$/,
+    reads: null,            // reading designs only, so nothing to lock
+    files: /^$/,
+    setup: [
+      'in Claude Code, run /mcp, choose figma and sign in to Figma (Codex and Cursor ask on first use)',
+      'paste a Figma frame link in your request, like "build this menu: <link>"',
+    ],
+    detect: () => false,
+  },
 };
 
 function findFiles(root, re, depth, out = []) {
@@ -65,6 +97,10 @@ function findFiles(root, re, depth, out = []) {
     else if (re.test(e.name)) out.push(abs);
   }
   return out;
+}
+// folders holding a Godot project (project.godot)
+function godotRoots(root) {
+  return findFiles(root, /^project\.godot$/, 3).map(f => path.dirname(f));
 }
 // folders holding a Unity project (the repo itself, or a folder a level or two down)
 function unityRoots(root) {
@@ -88,7 +124,7 @@ function match(toolName) {
 // don't count. Anything unknown counts as a change, to be safe.
 function changes(hit, input = {}) {
   const { app, tool } = hit;
-  if (app.reads.has(tool)) return false;
+  if (!app.reads || app.reads.has(tool)) return false;
   if (tool === 'batch_execute' && Array.isArray(input.commands)) {
     return input.commands.some(c => changes({ ...hit, tool: String(c.tool || c.name || '') }, c.params || c.arguments || {}));
   }
@@ -114,12 +150,20 @@ function targets(hit, input = {}, root) {
     }
     found.add(p);
   };
-  for (const k of ['path', 'file_path', 'filepath', 'scene_path', 'scenePath', 'asset_path', 'assetPath', 'prefab_path', 'prefabPath', 'target', 'destination', 'save_path'])
+  if (hit.id !== 'godot') for (const k of ['path', 'file_path', 'filepath', 'scene_path', 'scenePath', 'asset_path', 'assetPath', 'prefab_path', 'prefabPath', 'target', 'destination', 'save_path'])
     add(input[k]);
   if (hit.id === 'unity' && input.name && input.path && !/\.\w+$/.test(input.name)) {
     // manage_script / manage_scene: a name plus a folder
     const ext = hit.tool === 'manage_script' ? '.cs' : hit.tool === 'manage_scene' ? '.unity' : hit.tool === 'manage_prefabs' ? '.prefab' : '';
     if (ext) add(String(input.path).replace(/\/?$/, '/') + input.name + ext);
+  }
+  if (hit.id === 'godot') {
+    // Godot paths are relative to the project folder, sometimes as res://
+    const g = (input.projectPath && path.resolve(root, String(input.projectPath))) || godotRoots(root)[0] || root;
+    for (const k of ['scenePath', 'newPath', 'texturePath', 'outputPath']) {
+      if (typeof input[k] !== 'string') continue;
+      add(path.relative(root, path.join(g, input[k].replace(/^res:\/\//, ''))).split(path.sep).join('/'));
+    }
   }
   if (hit.tool === 'execute_blender_code' && typeof input.code === 'string') {
     for (const m of input.code.matchAll(/filepath\s*=\s*r?["']([^"']+\.blend)["']/g)) add(m[1]);
@@ -175,11 +219,20 @@ function registered(root, agent, id) {
   return Object.entries(servers).some(([name, s]) => new RegExp(id, 'i').test(name) || app.known.test(JSON.stringify(s)));
 }
 
+// the server entry for one kind of agent's config
+function specFor(id, agent) {
+  const app = APPS[id];
+  if (app.serverFor && app.serverFor[agent]) return app.serverFor[agent];
+  if (agent === 'claude') return app.server;
+  const { type, ...rest } = app.server;
+  return rest;
+}
+
 const BEGIN = '# huddle-apps-begin (huddle apps manages this block)';
 const END = '# huddle-apps-end';
 function codexBlock(ids) {
   const q = (s) => JSON.stringify(String(s));
-  return [BEGIN, ...ids.flatMap(id => [`[mcp_servers.${id}]`, `command = ${q(APPS[id].server.command)}`, `args = [${APPS[id].server.args.map(q).join(', ')}]`, 'startup_timeout_sec = 30', '']), END].join('\n');
+  return [BEGIN, ...ids.flatMap(id => { const sp = specFor(id, 'codex'); return [`[mcp_servers.${id}]`, `command = ${q(sp.command)}`, `args = [${sp.args.map(q).join(', ')}]`, 'startup_timeout_sec = 30', '']; }), END].join('\n');
 }
 
 // Registers each app's server that the folder doesn't have yet. Returns the ids it added; a running
@@ -192,7 +245,7 @@ function install(root, agent, ids) {
     const file = path.join(root, '.cursor', 'mcp.json');
     const mcp = readJson(file) || {};
     mcp.mcpServers = mcp.mcpServers || {};
-    for (const id of todo) { const { type, ...s } = APPS[id].server; mcp.mcpServers[id] = s; added.push(id); }
+    for (const id of todo) { mcp.mcpServers[id] = specFor(id, 'cursor'); added.push(id); }
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, JSON.stringify(mcp, null, 2) + '\n');
   } else if (agent === 'codex') {
@@ -206,7 +259,7 @@ function install(root, agent, ids) {
     added.push(...todo);
   } else {
     for (const id of todo) {
-      const r = require('./bin').spawnSync('claude', ['mcp', 'add-json', '-s', 'local', id, JSON.stringify(APPS[id].server)], { cwd: root, encoding: 'utf8', windowsHide: true });
+      const r = require('./bin').spawnSync('claude', ['mcp', 'add-json', '-s', 'local', id, JSON.stringify(specFor(id, 'claude'))], { cwd: root, encoding: 'utf8', windowsHide: true });
       if (r.status === 0) added.push(id);
     }
   }
@@ -256,4 +309,72 @@ function listening(port, host = '127.0.0.1', ms = 600) {
   });
 }
 
-module.exports = { APPS, match, changes, targets, changedFiles, summary, install, uninstall, registered, isEditorServer, unityRoots, listening, READ_ACTION };
+// ---- merging the files game projects are made of ----
+
+const MBEGIN = '# huddle-merge-begin (huddle sets this up; local to this clone)';
+const MEND = '# huddle-merge-end';
+// Unity's own scene and prefab merger ships inside every Unity install
+function unityMergeTool() {
+  const home = os.homedir();
+  const hubs = process.platform === 'win32' ? ['C:\\Program Files\\Unity\\Hub\\Editor', 'C:\\Program Files\\Unity\\Editor']
+    : process.platform === 'darwin' ? ['/Applications/Unity/Hub/Editor'] : [path.join(home, 'Unity', 'Hub', 'Editor'), '/opt/unity/Editor', '/opt/Unity/Hub/Editor'];
+  const rel = process.platform === 'win32' ? ['Editor', 'Data', 'Tools', 'UnityYAMLMerge.exe'] : process.platform === 'darwin' ? ['Unity.app', 'Contents', 'Tools', 'UnityYAMLMerge'] : ['Editor', 'Data', 'Tools', 'UnityYAMLMerge'];
+  for (const hub of hubs) {
+    let vs = [];
+    try { vs = fs.readdirSync(hub).sort().reverse(); } catch { continue; }
+    for (const v of vs) { const f = path.join(hub, v, ...rel); if (fs.existsSync(f)) return f; }
+  }
+  return null;
+}
+// Sets git up in this clone (never in a committed file) so the editors' files merge sensibly: Unity
+// scenes and prefabs through UnityYAMLMerge when it's installed, Godot's text scenes with normal line
+// endings, and binary art never text-merged. Returns what it did, for a one-line notice.
+function setupMerge(root, ids) {
+  const gitDir = spawnSync('git', ['rev-parse', '--git-common-dir'], { cwd: root, encoding: 'utf8' });
+  if (gitDir.status !== 0) return null;
+  const dir = path.resolve(root, gitDir.stdout.trim());
+  const want = new Set(ids && ids.length ? ids : Object.keys(APPS).filter(id => APPS[id].detect(root)));
+  const lines = [];
+  const did = [];
+  if (want.has('unity')) {
+    const tool = unityMergeTool();
+    if (tool) {
+      spawnSync('git', ['config', 'merge.unityyamlmerge.name', 'Unity scene merge (huddle)'], { cwd: root });
+      spawnSync('git', ['config', 'merge.unityyamlmerge.driver', `"${tool.replace(/\\/g, '/')}" merge -h -p --force %O %B %A %A`], { cwd: root });
+      for (const x of ['unity', 'prefab', 'asset', 'mat', 'anim', 'controller', 'overrideController', 'physicMaterial', 'physicsMaterial2D', 'lighting', 'mask'])
+        lines.push(`*.${x} merge=unityyamlmerge eol=lf`);
+      did.push('Unity scenes and prefabs merge with UnityYAMLMerge');
+    } else did.push('Unity\'s merge tool wasn\'t found (install Unity through the Hub, then restart your agent)');
+    lines.push('*.meta eol=lf');
+  }
+  if (want.has('godot')) { for (const x of ['tscn', 'tres', 'godot', 'gd', 'import']) lines.push(`*.${x} text eol=lf`); did.push('Godot scenes keep plain line endings'); }
+  for (const x of ['blend', 'blend1', 'fbx', 'glb', 'psd', 'png', 'jpg', 'exr', 'hdr', 'wav', 'ogg', 'mp3', 'scn', 'res']) lines.push(`*.${x} binary`);
+  const file = path.join(dir, 'info', 'attributes');
+  let cur = '';
+  try { cur = fs.readFileSync(file, 'utf8'); } catch {}
+  const i = cur.indexOf(MBEGIN), j = cur.indexOf(MEND);
+  const keep = (i >= 0 && j > i ? cur.slice(0, i) + cur.slice(j + MEND.length) : cur).replace(/\n{3,}/g, '\n\n').trim();
+  const next = (keep ? keep + '\n\n' : '') + [MBEGIN, ...lines, MEND].join('\n') + '\n';
+  if (next !== cur) { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, next); }
+  return { did, changed: next !== cur };
+}
+
+// Images in an MCP tool's result (Claude Code hands the result to the post hook): {data, mime} each
+function imagesIn(resp) {
+  const out = [];
+  const walk = (v, depth) => {
+    if (!v || depth > 4 || out.length >= 4) return;
+    if (Array.isArray(v)) { v.forEach(x => walk(x, depth + 1)); return; }
+    if (typeof v !== 'object') return;
+    if (v.type === 'image' && typeof v.data === 'string') out.push({ data: v.data, mime: v.mimeType || v.mime_type || 'image/png' });
+    else if (v.type === 'image' && v.source && typeof v.source.data === 'string') out.push({ data: v.source.data, mime: v.source.media_type || 'image/png' });
+    else walk(v.content, depth + 1);
+  };
+  walk(resp, 0);
+  return out;
+}
+// calls that show what something looks like, so their pictures go to the gallery
+const SHOT = /look|screenshot|capture|viewport|render|preview/i;
+const shows = (hit, input = {}) => SHOT.test(hit.tool) || (typeof input.action === 'string' && SHOT.test(input.action));
+
+module.exports = { setupMerge, imagesIn, shows, godotRoots, specFor, APPS, match, changes, targets, changedFiles, summary, install, uninstall, registered, isEditorServer, unityRoots, listening, READ_ACTION };

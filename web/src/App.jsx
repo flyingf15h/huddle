@@ -28,6 +28,9 @@ import Code from './views/Code.jsx';
 import Brief from './views/Brief.jsx';
 import Usage from './views/Usage.jsx';
 import Health from './views/Health.jsx';
+import Timeline from './views/Timeline.jsx';
+import Gallery from './views/Gallery.jsx';
+import Builds from './views/Builds.jsx';
 import Settings from './views/Settings.jsx';
 
 const darkQuery = matchMedia('(prefers-color-scheme: dark)');
@@ -67,6 +70,9 @@ export default function App() {
             : S.view === 'brief' ? <Brief />
             : S.view === 'usage' ? <Usage />
             : S.view === 'health' ? <Health />
+            : S.view === 'timeline' ? <Timeline />
+            : S.view === 'gallery' ? <Gallery />
+            : S.view === 'builds' ? <Builds />
             : <Settings />}
         </div>
         <TabBar />

@@ -118,6 +118,42 @@ function person(name, pid, url, token, project) {
   assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(path.join(cur, '.cursor', 'mcp.json'), 'utf8')).mcpServers).sort(), ['myblender', 'unity']);
   ok('Codex and Cursor get the editor servers they lack, next to their own, and lose only those');
 
+  // ---- Godot and Figma
+  assert.equal(apps.match('mcp__godot__save_scene').id, 'godot');
+  assert.equal(apps.match('mcp__tools__create_scene').id, 'godot');
+  assert.equal(apps.changes(apps.match('mcp__godot__get_project_info'), {}), false);
+  assert.equal(apps.changes(apps.match('mcp__godot__add_node'), {}), true);
+  const gd = path.join(tmp, 'gd');
+  fs.mkdirSync(path.join(gd, 'game', 'scenes'), { recursive: true });
+  fs.writeFileSync(path.join(gd, 'game', 'project.godot'), '[application]\n');
+  assert.deepEqual(apps.targets(apps.match('mcp__godot__save_scene'), { projectPath: 'game', scenePath: 'res://scenes/level1.tscn' }, gd), ['game/scenes/level1.tscn']);
+  assert.deepEqual(apps.targets(apps.match('mcp__godot__save_scene'), { scenePath: 'scenes/level1.tscn' }, gd), ['game/scenes/level1.tscn']);
+  assert.equal(apps.changes(apps.match('mcp__figma__get_design_context'), { nodeId: '1:2' }), false);
+  assert.deepEqual(apps.specFor('figma', 'claude'), { type: 'http', url: 'https://mcp.figma.com/mcp' });
+  assert.deepEqual(apps.specFor('figma', 'codex').args, ['-y', 'mcp-remote', 'https://mcp.figma.com/mcp']);
+  assert.deepEqual(apps.specFor('godot', 'cursor'), { command: 'npx', args: ['-y', '@coding-solo/godot-mcp'] });
+  assert.ok(apps.shows(apps.match('mcp__blender__look'), {}) && apps.shows(apps.match('mcp__unity__manage_camera'), { action: 'screenshot' }) && !apps.shows(apps.match('mcp__unity__manage_scene'), { action: 'save' }));
+  assert.deepEqual(apps.imagesIn([{ type: 'text', text: 'hi' }, { type: 'image', data: 'AAAA', mimeType: 'image/png' }]), [{ data: 'AAAA', mime: 'image/png' }]);
+  assert.deepEqual(apps.imagesIn({ content: [{ type: 'image', source: { data: 'BBBB', media_type: 'image/jpeg' } }] }), [{ data: 'BBBB', mime: 'image/jpeg' }]);
+  ok('Godot scenes are found and locked like Unity\'s; Figma is read-only; screenshots are picked out of tool results');
+
+  // ---- merging set up in the clone, never in a committed file
+  const mg = unityRepo('merge');
+  sh(mg, 'init', '-q');
+  const tools = path.join(home, 'Unity', 'Hub', 'Editor', '6000.0.30f1', 'Editor', 'Data', 'Tools');
+  fs.mkdirSync(tools, { recursive: true });
+  fs.writeFileSync(path.join(tools, 'UnityYAMLMerge'), '#!/bin/sh\n', { mode: 0o755 });
+  const did = apps.setupMerge(mg);
+  if (process.platform === 'linux') {
+    assert.match(did.did.join(' '), /UnityYAMLMerge/);
+    assert.match(sh(mg, 'config', 'merge.unityyamlmerge.driver'), /UnityYAMLMerge" merge -h -p --force %O %B %A %A/);
+    assert.match(sh(mg, 'check-attr', 'merge', 'Assets/Scenes/Main.unity'), /merge: unityyamlmerge/);
+  }
+  assert.match(sh(mg, 'check-attr', 'binary', 'ship.blend'), /binary: set/);
+  assert.equal(apps.setupMerge(mg).changed, false);
+  assert.ok(!fs.existsSync(path.join(mg, '.gitattributes')));
+  ok('joining sets up Unity\'s scene merger and binary art in this clone only, once');
+
   // ---- background clones never get an editor server
   const ap = require('../src/autopilot');
   const fm = path.join(tmp, 'fm');
@@ -181,6 +217,96 @@ function person(name, pid, url, token, project) {
     locks = (await api('state')).locks;
     assert.ok(locks.some(l => l.path === 'ship.blend' && l.holderName === 'ben'));
     ok('editor changes to a file someone else holds are flagged to undo, and the rest are locked');
+
+    // ---- the gallery: viewport screenshots arrive by themselves, kept out of the feed
+    const png = Buffer.from('89504e470d0a1a0a', 'hex').toString('base64');
+    ana.hook('post', { tool_name: 'mcp__blender__look', tool_input: {}, tool_response: [{ type: 'image', data: png, mimeType: 'image/png' }] });
+    let media = (await api('media')).media;
+    assert.equal(media.length, 1);
+    assert.equal(media[0].source, 'Blender');
+    assert.match(media[0].caption, /Blender: looked at the viewport/);
+    assert.equal((await api('media-file?id=' + media[0].id)).data, png);
+    assert.equal((await fetch(`${url}/api/p/${project}/media`, { method: 'POST', headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json' }, body: JSON.stringify({ agent: boss, mime: 'text/html', data: 'AA' }) })).status, 400);
+    await api('media-delete', { agent: boss, id: media[0].id });
+    assert.equal((await api('media')).media.length, 0);
+    ok('screenshots from the editors land in the gallery, and only images are accepted');
+
+    // ---- builds
+    assert.equal((await fetch(`${url}/api/p/${project}/build`, { method: 'POST', headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json' }, body: JSON.stringify({ agent: boss, url: 'javascript:alert(1)', title: 'x' }) })).status, 400);
+    const bl = await api('build', { agent: boss, url: 'https://team.itch.io/game', title: 'Prototype 1', platform: 'web' });
+    assert.equal((await api('builds')).builds[0].url, 'https://team.itch.io/game');
+    await api('build-delete', { agent: boss, id: bl.build.id });
+    ok('builds keep their full link, and only http(s) links are taken');
+
+    // ---- asset hand-off: a model saved in Blender becomes a task for whoever is in Unity
+    await api('project-setting', { agent: boss, apps: ['unity', 'blender'] });
+    ben.write('Assets/Scenes/Menu.unity', '%YAML 1.1\nmenu: 9\n');
+    ben.hook('post', { tool_name: 'mcp__unity__manage_scene', tool_input: { action: 'save' } });
+    fs.mkdirSync(path.join(ana.root, 'art'), { recursive: true });
+    ana.write('art/crate.blend', 'BLENDER crate');
+    ana.hook('post', { tool_name: 'mcp__blender__execute_blender_code', tool_input: { code: 'bpy.ops.wm.save_as_mainfile(filepath="art/crate.blend")' } });
+    let board = await api('board');
+    assert.ok(board.tasks.some(t => t.asset && t.asset.includes('ship.blend'))); // ben's save earlier
+    const hand = board.tasks.filter(t => t.asset && t.asset.includes('art/crate.blend'));
+    assert.equal(hand.length, 1);
+    assert.equal(hand[0].title, 'Bring crate.blend into Unity');
+    assert.equal(hand[0].editor, 'unity');
+    assert.equal(hand[0].owner, 'ben');
+    ana.hook('post', { tool_name: 'mcp__blender__execute_blender_code', tool_input: { code: 'print(1)' } }); // nothing new saved
+    fs.utimesSync(path.join(ana.root, 'art', 'crate.blend'), new Date(), new Date(Date.now() + 5000));
+    ana.hook('post', { tool_name: 'mcp__blender__execute_blender_code', tool_input: { code: 'save again' } });
+    assert.equal((await api('board')).tasks.filter(t => t.asset && t.asset.includes('art/crate.blend')).length, 1);
+    const ap2 = require('../src/autopilot');
+    assert.equal(ap2.pick({ goals: [], tasks: [{ ...hand[0], owner: 'ben', status: 'todo', after: [] }] }, 'ben', new Set(), 'full'), null);
+    assert.match(require('../src/board').briefing(await api('board'), 'ben'), /Bring crate\.blend into Unity  ← yours/);
+    ok('a model saved in Blender becomes one hand-off for the person in Unity, which background runs leave alone');
+
+    // ---- timeline: goals and a plan every agent is told about
+    assert.equal((await fetch(`${url}/api/p/${project}/timeline-draft`, { method: 'POST', headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json' }, body: JSON.stringify({ agent: boss }) })).status, 400);
+    const due = Date.now() + 2 * 3600000;
+    await api('timeline-milestone', { agent: boss, title: 'Playable prototype', due, detail: 'one level start to finish' });
+    await api('timeline-milestone', { agent: boss, title: 'Submit', due: due + 864e5 });
+    const dr = await api('timeline-draft', { agent: boss });
+    assert.equal(dr.task.title, 'Draft the team timeline plan');
+    const tp = ana.hook('prompt', { prompt: 'keep going on the jump' });
+    assert.match(tp.hookSpecificOutput.additionalContext, /the team timeline changed[\s\S]*Playable prototype: due/);
+    assert.match(tp.hookSpecificOutput.additionalContext, /"Playable prototype" is close/);
+    const again = ana.hook('prompt', { prompt: 'and the camera' });
+    assert.ok(!/timeline changed/.test((again && again.hookSpecificOutput && again.hookSpecificOutput.additionalContext) || ''));
+    const st0 = ben.hook('session-start', { source: 'startup' });
+    assert.match(st0.hookSpecificOutput.additionalContext, /Team timeline[\s\S]*Submit/);
+    assert.match(st0.hookSpecificOutput.additionalContext, /huddle_claim_feature/);
+    ok('timeline goals reach every agent at the start and when they change, with a nudge near a deadline');
+
+    // ---- the agent tools: plan, goals done, feature claims, images and builds
+    const mcp = spawn(process.execPath, [CLI, 'mcp'], { cwd: ana.root, env: { ...process.env, ...gitEnv, HUDDLE_SESSION: '501', HUDDLE_ROOT: ana.root }, stdio: ['pipe', 'pipe', 'inherit'] });
+    let buf = '', nid = 1;
+    const waiting = new Map();
+    mcp.stdout.on('data', (d) => { buf += d; let i; while ((i = buf.indexOf('\n')) >= 0) { const m = JSON.parse(buf.slice(0, i)); buf = buf.slice(i + 1); if (waiting.has(m.id)) { waiting.get(m.id)(m); waiting.delete(m.id); } } });
+    const rpc = (method, params) => new Promise(r => { const id = nid++; waiting.set(id, r); mcp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n'); });
+    const tool = async (name, args) => (await rpc('tools/call', { name, arguments: args })).result.content[0].text;
+    await rpc('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 't', version: '1' } });
+    try {
+      assert.match(await tool('huddle_timeline', { plan: 'Playable prototype\n- jump, one enemy, one level', done: 'playable prototype' }), /Submit[\s\S]*jump, one enemy/);
+      assert.ok((await api('timeline')).timeline.milestones.find(m => m.title === 'Playable prototype').done);
+      fs.mkdirSync(path.join(ana.root, 'Assets', 'Scripts', 'Inventory'), { recursive: true });
+      ana.write('Assets/Scripts/Inventory/DragDrop.cs', 'class DragDrop {}\n');
+      ana.write('Assets/Scripts/Inventory/Slot.cs', 'class Slot {}\n');
+      assert.match(await tool('huddle_claim_feature', { feature: 'inventory: drag and drop', paths: ['Assets/Scripts/Inventory/DragDrop.cs', 'Assets/Scripts/Inventory/Slot.cs'] }), /claimed Assets\/Scripts\/Inventory\/DragDrop\.cs/);
+      assert.match(await tool('huddle_claim_feature', { feature: 'everything', paths: [...Array(13)].map((_, i) => `f${i}.cs`) }), /more than a feature/);
+      assert.match(await tool('huddle_claim_feature', { feature: 'all assets', paths: ['Assets/'] }), /more than one feature|Assets\/ overlaps Assets\/Scenes\/\w+\.unity, held by ben/);
+      locks = (await api('state')).locks;
+      assert.equal(locks.filter(l => l.note === 'feature: inventory: drag and drop').length, 2);
+      const busy = ben.hook('pre', { tool_name: 'Edit', tool_input: { file_path: path.join(ben.root, 'Assets/Scripts/Inventory/Slot.cs') } });
+      assert.equal(busy.hookSpecificOutput.permissionDecision, 'deny');
+      assert.match(await tool('huddle_release_feature', { feature: 'inventory: drag and drop' }), /released/);
+      assert.equal((await api('state')).locks.filter(l => /^feature: inventory/.test(l.note || '')).length, 0);
+      fs.writeFileSync(path.join(ana.root, 'shot.png'), Buffer.from(png, 'base64'));
+      assert.match(await tool('huddle_share_image', { path: 'shot.png', caption: 'new crate' }), /in the gallery/);
+      assert.match(await tool('huddle_share_build', { url: 'https://team.itch.io/game', title: 'Prototype 2', platform: 'web' }), /on the Builds page/);
+      assert.equal((await api('media')).media.pop().caption, 'new crate');
+      ok('agents keep the plan, tick goals off, claim one feature at a time (not whole folders) and share images and builds');
+    } finally { mcp.kill(); }
 
     // the CLI: off for the team removes the server from this folder
     const r = spawnSync(process.execPath, [CLI, 'apps', 'remove', 'blender'], { cwd: ana.root, env: { ...process.env, HUDDLE_ROOT: ana.root }, encoding: 'utf8' });

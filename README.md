@@ -18,7 +18,7 @@ On Windows: `irm https://huddle.sage-hill.workers.dev/install.ps1 | iex`. No sig
 ## What you get
 
 **No collisions**
-- While an agent edits a file, everyone else's copy goes read-only and their agent is told who has it. Agents can claim a whole folder before a bigger change.
+- While an agent edits a file, everyone else's copy goes read-only and their agent is told who has it. Agents claim the one feature they're on ("inventory: drag and drop") and its few files, so the rest of a level or system stays open.
 - Edits land on teammates' machines within a second or two, long before anyone commits.
 - Each person's huddle warns when their branch would conflict with a teammate's, names the files, and one click hands the merge to an agent.
 
@@ -34,8 +34,12 @@ On Windows: `irm https://huddle.sage-hill.workers.dev/install.ps1 | iex`. No sig
 - Prefer pull requests? Finished work can open one on GitHub, with the review and test results in the description.
 - Schedules ("look for flaky tests every Friday"), GitHub issues sent to the team as requests, and an always-on worker for a spare machine.
 
-**Unity and Blender**
-- Agents can build scenes, prefabs and models inside the editor, not just code. Scenes and .blend files are locked like any edit, so nobody ends up with two versions of a scene that can't be merged.
+**Made for game jams too**
+- Agents work inside Unity, Godot and Blender, and read your Figma designs. Scenes and .blend files are locked like any edit, so nobody ends up with two versions of a scene that can't be merged.
+- Save a model in Blender and huddle hands it to whoever is in the engine to bring into the game.
+- Joining sets up Unity's scene merger in your clone, so the conflicts that do happen can be merged instead of thrown away.
+- A Gallery for screenshots and renders (editor screenshots land there by themselves) and a Builds page where web builds play right in the dashboard.
+- A Timeline: set goals with deadlines, let an agent draft the plan, and every agent works toward the next one. Close to a deadline they switch to fixing and shipping.
 
 **You stay in charge**
 - Commands that are always fine, commands no agent may ever run (`git push`, deploys), and files that never leave anyone's machine. Background agents ask before running anything else, and you approve from the dashboard, Slack or the terminal.
@@ -67,18 +71,20 @@ Start everyone from the same repo and branch. huddle keeps files in step while y
 
 **Codex or Cursor:** add `--agent codex` or `--agent cursor` to `join` (it's picked for you if it's the only one installed). Trust the folder and huddle's hooks the first time you open it. They get the same locks, messages and board as Claude Code.
 
-## Unity and Blender
+## Unity, Godot, Blender and Figma
 
-Turn them on in the dashboard (Team & settings, then Integrations) or with `huddle apps add unity blender`. Every teammate's agent gets the editor's MCP server at its next session. Each person then sets up their editor once:
+Turn them on in the dashboard (Team & settings, then Integrations) or with `huddle apps add unity godot blender figma`. Every teammate's agent gets the tool's MCP server at its next session. Each person then sets up once:
 
 - **Unity:** install [uv](https://docs.astral.sh/uv/getting-started/installation/), add `https://github.com/CoplayDev/unity-mcp.git?path=/MCPForUnity#main` in the Package Manager, then open Window > MCP for Unity and click Start Bridge.
+- **Godot:** install Godot 4 and Node. If `godot` isn't on your PATH, set `GODOT_PATH`.
 - **Blender:** install uv, run `uvx mcp-for-blender install-addon`, turn the add-on on in Preferences, then press N in the viewport and click Start MCP Server.
+- **Figma:** run `/mcp` in Claude Code, pick figma and sign in.
 
-Now you can ask for "a pause menu in the Menu scene" or "a low-poly crate saved to art/crate.blend". Scenes, prefabs and .blend files are locked when an agent changes them, and an agent is refused a scene a teammate is working on. Background agents don't get editor tools, because the editor has your own folder open.
+Now you can ask for "a pause menu in the Menu scene, like this frame: <figma link>" or "a low-poly crate saved to art/crate.blend". Scenes, prefabs and .blend files are locked when an agent changes them, a saved model becomes a hand-off to whoever is in the engine, and screenshots go to the Gallery. Background agents don't get editor tools, because the editor has your own folder open.
 
 ## Dashboard or terminal
 
-Almost everything lives in the dashboard (`huddle open`): sending requests, approving commands, rules, editors, invites and roles, notifications, Slack, GitHub and exports. The terminal is only for things that happen on your computer: `new`, `join`, `leave`, `doctor`, `update`, `watch` and git syncing. `huddle help` lists every command.
+Almost everything lives in the dashboard (`huddle open`): sending requests, approving commands, the timeline, the gallery and builds, rules, editors, invites and roles, notifications, Slack, GitHub and exports. The terminal is only for things that happen on your computer: `new`, `join`, `leave`, `doctor`, `update`, `watch` and git syncing. `huddle help` lists every command.
 
 ## Privacy
 

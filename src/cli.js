@@ -105,7 +105,7 @@ Day to day:
   huddle export [--out FILE]    everything the project holds, as JSON (owner)
   huddle audit                  who changed what, and every command background agents ran
   huddle problems               crashes and failures reported from teammates' computers
-  huddle apps [add|remove unity|blender]
+  huddle apps [add|remove unity|godot|blender|figma]
                                 editors the team's agents use through MCP: registers their server
                                 for everyone and locks the scenes and assets they change
   huddle tests ["CMD"] [--review on|off]
@@ -626,6 +626,9 @@ async function cmdJoin({ pos, flags }) {
   console.log(`
 ✓ joined "${inv.project.replace(/-[0-9a-f]{6,8}$/, '')}" as ${name}${mcp ? '' : ' (the huddle tools need registering by hand, see above)'}
   Dashboard: ${inv.server}/app#invite=${code}${inv.token.startsWith('hm_') ? '\n  (that link is yours alone: it opens the project as you)' : ''}`);
+  // game projects: scenes and art merge properly in this clone (Unity's merger, no text merges of binaries)
+  const merge = require('./apps').setupMerge(root);
+  if (merge && merge.did.length) console.log(`  Merging: ${merge.did.join('; ')}`);
   if (agent === 'claude' && process.stdin.isTTY && !flags.yes && await yes('Let Claude make routine edits, use git and run builds and tests here without asking each time?')) {
     const n = addPermissions(path.join(root, '.claude', 'settings.local.json'), permissionPreset(root));
     console.log(n ? '  done (in your own .claude/settings.local.json; deploys and anything risky still ask)' : '  already set');
@@ -1035,7 +1038,7 @@ async function cmdApps({ pos }) {
   if (bad.length) return console.log(`huddle knows ${Object.keys(apps.APPS).join(' and ')}, not ${bad.join(', ')}.`);
   let on = ((await client.get('state')).projectSettings || {}).apps || [];
   if (verb === 'add' || verb === 'remove') {
-    if (!ids.length) return console.log(`huddle apps ${verb} unity|blender`);
+    if (!ids.length) return console.log(`huddle apps ${verb} unity|godot|blender|figma`);
     on = verb === 'add' ? [...new Set([...on, ...ids])] : on.filter(id => !ids.includes(id));
     on = (await client.post('project-setting', { apps: on })).settings.apps || [];
     if (verb === 'remove') for (const id of ids) apps.uninstall(root, agent, id);
@@ -1045,9 +1048,10 @@ async function cmdApps({ pos }) {
       if (verb === 'remove') { console.log(`${a.label}: off for the team (its MCP server was removed from this folder)`); continue; }
       console.log(`${a.label}: on for the team. ${added.includes(id) ? 'Its MCP server is registered here' : apps.registered(root, agent, id) ? 'This folder already had its MCP server' : 'Couldn\'t register its MCP server here; is the agent\'s command line installed?'}; teammates get it at their next session.`);
     }
+    if (verb === 'add') { const m = apps.setupMerge(root, on); if (m && m.did.length) console.log(`Merging: ${m.did.join('; ')}`); }
     if (verb === 'add') console.log('\nRestart your agent to load the new tools, then do the one-time editor setup below.\n');
     else return;
-  } else if (verb) return console.log('huddle apps [add|remove unity|blender]');
+  } else if (verb) return console.log('huddle apps [add|remove unity|godot|blender|figma]');
   const detected = Object.keys(apps.APPS).filter(id => !on.includes(id) && apps.APPS[id].detect(root));
   if (!on.length) console.log('No editors are on for this project.');
   for (const id of on) {

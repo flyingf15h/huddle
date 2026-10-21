@@ -24,7 +24,7 @@ export const prettyProject = (p) => String(p || '').replace(/-[0-9a-f]{6,8}$/, '
 export const saveKnown = () => store.set('huddle.projects', JSON.stringify(known));
 
 export const auth = reactive({ token: null, project: null, name: store.get('huddle.name') === 'human' ? '' : (store.get('huddle.name') || '') });
-export const VIEWS = ['activity', 'tasks', 'code', 'brief', 'usage', 'health', 'settings'];
+export const VIEWS = ['activity', 'tasks', 'timeline', 'code', 'brief', 'gallery', 'builds', 'usage', 'health', 'settings'];
 
 export const S = reactive({
   view: VIEWS.includes(params.get('v')) ? params.get('v') : 'activity',
@@ -244,7 +244,7 @@ function applySnapshot(s) {
   S.locks = Object.fromEntries(s.locks.map(l => [(l.branch || '') + '::' + l.path, l]));
   S.files = Object.fromEntries(s.files.map(f => [(f.branch || '') + '::' + f.path, f]));
   S.settings = s.settings || {}; S.aliases = s.aliases || {}; S.usage = s.usage || {};
-  S.approvals = s.approvals || []; S.projectSettings = s.projectSettings || {}; S.problems = s.problems || []; S.members = s.members || [];
+  S.approvals = s.approvals || []; S.projectSettings = s.projectSettings || {}; S.problems = s.problems || []; S.members = s.members || []; S.timeline = s.timeline || null;
   setTeamNames(Object.keys(S.settings));
 }
 
@@ -264,6 +264,7 @@ function onEvent(ev) {
     case 'usage': S.usage[ev.name] = ev.usage; break;
     case 'approval': S.approvals = [...S.approvals.filter(x => x.id !== ev.approval.id), ev.approval].filter(x => x.status === 'waiting'); break;
     case 'project-setting': S.projectSettings = ev.settings || {}; break;
+    case 'timeline': S.timeline = ev.timeline; break;
     case 'problem': S.problems = [...S.problems, ev.problem].slice(-100); break;
     case 'conflicts': loadConflicts(); break;
     case 'digest': if (S.digestRecipient || S.me.role === 'owner') loadDigests().catch(() => {}); break;

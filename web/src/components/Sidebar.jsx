@@ -6,7 +6,7 @@ import { useS } from '../lib/store.js';
 import Avatar from './Avatar.jsx';
 import Icon from './Icon.jsx';
 
-const NAV = [['activity', 'Activity'], ['tasks', 'Tasks'], ['code', 'Code'], ['brief', 'Brief & memory'], ['usage', 'Usage & cost'], ['health', 'Health'], ['settings', 'Team & settings']];
+const NAV = [['activity', 'Activity'], ['tasks', 'Tasks'], ['timeline', 'Timeline'], ['code', 'Code'], ['brief', 'Brief & memory'], ['gallery', 'Gallery'], ['builds', 'Builds'], ['usage', 'Usage & cost'], ['health', 'Health'], ['settings', 'Team & settings']];
 const MODES = [['full', 'Active', 'Runs requests and answers messages sent to you, and takes on team tasks, even while you are away.'],
   ['requests', 'Requests only', 'Runs requests and answers messages sent to you. Leaves team tasks to others.'],
   ['off', 'Off', 'Nothing runs in the background. Requests and messages wait for you.']];

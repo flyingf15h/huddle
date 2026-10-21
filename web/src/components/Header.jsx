@@ -9,8 +9,8 @@ import ThemePicker from './ThemePicker.jsx';
 import { useEscape } from '../lib/hooks.js';
 import { toggleRail, toggleSide } from '../lib/layout.js';
 
-const TITLES = { activity: 'Activity', tasks: 'Tasks', code: 'Code', brief: 'Brief & memory', usage: 'Usage & cost', health: 'Health', settings: 'Team & settings' };
-const DESC = { tasks: 'Every request and task, who has it and how far along it is', brief: "Shared memory files between your team's agents", code: "Everyone's shared branches, the GitHub repository and conflicts",
+const TITLES = { activity: 'Activity', tasks: 'Tasks', timeline: 'Timeline', gallery: 'Gallery', builds: 'Builds', code: 'Code', brief: 'Brief & memory', usage: 'Usage & cost', health: 'Health', settings: 'Team & settings' };
+const DESC = { tasks: 'Every request and task, who has it and how far along it is', timeline: 'Goals with deadlines, and the plan every agent works from', gallery: 'Screenshots and images from the team and their agents', builds: 'Playable builds, newest first', brief: "Shared memory files between your team's agents", code: "Everyone's shared branches, the GitHub repository and conflicts",
   usage: 'Agent usage and what it would cost at API prices', health: "Whether huddle is working on everyone's computer", settings: 'People, access, rules, integrations and data' };
 const FILTERS = [['all', 'Everything', 'Every prompt, step, reply, message and file change'], ['key', 'Highlights', 'Requests, prompts, replies, messages and hand-offs'], ['talk', 'Messages', 'Only messages and requests']];
 const mac = /Mac|iPhone|iPad/.test(navigator.platform);

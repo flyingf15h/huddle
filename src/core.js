@@ -252,6 +252,7 @@ class Project {
       members: Object.entries(this.members || {}).map(([name, m]) => ({ name, role: m.role, github: m.github || null })),
       accounts: Object.values(this.members || {}).some(m => m.role === 'owner'),
       problems: (this.problems || []).slice(-20),
+      timeline: this.timeline || null,
     };
   }
   touch(agent) {
@@ -773,7 +774,7 @@ const routes = {
     // how finished background work arrives: merged into the person's branch, or as a GitHub pull request
     if (b.delivery !== undefined) p.projectSettings.delivery = b.delivery === 'pr' ? 'pr' : 'merge';
     // editors the team's agents drive through MCP (huddle apps): each teammate's folder gets their servers
-    if (b.apps !== undefined) p.projectSettings.apps = [...new Set((Array.isArray(b.apps) ? b.apps : []).map(String).filter(x => ['unity', 'blender'].includes(x)))];
+    if (b.apps !== undefined) p.projectSettings.apps = [...new Set((Array.isArray(b.apps) ? b.apps : []).map(String).filter(x => ['unity', 'godot', 'blender', 'figma'].includes(x)))];
     const said = { testCommand: (v) => v ? `test command: ${v}` : 'test command: guessed', crossReview: (v) => `review by another vendor: ${v === false ? 'off' : 'on'}`, review: (v) => `review before merging: ${v === false ? 'off' : 'on'}`,
       sharedToken: (v) => v === false ? 'switched the shared invite off' : 'switched the shared invite on', membersCanInvite: (v) => `members can invite: ${v === false ? 'no' : 'yes'}`,
       delivery: (v) => v === 'pr' ? 'finished work opens a pull request' : "finished work merges into its person's branch",
@@ -1602,6 +1603,8 @@ Object.assign(routes, {
 // notifications, search, cost, tasks, data, GitHub and conflicts (features.js)
 const X = require('./features')({ httpError, now, audit, hasOwner, boardChanged, pushTask, requestTitle, goalDone, normPath, notify, canonicalName, personFor, publicMembers, taskIdsIn, routes });
 Object.assign(routes, X.routes);
+const ST = require('./studio')({ httpError, now, pushTask, boardChanged, assignByUsage, notify });
+Object.assign(routes, ST.routes);
 
 function waitOn(p, pred, timeoutMs, onAbort) {
   return new Promise(resolve => {

@@ -43,14 +43,18 @@ function describe(seen, b, me) {
 }
 
 function briefing(b, me) {
+  // assets saved in Blender that wait for someone with the engine open (see studio.js)
+  const hand = b.tasks.filter(t => t.editor && t.status !== 'done' && (t.owner === me || !t.owner));
+  const handLines = hand.length ? ['', 'Asset hand-offs that need the game editor open (a background run can\'t do these):',
+    ...hand.map(t => `- [${t.id}] ${t.title}${t.owner === me ? '  ← yours' : ' (anyone with it open)'}: ${oneLine(t.detail, 240)}`)] : [];
   const open = b.goals.filter(g => g.status !== 'done').slice(-5);
-  if (!open.length) return 'Team board: no open goals. People can give the whole team a goal from the dashboard or with `huddle ask`.';
+  if (!open.length) return ['Team board: no open goals. People can give the whole team a goal from the dashboard or with `huddle ask`.', ...handLines].join('\n');
   const lines = ['Team board (open goals and their tasks; huddle_board for details):'];
   for (const g of open) {
     lines.push(`- Goal [${g.id}] from ${g.byName}${g.to ? ' for ' + g.to : ''}: ${oneLine(g.text, 300)} (${g.status}${g.planner ? ', planned by ' + g.planner : ''})`);
     for (const t of b.tasks.filter(t => t.goalId === g.id)) lines.push(`    ${taskLine(t)}${t.owner === me ? '  ← yours' : ''}`);
   }
-  return lines.join('\n');
+  return [...lines, ...handLines].join('\n');
 }
 
 function format(b) {

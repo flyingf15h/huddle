@@ -13,6 +13,7 @@ const policy = require('./policy');
 const codex = require('./codex');
 const cursor = require('./cursor');
 const apps = require('./apps');
+const studio = require('./studio');
 
 // Claude Code edits with these; Codex edits with apply_patch (one patch can touch several files)
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'apply_patch']);
@@ -559,6 +560,24 @@ async function editorPost(hit, client, cfg) {
     else mine.add(rel);
   }
   st.data.editorLocked = [...mine].slice(-200);
+  // engines: remember who works in them, so asset hand-offs reach someone with the editor open
+  if (['unity', 'godot'].includes(hit.id) && Date.now() - ((st.data.editorUse || {})[hit.id] || 0) > 600000) {
+    st.data.editorUse = { ...(st.data.editorUse || {}), [hit.id]: Date.now() };
+    await client.post('editor-use', { app: hit.id }).catch(() => {});
+  }
+  // art tools: a newly saved model or texture becomes a hand-off to whoever is in the engine
+  if (hit.id === 'blender') {
+    const sent = st.data.assetsSent || {};
+    const fresh = apps.changedFiles(cfg.root, hit.app).filter(f => /\.(blend|fbx|glb|gltf|obj|usd[acz]?|png|jpe?g|exr|tga)$/i.test(f)).filter(f => {
+      let m = 0;
+      try { m = fs.statSync(path.join(cfg.root, ...f.split('/'))).mtimeMs; } catch { return false; }
+      if (sent[f] === m) return false;
+      sent[f] = m;
+      return true;
+    });
+    st.data.assetsSent = Object.fromEntries(Object.entries(sent).slice(-200));
+    if (fresh.length) await client.post('asset', { from: hit.id, paths: fresh }).catch(() => {});
+  }
   st.save();
   return clash.length ? `huddle: this ${hit.app.label} change touched files a teammate is working on: ${clash.join('; ')}. ` +
     `Undo it in ${hit.app.label} (or revert the file with git) and ask them with huddle_send before changing it again.` : '';
@@ -599,12 +618,17 @@ const handlers = {
     // the editors this project uses (huddle apps): register their MCP servers here if they're missing
     const editors = ((s.projectSettings || {}).apps || []).filter(id => apps.APPS[id]);
     const added = editors.length && !process.env.HUDDLE_AUTOPILOT ? apps.install(cfg.root, agentKind(), editors) : [];
+    const merge = !process.env.HUDDLE_AUTOPILOT && gitx.isRepo(cfg.root) ? apps.setupMerge(cfg.root, editors) : null;
+    const plan = studio.briefing(s);
+    st.data.timelineVersion = (s.timeline || {}).version || 0;
+    st.save();
     const notice = `huddle: this session is in "${cfg.project.replace(/-[0-9a-f]{6,8}$/, '')}" as ${client.agent.name}` +
       ` · ${others.length ? others.join(', ') + ' online' : 'nobody else online'}` +
       ` · your Claude ${mode === 'full' ? 'is active for the team (answers the other Claudes, takes its tasks)' : mode === 'off' ? 'does not take requests (/autopilot to change)' : 'takes requests only (/autopilot to change)'}` +
       (newer ? ` · ${newer.name} runs a newer huddle; run \`huddle update\` and restart Claude` : '') +
       (back ? `\n${back}` : '') +
-      (added.length ? `\nhuddle added the ${added.map(id => apps.APPS[id].label).join(' and ')} tools this project uses. Restart to load them; \`huddle apps\` shows the one-time editor setup.` : '');
+      (added.length ? `\nhuddle added the ${added.map(id => apps.APPS[id].label).join(' and ')} tools this project uses. Restart to load them; \`huddle apps\` shows the one-time editor setup.` : '') +
+      (merge && merge.changed && merge.did.length ? `\nhuddle set up merging here: ${merge.did.join('; ')}.` : '');
     return withNotice(notice, ctx('SessionStart',
       `You are "${client.agent.name}" in huddle project "${client.cfg.project}", shared with other AI coding agents (Claude Code and Codex) working in the same codebase from other machines.\n` +
       (nameLine(s, client.agent.name) ? nameLine(s, client.agent.name) + '\n' : '') +
@@ -619,6 +643,8 @@ const handlers = {
       'Messages from other agents show up in your context automatically.\n' +
       'The team shares knowledge through huddle instead of git: the PROJECT.md brief (huddle_project), memory notes (huddle_remember / huddle_recall) and skills (huddle_save_skill). ' +
       'When you learn something another agent would otherwise have to rediscover (a gotcha, a decision, how to run or test something), save it.\n\n' +
+      (plan ? plan + '\n\n' : '') +
+      'Claim the specific feature you are working on with huddle_claim_feature (e.g. "inventory: drag and drop", with the few files it touches), and release it when done. Keep claims narrow: never a whole level, system or folder of shared work, so teammates can still build other parts of it.\n\n' +
       (editors.length ? `This project uses ${editors.map(id => apps.APPS[id].label).join(' and ')} through MCP. Files you change through the editor (scenes, prefabs, assets, .blend files) are locked for you when they reach disk, like edits; a file a teammate holds must not be changed or saved from the editor. Save the scene or file when a step is done so teammates get it.\n\n` : '') +
       teamSummary(s, client.agent) + '\n' + branchSummary(s, client, cfg) + '\n\n' +
       (recentHandoffs(handoffs, client.agent.name) ? recentHandoffs(handoffs, client.agent.name) + '\n\n' : '') +
@@ -661,10 +687,16 @@ const handlers = {
         if (e.code !== 'ENOENT' && e.status !== 403) notes.push(`huddle could not share ${rel}: ${e.message}`);
       }
     }
-    const hit = !cfg.clone && apps.match(input.tool_name);
-    if (hit && apps.changes(hit, input.tool_input || {})) {
+    const hit = apps.match(input.tool_name);
+    if (hit && !cfg.clone && apps.changes(hit, input.tool_input || {})) {
       const warn = await editorPost(hit, client, cfg);
       if (warn) notes.push(warn);
+    }
+    // what the editor showed (a viewport, a game view, a Figma frame) goes to the team's gallery
+    if (hit && apps.shows(hit, input.tool_input || {}) && sharingLevel(cfg) !== 'off' && !sessionState(cfg, client.agent).data.private) {
+      for (const img of apps.imagesIn(input.tool_response)) {
+        await client.post('media', { data: img.data, mime: img.mime, caption: toolSummary(input.tool_name, input.tool_input || {}, input.cwd), source: hit.app.label, task: process.env.HUDDLE_TASK || null }).catch(() => {});
+      }
     }
     // Codex's tool calls come from here rather than its transcript
     const extra = agentKind() !== 'claude' && !input.noStep && sharingLevel(cfg) !== 'off' && !sessionState(cfg, client.agent).data.private
@@ -715,6 +747,16 @@ const handlers = {
       st.save();
     }
     if (!st.data.team) d.team = teamDelta(s, client.agent, st);
+    let timeNote = '';
+    const tl = s.timeline;
+    if (tl && (tl.version || 0) !== (st.data.timelineVersion || 0)) { timeNote = 'huddle: the team timeline changed.\n' + studio.briefing(s); st.data.timelineVersion = tl.version || 0; st.save(); }
+    else if (tl) {
+      const next = (tl.milestones || []).filter(m => !m.done).sort((a, b) => a.due - b.due)[0];
+      if (next && next.due - Date.now() < 3 * 3600000 && Date.now() - (st.data.timelineNudge || 0) > 3600000) {
+        timeNote = `huddle: "${next.title}" is due in ${Math.max(0, Math.round((next.due - Date.now()) / 60000))} min. Favour finishing, fixing and a build over new work.`;
+        st.data.timelineNudge = Date.now(); st.save();
+      }
+    }
     const privateNote = isPrivate ? 'This turn is private: huddle is not sharing your user\'s prompt, your replies or your tool calls with the team. Do not put what is discussed here into huddle messages, team memory or PROJECT.md unless the user asks you to. File edits and commits in the project still sync as usual.' : '';
     const asks = process.env.HUDDLE_AUTOPILOT ? { context: '', notice: '' } : openRequests(s, r.tasks || [], me);
     const stale = auto && auto !== st.data.lastAuto ? staleTasks(r.tasks || [], me) : '';
@@ -725,7 +767,7 @@ const handlers = {
     // whatever the prompt is about, the team's messages and requests come first
     const team = [d.mail, asks.context].filter(Boolean).join('\n\n');
     const first = team ? `huddle: read this first, before your user's prompt, and tell your user about anything that needs them.\n\n${team}` : '';
-    const out = ctx('UserPromptSubmit', [first, renamed, privateNote, ...d.news, stale, d.team, big, sayIt].filter(Boolean).join('\n\n'));
+    const out = ctx('UserPromptSubmit', [first, renamed, privateNote, ...d.news, timeNote, stale, d.team, big, sayIt].filter(Boolean).join('\n\n'));
     return asks.notice ? withNotice(asks.notice, out) : out;
   },
 

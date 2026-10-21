@@ -54,13 +54,14 @@ function pick(b, me, skip, mode = 'full', { low = false } = {}) {
   if (mode === 'off') return null;
   // (a task the person's own session kept for itself with huddle_distribute is done there, not here)
   const mine = b.tasks.filter(t => t.owner === me && ['todo', 'doing'].includes(t.status) && !skip.has(t.id) && depsDone(b, t)
-    && !t.held && (mode === 'full' || t.direct));
+    && !t.held && !t.editor && (mode === 'full' || t.direct));
   if (mine.length) return { kind: 'task', task: mine[0] };
   if (mode !== 'full') return null;
   const goal = b.goals.find(g => g.status === 'open' && !g.planner && !g.to && !skip.has(g.id));
   if (goal) return { kind: 'plan', goal };
   // (nearly out of Claude usage: leave open tasks for someone with room)
-  const free = !low && b.tasks.find(t => !t.owner && t.status === 'todo' && !skip.has(t.id) && depsDone(b, t));
+  // (work that needs Unity or Godot open waits for a person's own session: a background run has no editor)
+  const free = !low && b.tasks.find(t => !t.owner && t.status === 'todo' && !t.editor && !skip.has(t.id) && depsDone(b, t));
   if (free) return { kind: 'claim', task: free };
   return null;
 }
