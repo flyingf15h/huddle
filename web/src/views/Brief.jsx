@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { S, api, loadShared } from '../lib/state.js';
 import { useS } from '../lib/store.js';
 import { md, ago } from '../lib/words.js';
+import DotCloud from '../components/DotCloud.jsx';
 
 const has = (q, ...parts) => !q || parts.join(' ').toLowerCase().includes(q.toLowerCase());
 const slug = (t, i) => 'k-' + i + '-' + t.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40);
@@ -70,7 +71,7 @@ export default function Brief() {
               <textarea className="big" value={draft} onChange={(e) => setDraft(e.target.value)} aria-label="Project brief" autoFocus />
               <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}><button className="primary" onClick={save}>Save</button><button onClick={() => setEditing(false)}>Cancel</button><span className="err small">{msg}</span></div>
             </>
-          ) : !doc ? <div className="empty"><h3>No project brief yet</h3><p style={{ margin: '0 auto', maxWidth: 460 }}>Every agent reads the brief first. Describe what the project is, how the code is organized, how to run and test it, and who owns which areas.</p></div>
+          ) : !doc ? <div className="empty"><DotCloud /><h3>No project brief yet</h3><p style={{ margin: '0 auto', maxWidth: 460 }}>Every agent reads the brief first. Describe what the project is, how the code is organized, how to run and test it, and who owns which areas.</p></div>
           : (
             <>
               <p className="kintro">Edited by {doc.byName} {ago(doc.at)}</p>

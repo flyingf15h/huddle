@@ -693,7 +693,7 @@ footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
     function frame(now) {
       raf = 0;
       var t = (now - t0) / 1000;
-      var L = SHAPES.length, stage = Math.max(0, opts.stage(t)), k = Math.floor(stage), f = ease(stage - k), A = SHAPES[k % L], B = SHAPES[(k + 1) % L];
+      var L = SHAPES.length, stage = Math.max(0, opts.stage(t)), k = Math.floor(stage), f = ease(stage - k), A = SHAPES[k % L], B = SHAPES[opts.loop === false ? Math.min(L - 1, k + 1) : (k + 1) % L];
       mx += (mouse.x - mx) * .05; my += (mouse.y - my) * .05;
       var ry = t * .18 + stage * .9 + mx * .5, rx = .35 + Math.sin(t * .2) * .12 + my * .3, cy = Math.cos(ry), sy = Math.sin(ry), cx = Math.cos(rx), sx = Math.sin(rx);
       var pl = opts.place ? opts.place(w, h) : { ox: w * opts.cx, oy: h * opts.cy, S: Math.min(w, h) * opts.scale, a: 1 };
@@ -726,6 +726,7 @@ footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
   var art = document.getElementById('art'), tourEl = document.getElementById('tour');
   function mix(a, b, k) { return a + (b - a) * k; }
   cloud(document.getElementById('herocloud'), {
+    loop: false,
     place: function (w, h) {
       var ar = art.getBoundingClientRect(), tr = tourEl.getBoundingClientRect();
       var sx = ar.left + ar.width / 2, sy = ar.top + scrollY + ar.height / 2; // the art spot, in page terms
@@ -738,9 +739,15 @@ footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
       var a = mix(1, .6, e) * Math.min(1, Math.max(0, (tourEnd - h * .35) / (h * .4)));
       return { ox: ox, oy: oy, S: S, a: a };
     },
-    n: 2600, shapes: ['sphere', 'torus', 'wave', 'knot', 'blob'], scale: .42, cx: .5, cy: .5, dot: 1.7,
+    n: 2600, shapes: ['sphere', 'torus', 'wave'], scale: .42, cx: .5, cy: .5, dot: 1.7,
     near: '#2f6bff', mid: '#4b6fc9', far: '#24365e', alpha: [.16, .72],
-    stage: function (t) { return Math.min(4, Math.max(0, scrollY / 250)) + .06 * Math.sin(t * .5); },
+    // sphere, then torus, then the wave by the time the tour is centred, each held for a while
+    stage: function (t) {
+      var tr = tourEl.getBoundingClientRect(), end = Math.max(1, tr.top + scrollY + tr.height / 2 - innerHeight / 2);
+      var p = Math.min(1, Math.max(0, scrollY / end)), s;
+      if (p < .12) s = 0; else if (p < .45) s = (p - .12) / .33; else if (p < .55) s = 1; else if (p < .88) s = 1 + (p - .55) / .33; else s = 2;
+      return Math.min(2, s + .04 * Math.sin(t * .5));
+    },
     fade: function () { return 1; }
   });
   // closing panel: keeps morphing by itself, slowly

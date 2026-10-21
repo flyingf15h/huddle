@@ -7,6 +7,7 @@ import Icon from './Icon.jsx';
 import Notifications from './Notifications.jsx';
 import ThemePicker from './ThemePicker.jsx';
 import { useEscape } from '../lib/hooks.js';
+import { toggleRail, toggleSide } from '../lib/layout.js';
 
 const TITLES = { activity: 'Activity', tasks: 'Tasks', code: 'Code', brief: 'Brief & memory', usage: 'Usage & cost', health: 'Health', settings: 'Team & settings' };
 const DESC = { tasks: 'Every request and task, who has it and how far along it is', brief: "Shared memory files between your team's agents", code: "Everyone's shared branches, the GitHub repository and conflicts",
@@ -23,6 +24,7 @@ export default function Header() {
   return (
     <header>
       <button className="ghost iconbtn menubtn" aria-label="Open the menu" onClick={() => (S.drawer = true)}><Icon name="menu" /></button>
+      <button className="ghost iconbtn hide-sm" aria-label="Collapse or expand the sidebar" title="Collapse or expand the sidebar" onClick={toggleRail}><Icon name="panelLeft" size={18} /></button>
       <h1>{TITLES[S.view]}</h1>
       <span className="vdesc">{DESC[S.view] || ''}</span>
       {S.view === 'activity' && (
@@ -41,6 +43,7 @@ export default function Header() {
           <Icon name={dnd ? 'belloff' : 'bell'} size={19} />{unread > 0 && <span className="nbadge">{unread > 99 ? '99+' : unread}</span>}
         </button>
         {notesOpen && <Notifications close={() => setNotesOpen(false)} />}
+        {S.view === 'activity' && <button className="ghost iconbtn hide-sm" aria-label="Show or hide the side panel" title="Show or hide the side panel" onClick={toggleSide}><Icon name="panelRight" size={18} /></button>}
         <button className="ghost iconbtn hide-sm" aria-haspopup="dialog" aria-expanded={themeOpen} aria-label="Theme" title="Theme" onClick={() => { setThemeOpen(!themeOpen); setNotesOpen(false); }}><Icon name="palette" size={19} /></button>
         {themeOpen && <><button className="clickaway" aria-label="Close" onClick={() => setThemeOpen(false)} /><div className="menu" role="dialog" aria-label="Theme" style={{ position: 'absolute', top: 44, right: 0, maxWidth: 'none' }}><div className="mh">Theme</div><ThemePicker compact /></div></>}
         <button className="ghost iconbtn hide-sm" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)" onClick={() => (S.shortcuts = true)}><Icon name="keyboard" size={19} /></button>

@@ -5,6 +5,7 @@ import { useS } from './lib/store.js';
 import { store } from './lib/words.js';
 import Avatar from './components/Avatar.jsx';
 import Icon from './components/Icon.jsx';
+import DotCloud from './components/DotCloud.jsx';
 
 const online = (i) => (i ? new Set(i.state.agents.filter(a => a.online && a.kind !== 'human').map(a => a.name)).size : 0);
 
@@ -49,8 +50,11 @@ export default function Home() {
         <a className="small muted" href="/?about">About</a></div>
       {S.demoStatus && <div className="muted" role="status">{S.demoStatus}</div>}
       {(err || S.fatal) && <div className="err" role="alert">{err || S.fatal}</div>}
+      <div className="hhero">
+        <div><p className="hlabel">Multiplayer for AI agents</p><h1 className="htitle">Your projects</h1><p className="muted">Open a project to see every teammate's agent at work, or join one with an invite.</p></div>
+        <DotCloud size={220} shapes={['torus', 'blob', 'knot', 'sphere']} />
+      </div>
       <section>
-        <h1 className="htitle">Your projects</h1>
         <div className="hgrid">
           {names.map(n => {
             const i = infos[n];

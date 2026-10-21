@@ -141,9 +141,55 @@ button.primary:hover { box-shadow: 0 1px 0 rgba(255, 255, 255, .15) inset, 0 10p
 .conn.live { color: var(--signal); } .conn.live::before { background: var(--signal); }
 main[data-main], .pageview { animation: rise .28s cubic-bezier(.2, .7, .2, 1); }
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-#login::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
-  background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px); background-size: 48px 48px;
-  -webkit-mask-image: radial-gradient(ellipse 70% 55% at 50% 0%, #000 25%, transparent 75%); mask-image: radial-gradient(ellipse 70% 55% at 50% 0%, #000 25%, transparent 75%); }
 @keyframes live { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--signal) 55%, transparent); } 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
 #side h2 button, #side h2 a { font-family: inherit; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, sans-serif; text-transform: none; letter-spacing: 0; font-size: 13px; }
 .turn.toyou { box-shadow: inset 2px 0 0 var(--signal); background: color-mix(in srgb, var(--signal) 8%, transparent); }
+
+/* ---------- cybernetic layer: dot clouds, the agent network, the spotlight dot field ---------- */
+.dotcloud { display: block; margin: 0 auto 10px; }
+.empty .dotcloud { margin-bottom: 4px; }
+.hhero { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 8px; }
+.hhero .htitle { margin: 2px 0 6px; font-size: 30px; letter-spacing: -.02em; }
+.hhero .hlabel, .hlabel { font-family: var(--mono); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--signal); margin: 0; }
+.hhero .dotcloud { margin: -20px -10px -30px 0; flex: none; }
+@media (max-width: 640px) { .hhero .dotcloud { width: 130px !important; height: 130px !important; } }
+.teamnet { margin: 0 -4px 6px; }
+.teamnet canvas { display: block; width: 100%; height: 168px; border-radius: 10px; border: 1px solid var(--line); background: var(--raised); }
+.teamnet h2 { margin-top: 2px !important; }
+/* the dot field: faint dots everywhere, bright blue ones where the spotlight is */
+.maincol { position: relative; isolation: isolate; background-image: none; }
+.maincol::before, .maincol::after { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background-size: 22px 22px; }
+.maincol::before { background-image: radial-gradient(color-mix(in srgb, var(--ink) 10%, transparent) 1px, transparent 1.3px); }
+.maincol::after { background-image: radial-gradient(color-mix(in srgb, var(--signal) 65%, transparent) 1.3px, transparent 1.7px);
+  --at: calc(var(--mx, 900px) - var(--rail-w, 264px)) var(--my, 360px);
+  -webkit-mask-image: radial-gradient(260px circle at var(--at), #000, transparent 75%); mask-image: radial-gradient(260px circle at var(--at), #000, transparent 75%); }
+
+/* ---------- resizable, collapsible columns ---------- */
+#app:not([hidden]) { grid-template-columns: var(--rail-w, 264px) minmax(0, 1fr); position: relative; }
+main { grid-template-columns: minmax(0, 1fr) var(--side-w, 340px); position: relative; }
+html.side-closed main:has(> #side) { grid-template-columns: minmax(0, 1fr); }
+html.side-closed #side, html.side-closed .r-side { display: none; }
+#left { border-right: 0; }
+#side { border-left: 1px solid var(--line); }
+.tbody2 { grid-template-columns: minmax(0, 1fr) var(--detail-w, 380px); position: relative; }
+.tbody2.nodetail { grid-template-columns: minmax(0, 1fr); }
+.resizer { position: absolute; top: 0; bottom: 0; width: 9px; z-index: 30; cursor: col-resize; touch-action: none; }
+.resizer::after { content: ''; position: absolute; top: 0; bottom: 0; left: 4px; width: 1px; background: transparent; transition: background .15s; }
+.resizer:hover::after, .resizer:focus-visible::after, html.resizing .resizer::after { background: var(--signal); width: 2px; left: 3.5px; }
+.resizer:focus-visible { outline: none; }
+.r-rail { left: calc(var(--rail-w, 264px) - 5px); }
+.r-side { right: calc(var(--side-w, 340px) - 5px); }
+.r-detail { right: calc(var(--detail-w, 380px) - 5px); }
+html.resizing, html.resizing * { cursor: col-resize !important; user-select: none !important; }
+@media (max-width: 1180px) { main { grid-template-columns: minmax(0, 1fr) var(--side-w, 300px); } }
+/* the slim rail: icons and avatars only */
+html.rail-mini #rail .navlist button span, html.rail-mini #rail .pn, html.rail-mini #rail .projbtn > svg:last-child, html.rail-mini #rail .railhead span,
+html.rail-mini #rail .person .pbd, html.rail-mini #rail .pask, html.rail-mini #rail .mybtn, html.rail-mini #rail .you span:last-child, html.rail-mini #rail .quiet, html.rail-mini #rail .navbadge { display: none; }
+html.rail-mini #rail .navlist { padding: 6px 8px 10px; } html.rail-mini #rail .navlist button { justify-content: center; padding: 8px 0; }
+html.rail-mini #rail .navlist button.on::before { left: -8px; }
+html.rail-mini #rail .projbtn { justify-content: center; padding: 7px 0; }
+html.rail-mini #rail .railhead { justify-content: center; padding: 14px 0 4px; } html.rail-mini #rail .railhead button { margin: 0; }
+html.rail-mini #rail #team { padding: 2px 6px; } html.rail-mini #rail .person { justify-content: center; padding: 6px 0; }
+html.rail-mini #rail .mepanel { justify-content: center; padding: 10px 0; }
+html.rail-mini .r-rail { display: none; }
+@media (max-width: 960px) { #app:not([hidden]) { grid-template-columns: minmax(0, 1fr); } .resizer { display: none; } main { grid-template-columns: minmax(0, 1fr); } .tbody2 { grid-template-columns: minmax(0, 1fr); } html.side-closed #side { display: block; } }

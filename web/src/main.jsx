@@ -2,6 +2,7 @@ import './app.css';
 import './layout.css';
 import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
+import './lib/layout.js';
 import { S } from './lib/state.js';
 import { applyTheme, themePref } from './lib/themes.js';
 

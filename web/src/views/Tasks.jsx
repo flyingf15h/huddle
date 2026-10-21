@@ -7,6 +7,7 @@ import { ago, statusWord, EFFORT_WORD, fmtDur } from '../lib/words.js';
 import { COLUMNS, titleOf, goalOf, waitsOn, checks, stuckReason, money, RUN_WORD, runPill, setStatus, runAgain, markDone, editTask, comment, deleteTask } from '../lib/tasks.js';
 import Avatar from '../components/Avatar.jsx';
 import Icon from '../components/Icon.jsx';
+import Resizer from '../components/Resizer.jsx';
 
 export default function Tasks() {
   useS();
@@ -42,6 +43,7 @@ export default function Tasks() {
         <span className="small muted hide-sm">Drag cards between columns, or focus one and press 1 to 4</span>
       </div>
       <div className={'tbody2' + (open ? '' : ' nodetail')}>
+        {open && <Resizer which="detail" label="Resize the task details" />}
         <div className="cols">
           {COLUMNS.map(([k, label]) => (
             <section key={k} className={'col' + (over === k ? ' drop' : '')} aria-label={label}
