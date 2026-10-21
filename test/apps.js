@@ -271,11 +271,11 @@ function person(name, pid, url, token, project) {
     assert.equal(dr.task.title, 'Draft the team timeline plan');
     const tp = ana.hook('prompt', { prompt: 'keep going on the jump' });
     assert.match(tp.hookSpecificOutput.additionalContext, /the team timeline changed[\s\S]*Playable prototype: due/);
-    assert.match(tp.hookSpecificOutput.additionalContext, /"Playable prototype" is close/);
+    assert.match(tp.hookSpecificOutput.additionalContext, /- Playable prototype: due .* \((\d+ min|\d+ h) left\)/);
     const again = ana.hook('prompt', { prompt: 'and the camera' });
     assert.ok(!/timeline changed/.test((again && again.hookSpecificOutput && again.hookSpecificOutput.additionalContext) || ''));
     const st0 = ben.hook('session-start', { source: 'startup' });
-    assert.match(st0.hookSpecificOutput.additionalContext, /Team timeline[\s\S]*Submit/);
+    assert.match(st0.hookSpecificOutput.additionalContext, /Team deadlines[\s\S]*Submit/);
     assert.match(st0.hookSpecificOutput.additionalContext, /huddle_claim_feature/);
     ok('timeline goals reach every agent at the start and when they change, with a nudge near a deadline');
 

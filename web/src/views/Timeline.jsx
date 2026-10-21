@@ -16,6 +16,34 @@ function left(ms) {
   return { t: m < 120 ? `in ${m} min` : m < 2880 ? `in ${Math.round(m / 60)} h` : `in ${Math.round(m / 1440)} days`, soon: m < 180 };
 }
 
+// The deadlines on one line: where each falls, which are met, and where now is.
+function Graph({ milestones }) {
+  const now = Date.now();
+  const dues = milestones.map(m => m.due);
+  let lo = Math.min(now, ...dues), hi = Math.max(now, ...dues);
+  const pad = Math.max((hi - lo) * 0.08, 3600000);
+  lo -= pad; hi += pad;
+  const x = (t) => ((t - lo) / (hi - lo)) * 100;
+  // a tick per day when the range is up to two weeks, otherwise per week
+  const step = hi - lo <= 14 * 864e5 ? 864e5 : 7 * 864e5;
+  const ticks = [];
+  const d0 = new Date(lo); d0.setHours(0, 0, 0, 0);
+  for (let t = d0.getTime() + step; t < hi; t += step) ticks.push(t);
+  const sorted = milestones.slice().sort((a, b) => a.due - b.due);
+  return (
+    <div className="tlgraph" role="img" aria-label={`Timeline: ${sorted.map(m => `${m.title} ${m.done ? 'done' : 'due ' + new Date(m.due).toLocaleString()}`).join(', ')}`}>
+      <div className="tlaxis"><i style={{ width: x(now) + '%' }}></i></div>
+      {ticks.map(t => <span key={t} className="tltick" style={{ left: x(t) + '%' }}>{new Date(t).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>)}
+      <span className="tlnow" style={{ left: x(now) + '%' }}><b>now</b></span>
+      {sorted.map((m, i) => (
+        <span key={m.id} className={'tlm' + (m.done ? ' done' : m.due < now ? ' late' : '') + (i % 2 ? ' low' : '')} style={{ left: x(m.due) + '%' }} title={`${m.title}: ${new Date(m.due).toLocaleString()}`}>
+          <i></i><em>{m.title}</em>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export default function Timeline() {
   useS();
   const [t, setT] = useState(S.timeline || { milestones: [], plan: null });
@@ -38,8 +66,9 @@ export default function Timeline() {
 
   return (
     <main data-main style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
-      <div className="pageview">
-        <div className="panel"><h3>deadlines</h3><p className="pdesc">Agents see the next deadline and favour finishing work as it gets close.</p>
+      <div className="pageview formpage">
+        <div className="panel"><h3>deadlines</h3>
+          {t.milestones.length > 0 && <Graph milestones={t.milestones} />}
           <div className="plist">
             {t.milestones.map(m => { const l = left(m.due); return (
               <div className="srow" key={m.id}>

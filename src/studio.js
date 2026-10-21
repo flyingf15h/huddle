@@ -15,18 +15,18 @@ const LABEL = { unity: 'Unity', godot: 'Godot', blender: 'Blender', figma: 'Figm
 const IMAGE = /^image\/(png|jpeg|webp|gif)$/;
 const clip = (s, n) => String(s || '').replace(/\s+/g, ' ').trim().slice(0, n);
 
-// what the agents are told about the timeline: the next goals and the plan, short
+// what the agents are told about the timeline: the next deadlines, how long is left, and the plan. It's
+// information so everyone knows where things stand; it doesn't change how agents work.
 function briefing(p, at = Date.now()) {
   const t = p.timeline;
   if (!t || (!t.milestones.length && !t.plan)) return '';
   const open = t.milestones.filter(m => !m.done).sort((a, b) => a.due - b.due);
   const left = (ms) => { const m = Math.round((ms - at) / 60000); return m < 0 ? `${-m < 120 ? -m + ' min' : Math.round(-m / 60) + ' h'} overdue` : m < 120 ? `${m} min left` : m < 2880 ? `${Math.round(m / 60)} h left` : `${Math.round(m / 1440)} days left`; };
-  const lines = ['Team timeline (set in the huddle dashboard; plan your work around it):'];
+  const lines = ['Team deadlines (set in the huddle dashboard, so everyone knows where things stand):'];
   for (const m of open.slice(0, 5)) lines.push(`- ${m.title}: due ${new Date(m.due).toISOString().slice(0, 16).replace('T', ' ')} UTC (${left(m.due)})${m.detail ? ', ' + clip(m.detail, 160) : ''}`);
   const done = t.milestones.filter(m => m.done).length;
-  if (done) lines.push(`(${done} goal${done === 1 ? '' : 's'} already done)`);
+  if (done) lines.push(`(${done} deadline${done === 1 ? '' : 's'} already met)`);
   if (t.plan && t.plan.text) lines.push('Plan:\n' + t.plan.text.slice(0, 1600));
-  if (open[0] && open[0].due - at < 3 * 3600000) lines.push(`"${open[0].title}" is close: favour finishing and fixing over starting new things.`);
   return lines.join('\n');
 }
 

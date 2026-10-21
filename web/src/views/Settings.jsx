@@ -18,6 +18,11 @@ const lines = (t) => t.split('\n').map(x => x.trim()).filter(Boolean);
 const iAmDemo = () => !!store.get('huddle.demo.' + auth.project);
 const groupOf = (e) => e.action === 'command' ? 'commands' : ['owner', 'invite', 'invite-revoke', 'join', 'remove', 'role', 'github', 'account'].includes(e.action) ? 'access' : 'changes';
 
+// one setting: its name and a short line on the left, the control on the right
+function Rule({ name, sub, children }) {
+  return <div className="rrow"><div className="rl"><b>{name}</b>{sub && <span>{sub}</span>}</div><div className="rc">{children}</div></div>;
+}
+
 function Toggle({ label, sub, on, onChange, first, disabled }) {
   return <div className="switchrow" style={first ? { borderTop: 0 } : undefined}><span className="grow"><b>{label}</b><span>{sub}</span></span><button className="toggle" role="switch" aria-checked={!!on} aria-label={label} disabled={disabled} onClick={() => onChange(!on)}></button></div>;
 }
@@ -102,7 +107,7 @@ export default function Settings({ tab }) {
 
   return (
     <main data-main style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
-      <div className="pageview">
+      <div className="pageview formpage">
         {msg.load && <p className="err">{msg.load.t}</p>}
 
         {tab === 'team' && (
@@ -149,24 +154,21 @@ export default function Settings({ tab }) {
 
         {tab === 'rules' && (
           <>
-            <div className="panel"><h3>commands</h3><p className="pdesc">One per line. End with <code>*</code> to cover subcommands.</p>
-              <div className="pbody fieldset two">
-                <div><label htmlFor="pa">always allowed</label><textarea id="pa" value={pol.allow} onChange={(e) => setPol({ ...pol, allow: e.target.value })} disabled={dis} placeholder={'npm test\nnpm run build'} /><div className="hintline">background agents run these without asking</div></div>
-                <div><label htmlFor="pd">never allowed</label><textarea id="pd" value={pol.deny} onChange={(e) => setPol({ ...pol, deny: e.target.value })} disabled={dis} placeholder={'git push\nnpx wrangler deploy'} /><div className="hintline">refused for everyone, can't be approved</div></div></div></div>
+            <div className="panel"><h3>commands</h3>
+              <Rule name="always allowed" sub="background agents run these without asking"><textarea id="pa" value={pol.allow} onChange={(e) => setPol({ ...pol, allow: e.target.value })} disabled={dis} placeholder={'npm test\nnpm run build'} /></Rule>
+              <Rule name="never allowed" sub="refused for everyone; can't be approved"><textarea id="pd" value={pol.deny} onChange={(e) => setPol({ ...pol, deny: e.target.value })} disabled={dis} placeholder={'git push\nnpx wrangler deploy'} /></Rule>
+              <p className="rnote">one command per line · end with <code>*</code> to cover its subcommands</p></div>
             <div className="panel"><h3>approvals</h3>
-              <Toggle first label="Decide in the dashboard" sub="Approve your agent's commands from any browser you're signed into as yourself. Needs accounts." on={!!ps.dashboardApprovals} onChange={(v) => toggle('dashboardApprovals', v)} disabled={dis || !S.me.accounts} /></div>
-            <div className="panel"><h3>privacy</h3><div className="pbody fieldset two">
-              <div><label htmlFor="pp">private files</label><textarea id="pp" value={pol.priv} onChange={(e) => setPol({ ...pol, priv: e.target.value })} disabled={dis} /><div className="hintline">never locked or shared</div></div>
-              <div><span className="lbl2">most a session may share</span><div className="seg sm" role="group" aria-label="Most a session may share">{[['full', 'Everything'], ['tools', 'Steps only'], ['off', 'Nothing']].map(([k, l]) => <button key={k} className={pol.sharing === k ? 'on' : ''} disabled={dis} onClick={() => setPol({ ...pol, sharing: k })}>{l}</button>)}</div>
-                <div className="hintline">people can share less, never more. secrets are always hidden.</div></div></div></div>
+              <Rule name="decide in the dashboard" sub={S.me.accounts ? 'approve your agent from any browser signed in as you' : 'needs accounts (settings → team)'}><button className="toggle" role="switch" aria-checked={!!ps.dashboardApprovals} aria-label="Decide in the dashboard" disabled={dis || !S.me.accounts} onClick={() => toggle('dashboardApprovals', !ps.dashboardApprovals)}></button></Rule></div>
+            <div className="panel"><h3>privacy</h3>
+              <Rule name="private files" sub="never locked or shared"><textarea id="pp" value={pol.priv} onChange={(e) => setPol({ ...pol, priv: e.target.value })} disabled={dis} /></Rule>
+              <Rule name="most a session shares" sub="people can share less; secrets are always hidden"><div className="seg sm" role="group" aria-label="Most a session may share">{[['full', 'everything'], ['tools', 'steps only'], ['off', 'nothing']].map(([k, l]) => <button key={k} className={pol.sharing === k ? 'on' : ''} disabled={dis} onClick={() => setPol({ ...pol, sharing: k })}>{l}</button>)}</div></Rule></div>
             <div className="panel"><h3>before work lands</h3>
-              <Toggle first label="A second agent reviews background work" sub="Fixes what it finds before tests run." on={ps.review !== false} onChange={(v) => toggle('review', v)} disabled={dis} />
-              <Toggle label="Ask a different vendor when the team has one" sub="Codex reviews Claude's work and the other way round, when both are on the team." on={ps.crossReview !== false} onChange={(v) => toggle('crossReview', v)} disabled={dis} /></div>
-            <div className="panel"><h3>finished work</h3><div className="pbody fieldset two">
-              <div><div className="seg sm" role="group" aria-label="Delivery">{[['merge', "Merge into the person's branch"], ['pr', 'Open a GitHub pull request']].map(([k, l]) => <button key={k} className={pol.delivery === k ? 'on' : ''} disabled={dis} onClick={() => setPol({ ...pol, delivery: k })}>{l}</button>)}</div>
-                <div className="hintline">pull requests need <code>gh</code> signed in</div></div>
-              <div><label htmlFor="pt">test command</label><input type="text" id="pt" value={pol.test} onChange={(e) => setPol({ ...pol, test: e.target.value })} disabled={dis} placeholder="guessed: npm test, pytest…" /><div className="hintline">failing work stays on its branch</div></div></div></div>
-            {owner ? <div className="pactions"><M k="rules" /><button className="primary" onClick={saveRules}>save rules</button></div> : <p className="readonly-note">Only the project owner can change these.</p>}
+              <Rule name="review" sub="a second agent checks and fixes the changes"><button className="toggle" role="switch" aria-checked={ps.review !== false} aria-label="Review" disabled={dis} onClick={() => toggle('review', ps.review === false)}></button></Rule>
+              <Rule name="review by another vendor" sub="Codex reviews Claude's work and the other way round"><button className="toggle" role="switch" aria-checked={ps.crossReview !== false} aria-label="Review by another vendor" disabled={dis} onClick={() => toggle('crossReview', ps.crossReview === false)}></button></Rule>
+              <Rule name="test command" sub="failing work stays on its branch"><input type="text" id="pt" value={pol.test} onChange={(e) => setPol({ ...pol, test: e.target.value })} disabled={dis} placeholder="e.g. npm test" /></Rule>
+              <Rule name="finished work goes" sub={pol.delivery === 'pr' ? 'needs gh signed in on each computer' : 'into the branch of whoever asked'}><div className="seg sm" role="group" aria-label="Delivery">{[['merge', 'merged'], ['pr', 'pull request']].map(([k, l]) => <button key={k} className={pol.delivery === k ? 'on' : ''} disabled={dis} onClick={() => setPol({ ...pol, delivery: k })}>{l}</button>)}</div></Rule></div>
+            {owner ? <div className="pactions"><button className="primary" onClick={saveRules}>save rules</button><M k="rules" /></div> : <p className="readonly-note">only the project owner can change these</p>}
           </>
         )}
 

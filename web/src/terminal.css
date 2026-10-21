@@ -350,3 +350,52 @@ header .small { white-space: nowrap; }
 .ogrid { grid-template-rows: auto auto; min-height: 0; align-items: start; }
 .ogrid .p-stat, .ogrid .p-use { align-self: stretch; }
 .ogrid .p-req, .ogrid .p-needs { min-height: 180px; }
+
+/* ---------- pass 4 ---------- */
+/* form pages (settings, timeline, github) keep a readable width, with actions right under the fields */
+.formpage > * { max-width: 880px; }
+.formpage .pactions { justify-content: flex-start; padding-left: 16px; }
+.formpage > .pactions { padding-left: 0; }
+.formpage .panel > .pdesc { max-width: none; }
+/* descriptions are plain muted text; placeholders are dimmer and slanted, so a field never looks like a sentence */
+.panel > .pdesc, .hintline, .rl span, .rnote { color: var(--muted); font-style: normal; }
+::placeholder { color: var(--faint); opacity: .55; font-style: italic; }
+input, select, textarea { color: var(--ink); }
+input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+/* a setting row: name and short line on the left, control on the right */
+.rrow { display: grid; grid-template-columns: minmax(180px, 240px) minmax(0, 1fr); gap: 8px 24px; align-items: start; padding: 12px 16px; border-top: 1px dashed var(--line); }
+.panel > h3 + .rrow { border-top: 0; margin-top: 8px; }
+.rl b { display: block; font-weight: 500; font-size: 13px; color: var(--ink); }
+.rl span { display: block; font-size: 11.5px; margin-top: 2px; }
+.rc textarea { width: 100%; min-height: 64px; }
+.rc input[type=text] { width: 100%; max-width: 360px; }
+.rc .toggle { margin-top: 2px; }
+.rnote { font-size: 11.5px; margin: 0; padding: 0 16px 12px; }
+@media (max-width: 640px) { .rrow { grid-template-columns: minmax(0, 1fr); } }
+/* timeline graph: an axis, the part already passed lit, a now line, and each deadline as a point */
+.tlgraph { position: relative; height: 112px; margin: 18px 28px 6px; }
+.tlaxis { position: absolute; left: 0; right: 0; top: 56px; height: 2px; background: color-mix(in srgb, var(--ink) 14%, transparent); }
+.tlaxis i { display: block; height: 100%; background: var(--accent); }
+.tltick { position: absolute; top: 64px; transform: translateX(-50%); font-size: 10.5px; color: var(--faint); white-space: nowrap; }
+.tltick::before { content: ''; position: absolute; left: 50%; top: -9px; width: 1px; height: 5px; background: var(--faint); }
+.tlnow { position: absolute; top: 18px; bottom: 6px; width: 0; border-left: 1px dashed var(--accent); }
+.tlnow b { position: absolute; bottom: -4px; left: 4px; font-size: 10.5px; font-weight: 500; color: var(--accent); }
+.tlm { position: absolute; top: 50px; transform: translateX(-50%); display: flex; flex-direction: column-reverse; align-items: center; gap: 6px; }
+.tlm i { width: 13px; height: 13px; border-radius: 50%; border: 2px solid var(--wait); background: var(--pane); }
+.tlm.done i { background: var(--ok); border-color: var(--ok); }
+.tlm.late i { border-color: var(--bad); background: var(--bad); }
+.tlm em { position: absolute; bottom: 20px; font-style: normal; font-size: 11.5px; color: var(--ink); white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+.tlm.low em { bottom: auto; top: 34px; }
+.tlm.done em { color: var(--muted); text-decoration: line-through; }
+/* what people and agents actually said reads in the CLI font; the page around it stays in Geist Mono */
+.it, .it.reply, .n5 p, .card .title, .tdetail p, .tdpanel .detail { font-family: "JetBrains Mono", var(--tmono); font-weight: 400; }
+.it { font-size: 13px; letter-spacing: 0; }
+/* the sidebar's bottom row never spills into the status line, however narrow the sidebar is */
+.mepanel { overflow: hidden; min-width: 0; }
+.mepanel .mybtn { min-width: 0; flex: 1 1 auto; overflow: hidden; }
+.mepanel .mybtn > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.mepanel .you { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40%; }
+#statusline { position: relative; z-index: 1; }
+#rail { container-type: inline-size; }
+@container (max-width: 250px) { .mepanel .you { display: none; } }

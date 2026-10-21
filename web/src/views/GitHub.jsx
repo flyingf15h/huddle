@@ -27,7 +27,7 @@ export default function GitHub() {
 
   return (
     <main data-main style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
-      <div className="pageview">
+      <div className="pageview formpage">
         {msg && <p className="small muted">{msg}</p>}
         {!rs ? (
           <div className="panel"><h3>repository</h3><p className="pdesc">Connect one to see pull requests, branches and issues here.</p>
