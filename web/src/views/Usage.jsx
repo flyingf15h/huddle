@@ -7,6 +7,7 @@ import { useS } from '../lib/store.js';
 import { useLive } from '../lib/hooks.js';
 import { fmtDur, fmtNum, tokenSum, tokensAll, ago } from '../lib/words.js';
 import { money } from '../lib/tasks.js';
+import { spanWord, inSpan } from '../lib/span.js';
 import Avatar from '../components/Avatar.jsx';
 
 const SPARK = 14;
@@ -61,17 +62,16 @@ export default function Usage() {
   return (
     <main data-main style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
       <div id="statsview" style={{ flex: 1, overflowY: 'auto', padding: '16px 20px 28px' }}>
-        <p className="muted small" style={{ marginTop: 0, maxWidth: 760 }}>Counted by each person's huddle hooks since {new Date(since).toLocaleDateString()}: numbers only, nothing of what was said. Cost is what those tokens would cost at the API's list prices. People on a Claude or Cursor plan aren't billed per token, so treat it as the value of the work, not a bill.</p>
+        <p className="small faint" style={{ marginTop: 0 }} title="Counted by each person's huddle hooks: numbers only, nothing of what was said. People on a plan aren't billed per token, so this is the value of the work, not a bill.">API-equivalent cost, counted since {new Date(since).toLocaleDateString()}.</p>
         <div className="tiles">
-          <div className="tile"><div className="k">Cost this month</div><div className="v">{money(costs.monthSpend)}</div></div>
-          <div className="tile"><div className="k">{costs.budget ? 'Monthly budget' : 'Cost, all time'}</div><div className="v">{costs.budget ? money(costs.budget.monthly) : money(costs.total)}</div>
+          <div className="tile"><div className="k">cost this month</div><div className="v">{money(costs.monthSpend)}</div></div>
+          <div className="tile"><div className="k">{costs.budget ? 'monthly budget' : 'cost, all time'}</div><div className="v">{costs.budget ? money(costs.budget.monthly) : money(costs.total)}</div>
             {costs.budget && <div className="progress" style={{ maxWidth: 'none', marginTop: 6 }} role="progressbar" aria-valuenow={Math.round(budgetPct)} aria-valuemin={0} aria-valuemax={100} aria-label="Budget used"><span style={{ width: budgetPct + '%', background: budgetPct >= 100 ? 'var(--bad)' : budgetPct >= costs.budget.alertPct ? 'var(--warn)' : 'var(--ok)' }}></span></div>}</div>
-          {costs.trend && costs.trend.projected != null && <div className="tile"><div className="k">On course for</div><div className="v">{money(costs.trend.projected)}</div><div className="small faint">this month at the current pace{costs.budget && costs.trend.projected > costs.budget.monthly ? ', over budget' : ''}</div></div>}
-          {costs.trend && costs.trend.avg > 0 && <div className="tile"><div className="k">Today vs usual day</div><div className="v">{money(costs.trend.today)}</div><div className="small faint">usual {money(costs.trend.avg)}{costs.trend.today > costs.trend.avg * 1.5 ? ', running high' : ''}</div></div>}
-          <div className="tile"><div className="k">Time with agents</div><div className="v">{fmtDur(sum(p => p.own))}</div></div>
-          <div className="tile"><div className="k">Prompts</div><div className="v">{fmtNum(sum(p => p.s.turns))}</div></div>
-          <div className="tile"><div className="k">Tokens processed</div><div className="v">{fmtNum(sum(p => p.all))}</div></div>
-          <div className="tile"><div className="k">Requests run for others</div><div className="v">{sum(p => p.s.requests || 0)}</div></div>
+          {costs.trend && costs.trend.projected != null && <div className="tile"><div className="k">month on course for</div><div className="v">{money(costs.trend.projected)}</div>{costs.budget && costs.trend.projected > costs.budget.monthly && <div className="small" style={{ color: 'var(--bad)' }}>over budget</div>}</div>}
+          {costs.trend && costs.trend.avg > 0 && <div className="tile"><div className="k">cost today</div><div className="v">{money(costs.trend.today)}</div><div className="small faint">usually {money(costs.trend.avg)}{costs.trend.today > costs.trend.avg * 1.5 ? ', running high' : ''}</div></div>}
+          <div className="tile"><div className="k">agent time {spanWord()}</div><div className="v">{fmtDur(sum(p => inSpan(p.s.days, 'activeMs')))}</div></div>
+          <div className="tile"><div className="k">prompts {spanWord()}</div><div className="v">{fmtNum(sum(p => inSpan(p.s.days, 'turns')))}</div></div>
+          <div className="tile"><div className="k">tokens {spanWord()}</div><div className="v">{fmtNum(sum(p => inSpan(p.s.days, 'tokens')))}</div></div>
         </div>
 
         <div className="panel"><h3>Cost per day</h3>

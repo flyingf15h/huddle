@@ -1,7 +1,8 @@
 // A tmux-style status line along the bottom: the project and my branch, what's running and waiting,
 // whether the live connection is up, and the time.
 import { useEffect, useState } from 'react';
-import { S, auth, myName, people, prettyProject } from '../lib/state.js';
+import { S, myName, people } from '../lib/state.js';
+import { setSpan } from '../lib/span.js';
 import { useS } from '../lib/store.js';
 
 export default function StatusLine() {
@@ -14,9 +15,10 @@ export default function StatusLine() {
   const waiting = S.approvals.filter(a => a.owner === me).length + S.board.tasks.filter(t => t.status === 'blocked' && (t.owner === me || t.by === me)).length;
   return (
     <footer id="statusline" aria-label="Status">
-      <span><span className="faint">~/</span><b>{prettyProject(auth.project)}</b>{mine && mine.branch ? <span className="faint"> on {mine.branch}</span> : ''}</span>
+      <span><b>huddle</b>{mine && mine.branch ? <span className="faint"> on {mine.branch}</span> : ''}</span>
       <span>{running} running{waiting ? <> · <em>{waiting} waiting on you</em></> : ''}</span>
       <span className="grow"></span>
+      <span className="spansw" role="group" aria-label="Stats cover">stats {[['day', 'today'], ['week', 'week']].map(([k, l]) => <button key={k} className={S.span === k ? 'on' : ''} aria-pressed={S.span === k} onClick={() => setSpan(k)}>{l}</button>)}</span>
       <span className={'sconn ' + S.conn}>{S.conn === 'live' ? 'live' : S.conn === 'connecting' ? 'connecting' : 'reconnecting'}</span>
       <span>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
     </footer>

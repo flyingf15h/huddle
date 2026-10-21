@@ -40,7 +40,7 @@ export default function Tasks() {
         <select aria-label="Person" value={['all', 'mine', 'none'].includes(who) ? '' : who} onChange={(e) => setWho(e.target.value || 'all')}><option value="">Anyone</option>{team.map(n => <option key={n} value={n}>{dn(n)}</option>)}</select>
         <input type="search" placeholder="Filter tasks" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Filter tasks" />
         <span className="grow"></span>
-        <span className="small muted hide-sm">Drag cards between columns, or focus one and press 1 to 4</span>
+        <span className="small faint hide-sm">drag a card to move it</span>
       </div>
       <div className={'tbody2' + (open ? '' : ' nodetail')}>
         {open && <Resizer which="detail" label="Resize the task details" />}

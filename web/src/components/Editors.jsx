@@ -5,22 +5,22 @@ import { S, api, isOwner } from '../lib/state.js';
 import { useS } from '../lib/store.js';
 
 const EDITORS = [
-  ['unity', 'Unity', 'Agents build scenes, prefabs and scripts through MCP for Unity, or Unity\'s own MCP in Unity 6.', [
+  ['unity', 'Unity', 'Scenes, prefabs and scripts.', [
     <>Install <a href="https://docs.astral.sh/uv/getting-started/installation/" target="_blank" rel="noopener noreferrer">uv</a>.</>,
     <>In Unity, open Window → Package Manager → + → Add package from git URL, and paste <code>https://github.com/CoplayDev/unity-mcp.git?path=/MCPForUnity#main</code></>,
     <>Open Window → MCP for Unity, choose stdio under Settings, and click Start Bridge.</>,
   ]],
-  ['godot', 'Godot', 'Agents create scenes, add nodes, load sprites and run the game through the Godot MCP server.', [
+  ['godot', 'Godot', 'Scenes, nodes and running the game.', [
     <>Install Godot 4 and <a href="https://nodejs.org" target="_blank" rel="noopener noreferrer">Node.js</a>.</>,
     <>If <code>godot</code> isn't on your PATH, set <code>GODOT_PATH</code> to the Godot program before starting your agent.</>,
     <>Nothing to switch on inside Godot: the agent opens and runs the project itself.</>,
   ]],
-  ['blender', 'Blender', 'Agents model, texture and arrange scenes through MCP for Blender.', [
+  ['blender', 'Blender', 'Modelling, textures and scenes.', [
     <>Install <a href="https://docs.astral.sh/uv/getting-started/installation/" target="_blank" rel="noopener noreferrer">uv</a>, then run <code>uvx mcp-for-blender install-addon</code></>,
     <>In Blender, open Edit → Preferences → Add-ons and turn on MCP for Blender.</>,
     <>In the 3D viewport press N, open the MCP for Blender tab and click Start MCP Server.</>,
   ]],
-  ['figma', 'Figma', "Agents read your Figma designs (frames, components, colours) through Figma's own MCP server, to build menus and UI that match.", [
+  ['figma', 'Figma', 'Reads designs to build matching UI.', [
     <>In Claude Code run <code>/mcp</code>, choose figma and sign in to Figma. Codex and Cursor ask on first use.</>,
     <>Paste a frame's link in a request, like "build this pause menu: &lt;link&gt;".</>,
   ]],
@@ -40,8 +40,8 @@ export default function Editors() {
     } catch (e) { setMsg(e.message); }
   };
   return (
-    <div className="panel"><h3>Game and design tools</h3>
-      <p className="pdesc">Let the team's agents work inside the editor, not just on code. Each teammate's agent gets the tools at its next session. Scenes, prefabs and .blend files changed through an editor are locked like any other edit, models saved in Blender become hand-offs to whoever is in the engine, and screenshots go to the Gallery.</p>
+    <div className="panel"><h3>game and design tools</h3>
+      <p className="pdesc">Agents work inside these editors. Turned on for everyone's next session.</p>
       {EDITORS.map(([id, label, sub, steps], i) => (
         <div key={id}>
           <div className="switchrow" style={i ? undefined : { borderTop: 0 }}><span className="grow"><b>{label}</b><span>{sub}</span></span>
@@ -50,7 +50,7 @@ export default function Editors() {
           {open === id && on.includes(id) && (
             <div className="pbody" style={{ padding: '0 16px 12px' }}><p className="hintline" style={{ marginTop: 0 }}>Once on each computer, then restart the agent:</p>
               <ol className="steps">{steps.map((s, j) => <li key={j}>{s}</li>)}</ol>
-              <p className="hintline"><code>huddle doctor</code> checks it from the project folder. Background agents don't get editor tools, because the editor has the person's own folder open.</p></div>
+              <p className="hintline"><code>huddle doctor</code> checks it.</p></div>
           )}
         </div>
       ))}

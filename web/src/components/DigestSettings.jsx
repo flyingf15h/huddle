@@ -32,17 +32,17 @@ export default function DigestSettings() {
   };
   const noOwners = !S.me.accounts;
   return (
-    <div className="panel"><h3>Daily digest</h3>
-      <p className="pdesc">A short summary once a day: what finished, what's stuck and needs a person, and what the agents cost. A day with nothing to report sends nothing.</p>
+    <div className="panel"><h3>daily digest</h3>
+      <p className="pdesc">What merged, what's blocked and what it cost, once a day.</p>
       <div className="switchrow" style={{ borderTop: 0 }}><span className="grow"><b>Send a daily digest</b><span>Off by default.</span></span><button className="toggle" role="switch" aria-checked={!!cfg.enabled} aria-label="Send a daily digest" disabled={!owner} onClick={() => set('enabled', !cfg.enabled)}></button></div>
       {cfg.enabled && (
         <div className="pbody fieldset">
           <div><span className="lbl2">Who gets it</span>
             <div className="seg sm" role="group" aria-label="Who gets it">{[['owners', 'Owners only'], ['everyone', 'Everyone']].map(([k, l]) => <button key={k} className={cfg.to === k ? 'on' : ''} disabled={!owner} onClick={() => set('to', k)}>{l}</button>)}</div>
-            <div className="hintline">{noOwners ? 'Accounts aren\'t set up, so everyone gets it until there are owners (Team & access).' : `${cfg.to === 'everyone' ? counts.everyone : counts.recipients} ${(cfg.to === 'everyone' ? counts.everyone : counts.recipients) === 1 ? 'person' : 'people'} right now. Owners are the managers; members and viewers get it only if you pick Everyone.`}</div></div>
+            <div className="hintline">{noOwners ? 'everyone, until accounts are set up' : `${cfg.to === 'everyone' ? counts.everyone : counts.recipients} ${(cfg.to === 'everyone' ? counts.everyone : counts.recipients) === 1 ? 'person' : 'people'}`}</div></div>
           <div><span className="lbl2">How</span>
             <div className="checks"><label><input type="checkbox" checked={!!cfg.email} disabled={!owner} onChange={(e) => set('email', e.target.checked)} />Email</label><label><input type="checkbox" checked={!!cfg.popup} disabled={!owner} onChange={(e) => set('popup', e.target.checked)} />Pop-up in the dashboard</label><label><input type="checkbox" checked={!!cfg.slack} disabled={!owner} onChange={(e) => set('slack', e.target.checked)} />Slack channel</label></div>
-            <div className="hintline">Email goes to people who linked their account to the project. Everyone also gets it in the bell. Each person can turn their own digest email off under What you're told about.</div></div>
+            <div className="hintline">it always shows in the inbox too</div></div>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'end' }}>
             <div><label htmlFor="dg-h">Time</label><select id="dg-h" value={cfg.hour} disabled={!owner} onChange={(e) => set('hour', Number(e.target.value))}>{[...Array(24)].map((_, h) => <option key={h} value={h}>{hourLabel(h)}</option>)}</select></div>
             <div className="small muted" style={{ paddingBottom: 8 }}>{(S.projectSettings.digest && S.projectSettings.digest.tz) || browserTz()}</div>

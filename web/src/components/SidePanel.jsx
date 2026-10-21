@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { S, go, myName, myTool, dn, keys, auth } from '../lib/state.js';
 import { useS } from '../lib/store.js';
 import { ago, shortTitle } from '../lib/words.js';
-import { titleOf, decide, stuckReason } from '../lib/tasks.js';
+import { titleOf, decide, stuckReason, canDecide } from '../lib/tasks.js';
 import Icon from './Icon.jsx';
 import Avatar from './Avatar.jsx';
 
@@ -14,7 +14,7 @@ export default function SidePanel() {
   const groups = new Map();
   for (const x of mine) { const k = x.taskId || x.id; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(x); }
   const asks = [...groups.values()];
-  const canHere = !!keys[auth.project];
+  const canHere = canDecide();
   const RANK = { blocked: 0, doing: 1, todo: 2 };
   const live = S.board.tasks.filter(t => t.status !== 'done').sort((a, b) => RANK[a.status] - RANK[b.status] || (b.updated || b.at) - (a.updated || a.at)).slice(0, 8);
   const locks = Object.values(S.locks);
@@ -26,16 +26,16 @@ export default function SidePanel() {
   return (
     <aside id="side">
       {asks.length > 0 && (
-        <div id="asks"><h3>Awaiting your approval</h3>
+        <div id="asks"><h3>needs your ok ({asks.length})</h3>
           {asks.map(list => {
             const t = S.board.tasks.find(y => y.id === list[0].taskId);
             return (
               <div className="ask" key={list[0].id}>
-                <div className="ahead">{t && t.by && t.by !== myName() ? `${t.by}'s request` : 'A task'}: <b>{shortTitle(list[0].title, 70)}</b></div>
-                <div className="small muted">Your {myTool()} stopped short of {list.length > 1 ? 'these commands' : 'this command'}. Approving runs the request again with {list.length > 1 ? 'them' : 'it'} allowed.</div>
+                {list[0].title && <div className="ahead">{t && t.by && t.by !== myName() ? `${t.by}'s request: ` : ''}<b>{shortTitle(list[0].title, 70)}</b></div>}
+                <div className="small faint">your {myTool().toLowerCase()} wants to run</div>
                 <ul className="acmds">{list.map(x => <li key={x.id}><code>{x.command}</code>{x.why && <span className="why">{x.why}</span>}</li>)}</ul>
-                <div className="row"><button className="primary" disabled={!canHere} onClick={() => choose(list, true)}>{list.length > 1 ? 'Approve all' : 'Approve'}</button><button disabled={!canHere} onClick={() => choose(list, false)}>{list.length > 1 ? 'Decline all' : 'Decline'}</button><span className="err">{askErr[list[0].id] || ''}</span></div>
-                {!canHere && <div className="small muted">To decide here, open the dashboard with <code>huddle open</code> on your computer, or run <code>huddle approve --all</code>.</div>}
+                <div className="row"><button className="bact main" disabled={!canHere} onClick={() => choose(list, true)}>{list.length > 1 ? 'allow all' : 'allow'}</button><button className="bact" disabled={!canHere} onClick={() => choose(list, false)}>{list.length > 1 ? 'deny all' : 'deny'}</button><span className="err">{askErr[list[0].id] || ''}</span></div>
+                {!canHere && <div className="small faint">to decide here: <code>huddle open</code>, or turn on deciding in the dashboard (settings → rules)</div>}
               </div>
             );
           })}

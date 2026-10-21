@@ -30,7 +30,7 @@ export default function GitHub() {
       <div className="pageview">
         {msg && <p className="small muted">{msg}</p>}
         {!rs ? (
-          <div className="panel"><h3>repository</h3><p className="pdesc">Connect the project's GitHub repository to see pull requests with their checks, branches, recent commits and issues here, get updates the moment someone pushes, and open pull requests from huddle.</p>
+          <div className="panel"><h3>repository</h3><p className="pdesc">Connect one to see pull requests, branches and issues here.</p>
             <div className="pactions" style={{ justifyContent: 'flex-start', paddingTop: 12 }}>{isOwner() ? <button className="primary" onClick={() => go('integrations')}>connect a repository</button> : <span className="muted small">an owner can connect one in settings → integrations</span>}</div></div>
         ) : (
           <>
@@ -55,7 +55,7 @@ export default function GitHub() {
             )}
           </>
         )}
-        <div className="panel"><h3>merge conflicts ({conflicts.length})</h3><p className="pdesc">After teammates share new commits, each person's huddle checks whether merging their branch into yours would conflict, without touching your files.</p>
+        <div className="panel"><h3>merge conflicts ({conflicts.length})</h3><p className="pdesc">Branches that would conflict if merged.</p>
           <div className="plist">
             {conflicts.map(({ c, x }) => (
               <div className="srow" key={c.owner + c.branch + x.other} style={{ flexWrap: 'wrap' }}><span className="grow"><b>{c.owner}/{c.branch}</b> and <b>{x.other}</b><span className="sub">{x.files.join(', ')} · {ago(c.at)}</span></span>

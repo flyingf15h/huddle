@@ -39,7 +39,7 @@ export default function Timeline() {
   return (
     <main data-main style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
       <div className="pageview">
-        <div className="panel"><h3>Goals</h3><p className="pdesc">What the team has to reach, and by when. Every agent is told the next goals and how much time is left, and steers its work by them. Close to a deadline they favour finishing and fixing over starting new things.</p>
+        <div className="panel"><h3>deadlines</h3><p className="pdesc">Agents see the next deadline and favour finishing work as it gets close.</p>
           <div className="plist">
             {t.milestones.map(m => { const l = left(m.due); return (
               <div className="srow" key={m.id}>
@@ -49,17 +49,17 @@ export default function Timeline() {
                 {!m.done && <span className={'pill' + (l.late ? ' bad' : l.soon ? ' warn' : '')}>{l.t}</span>}
                 {!viewer && <button className="ghost" onClick={() => remove(m)}>Remove</button>}
               </div>); })}
-            {!t.milestones.length && <div className="srow"><span className="grow muted">No goals yet. A hackathon might have "Playable prototype" Saturday noon, "Art and sound in" Saturday night and "Submit" Sunday 9am.</span></div>}
+            {!t.milestones.length && <div className="srow"><span className="grow faint">no deadlines yet, e.g. "playable prototype" saturday noon</span></div>}
           </div>
           {!viewer && <div className="pbody fieldset">
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,2fr) minmax(0,1fr)', gap: 10 }}>
-              <div><label htmlFor="tl-t">Goal</label><input id="tl-t" type="text" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Playable prototype" /></div>
-              <div><label htmlFor="tl-d">Due</label><input id="tl-d" type="datetime-local" value={form.due} onChange={(e) => setForm({ ...form, due: e.target.value })} /></div></div>
-            <div><label htmlFor="tl-x">What it means (optional)</label><input id="tl-x" type="text" value={form.detail} onChange={(e) => setForm({ ...form, detail: e.target.value })} placeholder="One level start to finish, placeholder art is fine" /></div>
-            <div className="pactions" style={{ padding: 0 }}><button className="primary" disabled={!form.title.trim() || !form.due} onClick={add}>Add goal</button></div></div>}
+              <div><label htmlFor="tl-t">deadline</label><input id="tl-t" type="text" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Playable prototype" /></div>
+              <div><label htmlFor="tl-d">due</label><input id="tl-d" type="datetime-local" value={form.due} onChange={(e) => setForm({ ...form, due: e.target.value })} /></div></div>
+            <div><label htmlFor="tl-x">what it means (optional)</label><input id="tl-x" type="text" value={form.detail} onChange={(e) => setForm({ ...form, detail: e.target.value })} placeholder="One level start to finish, placeholder art is fine" /></div>
+            <div className="pactions" style={{ padding: 0 }}><button className="primary" disabled={!form.title.trim() || !form.due} onClick={add}>add deadline</button></div></div>}
         </div>
 
-        <div className="panel"><h3>Plan</h3><p className="pdesc">How the team gets to each goal. An agent can draft it from the goals, the brief and the board; edit it however you like. Agents read it at the start of every session.</p>
+        <div className="panel"><h3>plan</h3><p className="pdesc">How the team gets there. Agents read it every session.</p>
           {editPlan !== null ? (
             <div className="pbody"><textarea className="big" style={{ minHeight: 220 }} value={editPlan} onChange={(e) => setEditPlan(e.target.value)} aria-label="Plan" autoFocus />
               <div className="pactions" style={{ padding: '10px 0 0' }}><button onClick={() => setEditPlan(null)}>Cancel</button><button className="primary" onClick={savePlan}>Save plan</button></div></div>
@@ -74,11 +74,11 @@ export default function Timeline() {
           {msg && <p className="small" style={{ padding: '0 16px 12px' }}>{msg}</p>}
         </div>
 
-        <div className="panel"><h3>Features being built</h3><p className="pdesc">What each agent has claimed right now. A claim locks only the few files of one feature, so the rest of a level or system stays open to everyone.</p>
+        <div className="panel"><h3>features being built</h3>
           <div className="plist">
             {Object.values(byFeature).map(f => (
               <div className="srow" key={f.who + f.name}><Avatar name={f.who} sm /><span className="grow"><b>{f.name}</b><span className="sub">{dn(f.who)} · {ago(f.since)} · {f.paths.join(', ')}</span></span></div>))}
-            {!claims.length && <div className="srow"><span className="grow muted">Nothing claimed right now.</span></div>}
+            {!claims.length && <div className="srow"><span className="grow faint">nothing claimed right now</span></div>}
           </div></div>
       </div>
     </main>

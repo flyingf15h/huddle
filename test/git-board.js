@@ -281,6 +281,11 @@ if (p.includes('ship it')) { fs.writeFileSync('ship.txt', 'ready\\n'); console.l
     assert.equal(no1.status, 403);
     const no2 = await fetch(`${url}/api/p/${project}/approve`, { method: 'POST', headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json' }, body: JSON.stringify({ agent: { id: 'h#dave', name: 'dave', kind: 'human' }, id: appr.id, key: 'guess' }) });
     assert.equal(no2.status, 403);
+    // deciding in the dashboard, switched on: still not from the shared invite, which can claim any name
+    await api('project-setting', { agent: asker, dashboardApprovals: true });
+    const no3 = await fetch(`${url}/api/p/${project}/approve`, { method: 'POST', headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json' }, body: JSON.stringify({ agent: { id: 'h#dave', name: 'dave', kind: 'human' }, id: appr.id }) });
+    assert.equal(no3.status, 403, 'the shared invite never approves from a browser');
+    await api('project-setting', { agent: asker, dashboardApprovals: false });
     await api('hello', { agent: { ...davey, kind: 'agent' }, keyHash: require('../src/client').sha('dave-key') });
     const yes = await api('approve', { agent: { id: 'h#dave', name: 'dave', kind: 'human' }, id: appr.id, key: 'dave-key' });
     assert.equal(yes.approval.status, 'approved');

@@ -9,7 +9,7 @@ import GitHub from './GitHub.jsx';
 import Usage from './Usage.jsx';
 import Health from './Health.jsx';
 
-const TABS = [['brief', 'brief'], ['timeline', 'timeline'], ['gallery', 'gallery'], ['usage', 'usage'], ['health', 'health'], ['github', 'github']];
+const TABS = [['brief', 'brief'], ['timeline', 'timeline'], ['gallery', 'test'], ['usage', 'usage'], ['health', 'health'], ['github', 'github']];
 
 export default function Studio() {
   useS();

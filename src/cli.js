@@ -40,7 +40,7 @@ Talk to the whole team of Claudes:
   huddle ask "build X"          give every agent a goal; one plans it, all of them work it
   huddle ask "fix Y" --to alex  hand a task straight to alex's Claude
   huddle board                  goals, tasks, who owns what
-  huddle requests [--today]     every request (or today's) and whether it's merged, working, blocked or queued
+  huddle requests [--today|--week]  every request (or today's / this week's): merged, working, blocked or queued
   huddle worker <invite> --repo URL   an always-on teammate for a server (see docs/worker.md)
   huddle autopilot on|requests|off
                                 what YOUR Claude does with work from the team (uses your
@@ -1081,10 +1081,11 @@ async function cmdBoard() {
   console.log(require('./board').format(await humanClient('human').get('board')));
 }
 
-// huddle requests [--today]: what was asked of the team and where each request is
+// huddle requests [--today | --week]: what was asked of the team and where each request is
 async function cmdRequests({ flags }) {
-  const since = flags.today ? new Date().setHours(0, 0, 0, 0) : 0;
-  console.log(require('./board').requests(await humanClient('human').get('board'), { since }));
+  const midnight = new Date().setHours(0, 0, 0, 0);
+  const since = flags.week ? midnight - 6 * 86400000 : flags.today ? midnight : 0;
+  console.log(require('./board').requests(await humanClient('human').get('board'), { since, label: flags.week ? 'this week' : 'today' }));
 }
 
 async function cmdAutopilot({ pos, flags }) {

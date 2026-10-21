@@ -66,6 +66,17 @@ const ok = (m) => console.log('✓ ' + m);
     assert.strictEqual((await bob('POST', 'setting', { agent: agent('bob'), avatar: 'data:image/png;base64,' + 'A'.repeat(70000) })).status, 413);
     ok('personal invites become personal tokens, once, a token always speaks as its own person, and people set a display name and picture');
 
+    // deciding in the dashboard: off by default; switched on, a person signed in as themselves approves their own agent's commands
+    const ask1 = await bob('POST', 'approval-request', { agent: agent('bob'), commands: [{ command: 'npm run deploy' }], title: 'ship' });
+    const aid = ask1.approvals[0].id;
+    assert.strictEqual((await bob('POST', 'approve', { agent: agent('bob', 'human'), id: aid })).status, 403);
+    await ana('POST', 'project-setting', { agent: agent('ana'), dashboardApprovals: true });
+    assert.strictEqual((await ana('POST', 'approve', { agent: agent('ana', 'human'), id: aid })).status, 403, 'not for someone else');
+    assert.strictEqual((await s('POST', 'approve', { agent: agent('bob', 'human'), id: aid })).status, 403, 'not from the shared invite');
+    assert.strictEqual((await bob('POST', 'approve', { agent: agent('bob', 'human'), id: aid })).approval.status, 'approved');
+    await ana('POST', 'project-setting', { agent: agent('ana'), dashboardApprovals: false });
+    ok('with deciding in the dashboard on, people approve their own agent from a browser signed in as themselves');
+
     const vinv = await ana('POST', 'member-invite', { agent: agent('ana'), role: 'viewer' });
     const vic = as((await call(null, 'POST', 'redeem', { code: vinv.code, name: 'vic' }, P)).token);
     assert.ok((await vic('GET', 'board')).goals);

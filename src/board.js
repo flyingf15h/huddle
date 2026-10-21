@@ -75,10 +75,10 @@ function format(b) {
 // `huddle requests`: every request on the board (or only today's) with counts, in the words the dashboard uses.
 const REQUEST_WORD = { done: 'merged', doing: 'working', blocked: 'blocked', todo: 'queued' };
 function ageOf(ms) { const m = Math.max(0, Math.round(ms / 60000)); return m < 60 ? m + 'm' : m < 1440 ? Math.round(m / 60) + 'h' : Math.round(m / 1440) + 'd'; }
-function requests(b, { since = 0, now = Date.now() } = {}) {
+function requests(b, { since = 0, label = 'today', now = Date.now() } = {}) {
   const list = b.tasks.filter(t => (t.at || 0) >= since).sort((x, y) => (y.updated || y.at || 0) - (x.updated || x.at || 0));
   const n = (st) => list.filter(t => t.status === st).length;
-  const head = `${list.length} request${list.length === 1 ? '' : 's'}${since ? ' today' : ''}\n${n('done')} merged  ${n('doing')} working  ${n('blocked')} blocked  ${n('todo')} queued`;
+  const head = `${list.length} request${list.length === 1 ? '' : 's'}${since ? ' ' + label : ''}\n${n('done')} merged  ${n('doing')} working  ${n('blocked')} blocked  ${n('todo')} queued`;
   if (!list.length) return head;
   const who = Math.max(4, ...list.map(t => (t.owner || '-').length)), what = Math.max(...list.map(t => oneLine(t.title, 60).length));
   const rows = list.map(t => `  ${(REQUEST_WORD[t.status] || t.status).padEnd(8)} ${(t.owner || '-').padEnd(who)}  ${oneLine(t.title, 60).padEnd(what)}  ${ageOf(now - (t.updated || t.at || now))}`);

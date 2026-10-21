@@ -33,6 +33,9 @@ export const markDone = (t) => after(api('task-update', { id: t.id, status: 'don
 export const editTask = (t, change) => after(api('task-edit', { id: t.id, ...change }));
 export const comment = (t, text) => after(api('task-comment', { id: t.id, text }));
 export const deleteTask = (t) => after(api('task-delete', { id: t.id }));
+// can this browser say yes or no to my agent's commands: it has my huddle open key, or the project lets
+// people decide in the dashboard and I'm signed in as myself (not through the shared invite)
+export const canDecide = () => !!keys[auth.project] || !!(S.projectSettings.dashboardApprovals && S.me.via && S.me.via !== 'project' && S.me.name && S.me.name === myName());
 export async function decide(ids, allow) {
   await api('approve', { ids, allow, key: keys[auth.project] });
   S.approvals = S.approvals.filter(x => !ids.includes(x.id));

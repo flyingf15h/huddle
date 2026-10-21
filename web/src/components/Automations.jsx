@@ -26,8 +26,8 @@ export default function Automations() {
   const t = d.trigger;
   return (
     <>
-      <div className="panel"><h3>Schedules</h3>
-        <p className="pdesc">A request that starts by itself at a set time, like “update the changelog” every weekday morning or “look for flaky tests” on Fridays. The next free agent picks it up, and it asks for approval the same as any request.</p>
+      <div className="panel"><h3>schedules</h3>
+        <p className="pdesc">Requests that start themselves, like a changelog every weekday morning.</p>
         <div className="plist">{d.automations.map(x => (
           <div className="srow" key={x.id}><span className="grow"><b>{x.name}</b><span className="sub">{DAYS[x.days]} at {hourLabel(x.hour)} ({x.tz}){x.to ? ' · for ' + dn(x.to) : ' · whoever is free'}{x.lastDate ? ' · last ran ' + x.lastDate : ''}</span></span>
             {owner || x.by === myName() ? <>
@@ -48,9 +48,9 @@ export default function Automations() {
         ) : <div className="pactions"><span className={'small' + (msg && msg.bad ? ' err' : '')}>{msg && msg.t}</span><button className="primary" onClick={() => setF(blank())}>Add a schedule</button></div>}
       </div>
 
-      <div className="panel"><h3>Start requests from GitHub</h3>
-        <p className="pdesc">Label an issue, or comment <code>/huddle</code> on one, and it becomes a request on the board. {d.repo ? '' : 'Connect a repository first (above).'}</p>
-        <div className="switchrow" style={{ borderTop: 0 }}><span className="grow"><b>Let GitHub start requests</b><span>Only people who can write to the repository can trigger it.</span></span>
+      <div className="panel"><h3>requests from github</h3>
+        <p className="pdesc">A labelled issue, or one with a <code>/huddle</code> comment, becomes a request.{d.repo ? '' : ' Connect a repository first.'}</p>
+        <div className="switchrow" style={{ borderTop: 0 }}><span className="grow"><b>Let GitHub start requests</b><span>Only people with write access.</span></span>
           <button className="toggle" role="switch" aria-checked={!!t.github} aria-label="Let GitHub start requests" disabled={!owner || !d.repo} onClick={() => trig({ github: !t.github })}></button></div>
         {t.github && <div className="pbody fieldset">
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'end' }}>

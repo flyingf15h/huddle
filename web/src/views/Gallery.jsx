@@ -65,13 +65,13 @@ export default function Gallery({ bare }) {
   return (
     <Shell bare={bare}>
         <div className="kbar">
-          <div className="seg sm" role="group" aria-label="Show">{['all', ...sources].map(s => <button key={s} className={filter === s ? 'on' : ''} onClick={() => setFilter(s)}>{s === 'all' ? 'Everything' : s[0].toUpperCase() + s.slice(1)}</button>)}</div>
+          {sources.length > 0 && <div className="seg sm" role="group" aria-label="Show">{['all', ...sources].map(s => <button key={s} className={filter === s ? 'on' : ''} onClick={() => setFilter(s)}>{s === 'all' ? 'everything' : s}</button>)}</div>}
           <span className="grow"></span>
           {S.me.role !== 'viewer' && <><input ref={file} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={upload} /><button className="primary" onClick={() => file.current.click()}>Add an image</button></>}
         </div>
         {msg && <p className="err small">{msg}</p>}
         {shown.length ? <div className="ggrid">{shown.map(m => <Thumb key={m.id} m={m} onOpen={setOpen} />)}</div>
-          : <div className="empty"><h3>No images yet</h3><p style={{ margin: '0 auto', maxWidth: 460 }}>Screenshots agents take in Unity, Godot, Blender or Figma show up here by themselves. Agents can share any other image with huddle_share_image, and you can add your own.</p></div>}
+          : <p className="small faint">No images yet. Editor screenshots land here by themselves.</p>}
       {open && (
         <div className="overlay" role="dialog" aria-modal="true" aria-label={open.caption || 'Image'} onClick={() => setOpen(null)}>
           <div className="glight" onClick={(e) => e.stopPropagation()}>

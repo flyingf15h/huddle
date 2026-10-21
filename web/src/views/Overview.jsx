@@ -1,14 +1,13 @@
 // Overview: today in numbers, everyone's usage window, what's being worked on, and what needs me.
 // Drawn as terminal panes; each stat pane reads like the output of the huddle command that shows it.
 import { useEffect, useRef, useState } from 'react';
-import { S, api, go, myName, myTool, dn, keys, auth, people, usageOf, toolOf } from '../lib/state.js';
+import { S, api, go, myName, myTool, dn, people, usageOf, toolOf } from '../lib/state.js';
 import { useS } from '../lib/store.js';
 import { useLive } from '../lib/hooks.js';
 import { ago } from '../lib/words.js';
-import { titleOf, stuckReason, decide, runAgain } from '../lib/tasks.js';
+import { titleOf, stuckReason, decide, runAgain, canDecide } from '../lib/tasks.js';
+import { spanWord, spanStart, inSpan } from '../lib/span.js';
 
-const today = () => new Date().toISOString().slice(0, 10);
-const midnight = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
 const hm = (ms) => { const m = Math.round(ms / 60000); return m < 60 ? [[m, 'm']] : [[Math.floor(m / 60), 'h'], [m % 60, 'm']]; };
 const short = (t) => ago(t).replace(/ ago$/, '').replace(/^just now$/, 'now').replace(/ minutes?/, 'm').replace(/ hours?/, 'h').replace(/ days?/, 'd');
 const STATUS = { doing: ['working', 'a'], todo: ['queued', ''], blocked: ['blocked', 'w'], done: ['merged', 'g'] };
@@ -33,13 +32,12 @@ export default function Overview() {
   useLive((ev) => { if (ev.type === 'stats') { clearTimeout(timer.current); timer.current = setTimeout(load, 1500); } });
 
   const me = myName();
-  const since = midnight();
+  const since = spanStart(), word = spanWord();
   const todays = S.board.tasks.filter(t => (t.at || 0) >= since);
   const count = (st) => todays.filter(t => t.status === st).length;
 
-  // agent time today, from each person's counted active time
-  const day = today();
-  const time = Object.entries(stats || {}).map(([name, s]) => ({ name, ms: ((s.days || {})[day] || {}).activeMs || 0 })).filter(x => x.ms > 0).sort((a, b) => b.ms - a.ms);
+  // agent time in the span, from each person's counted active time
+  const time = Object.entries(stats || {}).map(([name, s]) => ({ name, ms: inSpan(s.days, 'activeMs') })).filter(x => x.ms > 0).sort((a, b) => b.ms - a.ms);
   const totalMs = time.reduce((n, x) => n + x.ms, 0);
 
   const team = people();
@@ -50,7 +48,7 @@ export default function Overview() {
   // needs you: commands waiting for my OK, blocked work that's mine or that I asked for, my merge conflicts
   const groups = new Map();
   for (const x of S.approvals.filter(a => a.owner === me)) { const k = x.taskId || x.id; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(x); }
-  const canHere = !!keys[auth.project];
+  const canHere = canDecide();
   const choose = (list, allow) => decide(list.map(x => x.id), allow).catch(e => setErr(m => ({ ...m, [list[0].id]: /huddle open/.test(e.message) ? 'open the dashboard with huddle open to decide here' : e.message })));
   const needs = [
     ...S.board.tasks.filter(t => t.status === 'blocked' && (t.owner === me || t.by === me)).map(t => ({
@@ -65,7 +63,7 @@ export default function Overview() {
         text: <>your {myTool()} wants to run {list.map((x, i) => <span key={x.id}>{i ? ', ' : ''}<code>{x.command}</code></span>)}</>,
         sub: t ? titleOf(t).title : list[0].title,
         acts: [[list.length > 1 ? 'allow all' : 'allow', () => choose(list, true), true, !canHere], [list.length > 1 ? 'deny all' : 'deny', () => choose(list, false), false, !canHere]],
-        note: err[list[0].id] || (!canHere ? 'to decide here, open the dashboard with huddle open, or run huddle approve --all' : ''),
+        note: err[list[0].id] || (!canHere ? 'to decide here: huddle open, or turn on deciding in the dashboard (settings → rules)' : ''),
       };
     }),
     ...S.conflicts.filter(c => c.owner === me || c.items.some(x => x.other.startsWith(me + '/'))).flatMap(c => c.items.map(x => ({
@@ -79,17 +77,16 @@ export default function Overview() {
   return (
     <main data-main className="overview">
       <div className="ogrid">
-        <Pane title="requests" right={<span>today</span>} className="p-stat">
-          <div className="cmdl"><span>$</span>huddle requests --today</div>
-          <div className="out"><b>{todays.length}</b>{todays.length === 1 ? 'request' : 'requests'}<br />
-            <i className="g">{count('done')}</i> merged  <i className="a">{count('doing')}</i> working  <i className="w">{count('blocked')}</i> blocked{count('todo') ? <>  <i>{count('todo')}</i> queued</> : null}</div>
+        <Pane title="requests" right={<span>{word}</span>} className="p-stat">
+          <div className="cmdl"><span>$</span>huddle requests --{S.span === 'week' ? 'week' : 'today'}</div>
+          <div className="big"><b>{todays.length}</b><span>{todays.length === 1 ? 'request' : 'requests'}</span></div>
+          <div className="parts"><span><i className="g">{count('done')}</i> merged</span><span><i className="a">{count('doing')}</i> working</span><span><i className="w">{count('blocked')}</i> blocked</span>{count('todo') ? <span><i>{count('todo')}</i> queued</span> : null}</div>
         </Pane>
-        <Pane title="agent time" right={<span>today</span>} className="p-stat">
+        <Pane title="agent time" right={<span>{word}</span>} className="p-stat">
           <div className="cmdl"><span>$</span>huddle cost</div>
-          {stats === null ? <div className="out muted">counting…</div> : (
-            <div className="out"><b>{totalMs ? hm(totalMs).map(([n, u]) => n + u).join(' ') : '0m'}</b>{time.length ? `across ${time.length} ${time.length === 1 ? 'agent' : 'agents'}` : 'no agent time yet today'}<br />
-              {time.slice(0, 4).map(x => <span key={x.name} className="tper">{dn(x.name)} {hm(x.ms).map(([n, u]) => n + u).join(' ')}</span>)}</div>
-          )}
+          {stats === null ? <div className="parts">counting…</div> : <>
+            <div className="big"><b>{totalMs ? hm(totalMs).map(([n, u]) => n + u).join(' ') : '0m'}</b><span>{time.length ? `across ${time.length} ${time.length === 1 ? 'agent' : 'agents'}` : 'no agent time yet'}</span></div>
+            <div className="parts">{time.slice(0, 4).map(x => <span key={x.name}>{dn(x.name)} {hm(x.ms).map(([n, u]) => n + u).join(' ')}</span>)}</div></>}
         </Pane>
         <Pane title="usage" right={<span>5-hour window</span>} className="p-use">
           {team.map(p => {

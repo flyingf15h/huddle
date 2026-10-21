@@ -771,6 +771,7 @@ const routes = {
       p.projectSettings.sharedToken = b.sharedToken !== false;
     }
     if (b.membersCanInvite !== undefined) p.projectSettings.membersCanInvite = b.membersCanInvite !== false;
+    if (b.dashboardApprovals !== undefined) p.projectSettings.dashboardApprovals = b.dashboardApprovals === true;
     // how finished background work arrives: merged into the person's branch, or as a GitHub pull request
     if (b.delivery !== undefined) p.projectSettings.delivery = b.delivery === 'pr' ? 'pr' : 'merge';
     // editors the team's agents drive through MCP (huddle apps): each teammate's folder gets their servers
@@ -810,8 +811,11 @@ const routes = {
   // browser holding the key their machine gave it (huddle open). Saying yes lets the task run again
   // with that exact command allowed. Several can be decided at once (ids), so a task that needs a few
   // commands runs again once with all of them, not once per command.
-  'POST approve': (p, b) => {
+  'POST approve': (p, b, q, ctx) => {
     const a = p.touch(b.agent);
+    // with dashboardApprovals on, a browser signed in as the owner (their own account or personal invite,
+    // never the shared invite, which anyone can use under any name) can decide without the huddle open key
+    const signedInAs = (p.projectSettings || {}).dashboardApprovals && ctx && ctx.auth && ctx.auth.via !== 'project' ? ctx.auth.name : null;
     const ids = Array.isArray(b.ids) ? b.ids.slice(0, 20) : [b.id];
     const list = ids.map(id => {
       const x = (p.approvals || []).find(y => y.id === id);
@@ -820,7 +824,7 @@ const routes = {
     });
     const fromBrowser = a.kind === 'human';
     for (const x of list) {
-      const keyOk = b.key && p.keys && p.keys[x.owner] && sha(String(b.key)) === p.keys[x.owner];
+      const keyOk = (b.key && p.keys && p.keys[x.owner] && sha(String(b.key)) === p.keys[x.owner]) || (signedInAs && signedInAs === x.owner);
       if (a.name !== x.owner || (fromBrowser && !keyOk)) {
         throw httpError(403, fromBrowser && a.name === x.owner ? 'open the dashboard with `huddle open` on your computer to approve from here' : `only ${x.owner} can approve commands for their Claude`);
       }

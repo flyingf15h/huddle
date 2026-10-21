@@ -301,3 +301,52 @@ dialog, .palette, .sheet { border-color: var(--pane-line); }
 .sechead { font: 500 12.5px var(--tmono); color: var(--faint); margin: 6px 0 -6px; }
 .sechead::before { content: "## "; color: var(--accent); }
 .baresec .kbar { position: static; margin: 22px 0 6px; padding: 0 0 8px; }
+
+/* ---------- pass 3 ---------- */
+/* light themes: plain neutral greys; tinting them with the accent made text look off */
+:root:not([data-theme="dark"]) { --ink: #1c1e23; --muted: #5d616b; --faint: #8b8f98; }
+/* stat panes: the number and its unit on one baseline, the breakdown on its own line */
+.p-stat .big { display: flex; align-items: baseline; gap: 10px; margin-top: 12px; }
+.p-stat .big b { font: 700 30px/1 var(--tnum); letter-spacing: -.03em; color: var(--ink); }
+.p-stat .big span { color: var(--muted); font-size: 12.5px; }
+.p-stat .parts { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 10px; font-size: 12.5px; color: var(--muted); }
+.p-stat .parts i { font-style: normal; color: var(--c, var(--ink)); }
+:is(.parts i).g { --c: var(--ok); } :is(.parts i).a { --c: var(--run); } :is(.parts i).w { --c: var(--wait); }
+/* day / week switch in the status line */
+.spansw { display: inline-flex; align-items: center; gap: 8px; color: var(--faint); }
+.spansw button { border: 0; background: none; padding: 0 2px; font-size: 11.5px; color: var(--muted); }
+.spansw button:hover { color: var(--ink); background: none; }
+.spansw button.on { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+/* usage tiles fill the width */
+.tiles { display: flex; flex-wrap: wrap; max-width: none; }
+.tiles .tile { flex: 1 1 170px; }
+.statswrap, .pageview > * { max-width: none; }
+/* (c) is a quiet hint */
+.newreq .key { color: var(--wait); opacity: .5; }
+/* dots are flat */
+.chan i, .sdot, .bar5 i.on { box-shadow: none !important; }
+.chan.off i, .person.off .sdot, .u5 .sdot.off { box-shadow: inset 0 0 0 1.5px var(--faint) !important; }
+/* the activity header stays on one line */
+#filters, header .seg { flex-wrap: nowrap; white-space: nowrap; }
+header .small { white-space: nowrap; }
+/* forms: short labels, quiet hints, two columns where it fits */
+.fieldset.two { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.fieldset label, .fieldset .lbl2 { font-weight: 400; color: var(--muted); font-size: 12.5px; }
+.hintline { font-size: 11.5px; color: var(--faint); }
+.panel > .pdesc { color: var(--faint); max-width: 80ch; }
+.switchrow .grow b { font-weight: 500; font-size: 13px; }
+.switchrow .grow span { color: var(--faint); font-size: 12px; }
+.srow .sub { color: var(--faint); }
+.readonly-note { color: var(--faint); }
+/* side panel: approvals as a quiet pane */
+#asks { padding: 12px 14px; }
+#asks h3 { font-size: 12.5px; font-weight: 500; color: var(--wait); margin: 0 0 6px; }
+.ask .ahead, .ask > .small { font-size: 12px; }
+.acmds code { color: var(--accent-soft-ink); }
+.baresec + .sechead { margin-top: 26px; }
+.ask .row { gap: 14px; }
+.ask .row .bact { padding: 0; font-size: 12.5px; }
+/* overview: panes take the height of what's in them */
+.ogrid { grid-template-rows: auto auto; min-height: 0; align-items: start; }
+.ogrid .p-stat, .ogrid .p-use { align-self: stretch; }
+.ogrid .p-req, .ogrid .p-needs { min-height: 180px; }

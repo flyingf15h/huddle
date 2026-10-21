@@ -11,7 +11,7 @@ const isWeb = (b) => /^web/i.test(b.platform || '') || /itch\.io\/embed|\.html?(
 
 export default function Builds({ bare }) {
   useS();
-  const [builds, setBuilds] = useState([]), [playing, setPlaying] = useState(null), [form, setForm] = useState({ url: '', title: '', platform: 'web', notes: '' }), [msg, setMsg] = useState(''), [copied, setCopied] = useState(null);
+  const [adding, setAdding] = useState(false), [builds, setBuilds] = useState([]), [playing, setPlaying] = useState(null), [form, setForm] = useState({ url: '', title: '', platform: 'web', notes: '' }), [msg, setMsg] = useState(''), [copied, setCopied] = useState(null);
   const load = () => api('builds').then(r => setBuilds(r.builds.slice().reverse())).catch(e => setMsg(e.message));
   useEffect(() => { load(); }, []);
   useLive((ev) => { if (ev.type === 'build') load(); });
@@ -36,14 +36,15 @@ export default function Builds({ bare }) {
             {playing === b.id && <div className="player"><iframe src={b.url} title={b.title} allow="fullscreen; autoplay; gamepad; pointer-lock" allowFullScreen sandbox="allow-scripts allow-same-origin allow-pointer-lock allow-popups allow-forms" /></div>}
           </div>
         ))}
-        {!builds.length && <div className="empty"><h3>No builds yet</h3><p style={{ margin: '0 auto', maxWidth: 460 }}>When an agent makes a build anyone can try (a web build, an itch.io page, a download), it shares the link here with huddle_share_build. Web builds play right on this page.</p></div>}
-        {!viewer && <div className="panel"><h3>Add a build</h3><div className="pbody fieldset">
+        {!builds.length && <p className="small faint">No builds yet. Agents share them with huddle_share_build, and web builds play right here.</p>}
+        {!viewer && !adding && <div className="pactions" style={{ justifyContent: 'flex-start', padding: '4px 0 0' }}><button className="primary" onClick={() => setAdding(true)}>add a build</button></div>}
+        {!viewer && adding && <div className="panel"><h3>add a build</h3><div className="pbody fieldset">
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,2fr) minmax(0,1fr)', gap: 10 }}>
             <div><label htmlFor="b-u">Link</label><input id="b-u" type="url" value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="https://yourteam.itch.io/game" /></div>
             <div><label htmlFor="b-p">Platform</label><input id="b-p" type="text" value={form.platform} onChange={(e) => setForm({ ...form, platform: e.target.value })} placeholder="web, windows, mac…" /></div></div>
           <div><label htmlFor="b-t">Name</label><input id="b-t" type="text" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Prototype 3, boss fight playable" /></div>
           <div><label htmlFor="b-n">What to try (optional)</label><input id="b-n" type="text" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="New jump feel, second level" /></div>
-          <div className="pactions" style={{ padding: 0 }}>{msg && <span className="small err">{msg}</span>}<button className="primary" disabled={!form.url.trim() || !form.title.trim()} onClick={add}>Add build</button></div></div></div>}
+          <div className="pactions" style={{ padding: 0 }}>{msg && <span className="small err">{msg}</span>}<button className="ghost" onClick={() => setAdding(false)}>cancel</button><button className="primary" disabled={!form.url.trim() || !form.title.trim()} onClick={async () => { await add(); setAdding(false); }}>add build</button></div></div></div>}
     </Shell>
   );
 }

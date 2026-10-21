@@ -17,14 +17,14 @@ export default function SlackSetup() {
   const anyone = wrap((v) => api('slack-setup', { anyone: v }));
   const remove = wrap(async () => { if (confirm('Disconnect Slack from this project?')) { await api('slack-setup', { remove: true }); setCode(null); } });
   return (
-    <div className="panel"><h3>Slack</h3>
-      <p className="pdesc">Slash commands and approval buttons in the team's channel: <code>/huddle status</code>, <code>/huddle @ana fix the cart test</code>, and Approve or Decline on the messages that need a person. The signing secret and webhook stay on the server.</p>
+    <div className="panel"><h3>slack</h3>
+      <p className="pdesc"><code>/huddle</code> commands and approve buttons in a channel.</p>
       {!owner && !d.configured && <p className="readonly-note">Only the project owner can set this up.</p>}
       {owner && !d.configured && (
         <div className="pbody fieldset">
           <div><span className="lbl2">1. Create the app</span>
             {d.createUrl ? <><a className="ghbtn" style={{ display: 'inline-flex' }} href={d.createUrl} target="_blank" rel="noopener noreferrer">Create the Slack app</a>
-              <div className="hintline">Opens Slack with everything filled in. Pick your workspace, create it, then install it to a channel (Incoming Webhooks → Add New Webhook).{' '}<button className="link small" onClick={() => setMan(!man)}>{man ? 'Hide' : 'Show'} the manifest</button></div>
+              <div className="hintline">opens Slack pre-filled; install it to a channel after.{' '}<button className="link small" onClick={() => setMan(!man)}>{man ? 'Hide' : 'Show'} the manifest</button></div>
               {man && <pre className="codebox" style={{ maxHeight: 200, padding: 8, fontSize: 12 }}>{typeof d.manifest === 'string' ? d.manifest : JSON.stringify(d.manifest, null, 2)}</pre>}</>
               : <div className="hintline">Open this page from the hosted dashboard to get the one-click link.</div>}</div>
           <div><label htmlFor="sl-s">2. Signing secret</label><input id="sl-s" type="password" autoComplete="off" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder="Basic Information → App Credentials" /></div>
@@ -36,9 +36,9 @@ export default function SlackSetup() {
         <div className="pbody fieldset">
           <div className="small">{d.linked ? <>Linked to {d.channelName ? <b>#{d.channelName.replace(/^#/, '')}</b> : 'a channel'}.</> : 'Not linked to a channel yet.'}{d.webhook ? '' : ' No webhook yet, so nothing is posted.'}</div>
           {owner && <div><button onClick={() => getCode('link')}>{d.linked ? 'Link a different channel' : 'Link a channel'}</button>
-            <div className="hintline">Gives you a one-time code (15 minutes). Run the command it shows in the channel you want to use.</div></div>}
+            <div className="hintline">run the code it gives you in that channel</div></div>}
           <div><button onClick={() => getCode('me')}>{d.mine ? 'Re-link my Slack account' : 'This is me in Slack'}</button>
-            <div className="hintline">So approvals you own show buttons only you can press.{d.people.length ? ` Linked: ${d.people.join(', ')}.` : ''}</div></div>
+            <div className="hintline">so only you can press your approve buttons{d.people.length ? ` · linked: ${d.people.join(', ')}` : ''}</div></div>
           {code && <div className="srow" style={{ border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)' }}><span className="grow">In Slack, run:<span className="sub mono" style={{ userSelect: 'all' }}>{code.command}</span></span><button className="ghost" onClick={() => navigator.clipboard && navigator.clipboard.writeText(code.command)}>Copy</button></div>}
           {owner && <label className="checks" style={{ gap: 6 }}><input type="checkbox" checked={d.anyone} onChange={(e) => anyone(e.target.checked)} />Anyone in the linked channel can send requests (otherwise only linked accounts)</label>}
           {owner && <div><button className="danger" onClick={remove}>Disconnect Slack</button></div>}

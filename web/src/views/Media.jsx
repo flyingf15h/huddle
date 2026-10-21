@@ -1,4 +1,4 @@
-// Gallery, a Studio tab: playable builds first (there are only ever a few), then the images.
+// Test, a Studio tab: playable builds to try first (there are only ever a few), then the images.
 import Builds from './Builds.jsx';
 import Gallery from './Gallery.jsx';
 
