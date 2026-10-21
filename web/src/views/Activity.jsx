@@ -9,7 +9,6 @@ import Avatar from '../components/Avatar.jsx';
 import Icon from '../components/Icon.jsx';
 import Composer from '../components/Composer.jsx';
 import Resizer from '../components/Resizer.jsx';
-import DotCloud from '../components/DotCloud.jsx';
 import SidePanel from '../components/SidePanel.jsx';
 import FileDialog from '../components/FileDialog.jsx';
 
@@ -100,7 +99,7 @@ export default forwardRef(function Activity(_, composerRef) {
         <div id="feed" ref={feed} onScroll={onScroll} aria-live="polite">
           {!list.length && (S.who || S.filter !== 'all'
             ? <div className="empty">{S.who ? `No activity from ${S.who} yet.` : 'No activity of this type yet.'}</div>
-            : <div className="empty"><DotCloud /><h3>No activity yet</h3><p style={{ margin: '0 auto', maxWidth: 460 }}>Prompts, replies and changes from every teammate's agent session will appear here.</p>
+            : <div className="empty"><h3>No activity yet</h3><p style={{ margin: '0 auto', maxWidth: 460 }}>Prompts, replies and changes from every teammate's agent session will appear here.</p>
               <div className="acts"><button className="primary" onClick={() => composerRef.current && composerRef.current.focus()}>New request</button></div></div>)}
           {rows.map(r => r.type === 'day' ? <div className="day" key={r.key}>{r.label}</div>
             : r.type === 'card' ? (

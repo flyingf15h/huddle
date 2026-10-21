@@ -6,7 +6,6 @@ import { useS } from '../lib/store.js';
 import { useLive } from '../lib/hooks.js';
 import { ago } from '../lib/words.js';
 import Icon from '../components/Icon.jsx';
-import DotCloud from '../components/DotCloud.jsx';
 
 const checkTone = (c) => (!c ? '' : c.state === 'failing' ? 'bad' : c.state === 'passing' ? 'ok' : 'warn');
 const checkWord = (c) => (!c ? 'no checks' : c.state === 'failing' ? `${c.failed} failing` : c.state === 'passing' ? 'passing' : 'running');
@@ -101,7 +100,7 @@ export default function Code() {
             </div>
           </div>
           <div id="codemain">
-            {!refs.length ? <div className="empty"><DotCloud /><h3>No code shared yet</h3><p style={{ margin: '0 auto', maxWidth: 420 }}>Branches appear here once a teammate commits. They are shared automatically at the end of each agent turn, or manually with <code>huddle publish</code>.</p></div>
+            {!refs.length ? <div className="empty"><h3>No code shared yet</h3><p style={{ margin: '0 auto', maxWidth: 420 }}>Branches appear here once a teammate commits. They are shared automatically at the end of each agent turn, or manually with <code>huddle publish</code>.</p></div>
               : err ? <div className="empty">{err}</div>
               : path ? (
                 <>
@@ -118,7 +117,7 @@ export default function Code() {
       {tab === 'github' && (
         <div className="viewpad">
           {!rs ? (
-            <div className="empty"><DotCloud /><h3>Connect your GitHub repository</h3><p style={{ margin: '0 auto', maxWidth: 480 }}>See branches with their checks, open pull requests, recent commits and issues here, get updates the moment someone pushes, and open pull requests from huddle.</p>
+            <div className="empty"><h3>Connect your GitHub repository</h3><p style={{ margin: '0 auto', maxWidth: 480 }}>See branches with their checks, open pull requests, recent commits and issues here, get updates the moment someone pushes, and open pull requests from huddle.</p>
               <div className="acts">{isOwner() ? <button className="primary" onClick={() => { S.settingsTab = 'integrations'; go('settings'); }}>Connect a repository</button> : <span className="muted">An owner can connect one in Team &amp; settings.</span>}</div></div>
           ) : (
             <>
@@ -155,7 +154,7 @@ export default function Code() {
               <div className="pbody"><ul style={{ margin: 0, paddingLeft: 20 }}>{x.files.map(f => <li key={f} className="mono small">{f}</li>)}</ul>
                 <p className="small muted" style={{ marginBottom: 0 }}>Or run <code>huddle merge {x.other}</code> yourself and ask your agent to settle the conflict markers.</p></div></div>
           )))}
-          {!conflictCount && <div className="empty"><DotCloud /><h3>No conflicts</h3><p style={{ margin: '0 auto', maxWidth: 420 }}>Nobody's shared branch conflicts with another's right now.</p></div>}
+          {!conflictCount && <div className="empty"><h3>No conflicts</h3><p style={{ margin: '0 auto', maxWidth: 420 }}>Nobody's shared branch conflicts with another's right now.</p></div>}
         </div>
       )}
     </main>

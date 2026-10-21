@@ -6,6 +6,7 @@ import { useS } from './lib/store.js';
 import { installKeys } from './lib/keys.js';
 import { applyTheme, onSystemTheme } from './lib/themes.js';
 import Resizer from './components/Resizer.jsx';
+import BackCloud from './components/BackCloud.jsx';
 import { store } from './lib/words.js';
 import { stopDemo } from './lib/demo.js';
 import Home from './Home.jsx';
@@ -37,19 +38,6 @@ export default function App() {
   const composer = useRef(null);
   // the colour theme: what the person picked, or the system's light/dark when they chose "Match my computer"
   useEffect(() => { applyTheme(S.themePref); return onSystemTheme(() => applyTheme(S.themePref)); }, [S.themePref]);
-  // the dot field behind the page: a spotlight that follows the cursor, and wanders when it's idle
-  useEffect(() => {
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    let last = 0, raf = 0;
-    const root = document.documentElement, t0 = performance.now();
-    const move = (e) => { last = performance.now(); root.style.setProperty('--mx', e.clientX + 'px'); root.style.setProperty('--my', e.clientY + 'px'); };
-    const drift = (now) => {
-      if (now - last > 4000) { const t = (now - t0) / 1000; root.style.setProperty('--mx', (innerWidth * (.55 + .3 * Math.sin(t * .17))) + 'px'); root.style.setProperty('--my', (innerHeight * (.5 + .32 * Math.sin(t * .23 + 1))) + 'px'); }
-      raf = requestAnimationFrame(drift);
-    };
-    addEventListener('pointermove', move, { passive: true }); raf = requestAnimationFrame(drift);
-    return () => { removeEventListener('pointermove', move); cancelAnimationFrame(raf); };
-  }, []);
 
   useEffect(() => {
     const off = installKeys({ focusComposer: () => { if (S.view !== 'activity') go('activity'); setTimeout(() => composer.current && composer.current.focus(), 0); } });
@@ -61,9 +49,10 @@ export default function App() {
   }, []);
 
   if (screen === 'loading') return <div className="empty" style={{ paddingTop: '20vh' }}>Loading…</div>;
-  if (screen === 'home' || (S.fatal && !auth.project)) return <><Home /><Toasts /></>;
+  if (screen === 'home' || (S.fatal && !auth.project)) return <><BackCloud /><Home /><Toasts /></>;
   return (
     <>
+      <BackCloud />
       <div id="app">
         <Sidebar />
         <Resizer which="rail" label="Resize the sidebar" />

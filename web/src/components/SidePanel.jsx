@@ -6,7 +6,6 @@ import { ago, shortTitle } from '../lib/words.js';
 import { titleOf, decide, stuckReason } from '../lib/tasks.js';
 import Icon from './Icon.jsx';
 import Avatar from './Avatar.jsx';
-import TeamNet from './TeamNet.jsx';
 
 export default function SidePanel() {
   useS();
@@ -26,7 +25,6 @@ export default function SidePanel() {
   };
   return (
     <aside id="side">
-      <TeamNet />
       {asks.length > 0 && (
         <div id="asks"><h3>Awaiting your approval</h3>
           {asks.map(list => {
