@@ -6,7 +6,7 @@ import { useS } from './lib/store.js';
 import { installKeys } from './lib/keys.js';
 import { applyTheme, onSystemTheme } from './lib/themes.js';
 import Resizer from './components/Resizer.jsx';
-import BackCloud from './components/BackCloud.jsx';
+import DotField from './components/DotField.jsx';
 import { store } from './lib/words.js';
 import { stopDemo } from './lib/demo.js';
 import Home from './Home.jsx';
@@ -49,10 +49,9 @@ export default function App() {
   }, []);
 
   if (screen === 'loading') return <div className="empty" style={{ paddingTop: '20vh' }}>Loading…</div>;
-  if (screen === 'home' || (S.fatal && !auth.project)) return <><BackCloud /><Home /><Toasts /></>;
+  if (screen === 'home' || (S.fatal && !auth.project)) return <><DotField /><Home /><Toasts /></>;
   return (
     <>
-      <BackCloud />
       <div id="app">
         <Sidebar />
         <Resizer which="rail" label="Resize the sidebar" />
