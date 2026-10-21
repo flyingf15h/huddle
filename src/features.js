@@ -22,7 +22,7 @@ const NOTE_KINDS = {
   mention: { label: 'Mentions of you', email: true, desktop: true },
   request: { label: 'Requests for your agent', email: true, desktop: true },
   approval: { label: 'Commands waiting for your OK', email: true, desktop: true },
-  stuck: { label: 'Your work got stuck', email: true, desktop: true },
+  stuck: { label: 'Your work is blocked', email: true, desktop: true },
   done: { label: 'Your requests finished', email: false, desktop: false },
   conflict: { label: 'Merge conflicts with your branch', email: true, desktop: true },
   ci: { label: 'Checks failing on your pull requests', email: true, desktop: true },

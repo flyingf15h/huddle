@@ -65,11 +65,8 @@ export default function Settings({ tab }) {
     if (key === 'sharedToken' && !on && !confirm('Switch the shared invite off? Anyone still using it (including their agents) loses access until they join with a personal invite.')) return;
     await api('project-setting', { [key]: on }); await loadMe();
   };
-  // names huddle has seen: fold one person's two names together, or drop someone who left
-  const [into, setInto] = useState({});
-  const samePerson = run('names', async (from) => { if (!into[from]) return; await api('merge-person', { from, into: into[from] }); say('names', `${from} is now shown as ${into[from]}.`); });
+  // drop someone who left (names that only differ in capitals fold together on the server by themselves)
   const forgetName = run('names', async (name) => { if (!confirm(`Remove ${name} from the team list? Their past work stays.`)) return; await api('forget-agent', { name }); say('names', `Removed ${name}.`); });
-  const tidyNames = run('names', async () => { const r = await api('tidy', {}); say('names', r.merged && r.merged.length ? `Merged ${r.merged.length} name${r.merged.length === 1 ? '' : 's'} that differed only in capitals.` : 'Nothing to tidy.'); });
   const linkAccount = run('acct', async () => { await api('link-account', {}); say('acct', 'Linked. This project now opens from your account, and you get its notifications by email.'); await loadTab(); await loadNotes(); });
   const soleOwner = S.me.accounts && S.me.via === 'member' && owner && members.length > 1 && members.filter(m => m.role === 'owner').length < 2;
   const leave = async () => {
@@ -140,13 +137,11 @@ export default function Settings({ tab }) {
             ) : !S.account.user && (S.account.email || S.account.github) ? (
               <div className="panel"><h3>sign in</h3><p className="pdesc">Sign in on the home screen to keep projects across browsers.</p><div className="pbody"><button onClick={goHome}>Go to the home screen</button></div></div>
             ) : null}
-            {owner && <div className="panel"><h3>names on the team</h3><p className="pdesc">Fold two names for one person together, or remove someone who left.</p>
-              <div className="plist">{people().map(p => (
-                <div className="srow" key={p.name}><Avatar name={p.name} sm /><span className="grow"><b>{dn(p.name)}</b><span className="sub">{p.online ? 'online now' : 'last seen ' + ago(p.lastSeen)}</span></span>
-                  <select aria-label={`Same person as`} value={into[p.name] || ''} onChange={(e) => setInto({ ...into, [p.name]: e.target.value })}><option value="">Same person as…</option>{people().filter(q => q.name !== p.name).map(q => <option key={q.name} value={q.name}>{dn(q.name)}</option>)}</select>
-                  <button className="ghost" disabled={!into[p.name]} onClick={() => samePerson(p.name)}>Merge</button>
-                  <button className="ghost" disabled={p.online} title={p.online ? 'Online right now' : ''} onClick={() => forgetName(p.name)}>Remove</button></div>))}</div>
-              <div className="pactions"><M k="names" /><button onClick={tidyNames}>merge names that differ only in capitals</button></div></div>}
+            {owner && people().some(p => !p.online) && <div className="panel"><h3>people who left</h3><p className="pdesc">Remove someone from the team list. Their past work stays.</p>
+              <div className="plist">{people().filter(p => !p.online).map(p => (
+                <div className="srow" key={p.name}><span className="grow"><b>{dn(p.name)}</b><span className="sub">last seen {ago(p.lastSeen)}</span></span>
+                  <button className="ghost" onClick={() => forgetName(p.name)}>remove</button></div>))}</div>
+              <div className="pactions"><M k="names" /></div></div>}
             <div className="panel"><h3>leave this project</h3><p className="pdesc">{iAmDemo() ? 'Removes the demo from your projects.' : soleOwner ? "You're the only owner. Make someone else an owner first." : S.me.accounts && S.me.via === 'member' ? 'Your access ends right away. Your past work stays.' : 'Removes it from this browser. The shared invite still opens it.'} Run <code>huddle leave</code> to disconnect your computer too.</p>
               <div className="pactions" style={{ paddingTop: 12 }}><M k="leave" /><button className="danger" disabled={soleOwner} onClick={leave}>Leave {prettyProject(auth.project)}</button></div></div>
           </>

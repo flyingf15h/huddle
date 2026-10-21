@@ -285,6 +285,7 @@ class Project {
   }
   sweep() {
     const t = now();
+    if (foldCaseDuplicates(this).length) this.dirty = true;
     // (locks are keyed by branch and path, so delete by the key: deleting by path left branch locks in
     // place, and every sweep announced the same release again)
     for (const [key, l] of Object.entries(this.locks)) {
@@ -476,22 +477,7 @@ const routes = {
   // recently wins), and each person keeps a single offline row
   'POST tidy': (p, b) => {
     p.touch(b.agent);
-    const seen = {};
-    for (const a of Object.values(p.agents)) {
-      const k = a.name.toLowerCase();
-      seen[k] = seen[k] || {};
-      seen[k][a.name] = Math.max(seen[k][a.name] || 0, a.lastSeen);
-    }
-    for (const n of [...Object.keys(p.settings || {}), ...Object.keys(p.stats || {})]) {
-      const k = n.toLowerCase();
-      seen[k] = seen[k] || {};
-      seen[k][n] = seen[k][n] || 0;
-    }
-    const merged = [];
-    for (const names of Object.values(seen)) {
-      const list = Object.entries(names).sort((x, y) => y[1] - x[1]).map(x => x[0]);
-      for (const from of list.slice(1)) { mergePerson(p, from, list[0]); merged.push({ from, into: list[0] }); }
-    }
+    const merged = foldCaseDuplicates(p);
     const before = Object.keys(p.agents).length;
     p.sweep();
     p.emit('forget', { name: '' });
@@ -1199,6 +1185,30 @@ function nudgeUpdate(p, a) {
 }
 
 // two names are the same person: fold `from` into `into` everywhere, and keep it that way
+// names that only differ in capitals ("Kelly" and "kelly") are one person: fold each group into the name
+// seen most recently. New names already land on an existing spelling (canonicalName); this catches older ones,
+// and runs on every sweep, so nobody has to tidy by hand.
+function foldCaseDuplicates(p) {
+  const seen = {};
+  for (const a of Object.values(p.agents)) {
+    const k = a.name.toLowerCase();
+    seen[k] = seen[k] || {};
+    seen[k][a.name] = Math.max(seen[k][a.name] || 0, a.lastSeen || 0);
+  }
+  for (const n of [...Object.keys(p.settings || {}), ...Object.keys(p.stats || {})]) {
+    const k = n.toLowerCase();
+    seen[k] = seen[k] || {};
+    seen[k][n] = seen[k][n] || 0;
+  }
+  const merged = [];
+  for (const names of Object.values(seen)) {
+    if (Object.keys(names).length < 2) continue;
+    const list = Object.entries(names).sort((x, y) => y[1] - x[1]).map(x => x[0]);
+    for (const from of list.slice(1)) { mergePerson(p, from, list[0]); merged.push({ from, into: list[0] }); }
+  }
+  return merged;
+}
+
 function mergePerson(p, from, into) {
   p.aliases = p.aliases || {};
   for (const [k, v] of Object.entries(p.aliases)) if (v === from) p.aliases[k] = into;
