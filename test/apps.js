@@ -259,6 +259,7 @@ function person(name, pid, url, token, project) {
     const ap2 = require('../src/autopilot');
     assert.equal(ap2.pick({ goals: [], tasks: [{ ...hand[0], owner: 'ben', status: 'todo', after: [] }] }, 'ben', new Set(), 'full'), null);
     assert.match(require('../src/board').briefing(await api('board'), 'ben'), /Bring crate\.blend into Unity  ← yours/);
+    assert.match(require('../src/board').requests(await api('board')), /^\d+ requests?\n\d+ merged  \d+ working  \d+ blocked  \d+ queued\n\n  \w+ +\S+ +Bring crate\.blend into Unity/m);
     ok('a model saved in Blender becomes one hand-off for the person in Unity, which background runs leave alone');
 
     // ---- timeline: goals and a plan every agent is told about

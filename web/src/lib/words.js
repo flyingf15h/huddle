@@ -29,7 +29,7 @@ function shortTitle(text, n = 62) {
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
 const EFFORT_WORD = { light: 'Small', medium: 'Medium', heavy: 'Big' };
-const statusWord = (s) => ({ todo: 'To do', doing: 'In progress', done: 'Done', blocked: 'Blocked', open: 'Waiting for a plan', planning: 'Being planned', planned: 'In progress' }[s] || s);
+const statusWord = (s) => ({ todo: 'To do', doing: 'In progress', done: 'Merged', blocked: 'Blocked', open: 'Waiting for a plan', planning: 'Being planned', planned: 'In progress' }[s] || s);
 // what a tool call means, in plain words
 function toolWords(text) {
   const m = /^([\w-]+)(?::\s*([\s\S]*))?$/.exec(text || '');

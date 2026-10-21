@@ -26,7 +26,7 @@ export const saveKnown = () => store.set('huddle.projects', JSON.stringify(known
 export const auth = reactive({ token: null, project: null, name: store.get('huddle.name') === 'human' ? '' : (store.get('huddle.name') || '') });
 export const VIEWS = ['overview', 'activity', 'tasks', 'studio', 'settings'];
 // pages that became tabs inside another page (and Code, which is gone): old links and shortcuts still land somewhere
-const MOVED = { brief: ['studio', 'brief'], timeline: ['studio', 'timeline'], gallery: ['studio', 'gallery'], builds: ['studio', 'builds'], usage: ['settings', 'usage'], health: ['settings', 'health'], code: ['overview'] };
+const MOVED = { brief: ['studio', 'brief'], timeline: ['studio', 'timeline'], gallery: ['studio', 'gallery'], builds: ['studio', 'builds'], integrations: ['settings', 'integrations'], github: ['studio', 'github'], conflicts: ['studio', 'github'], usage: ['settings', 'usage'], health: ['settings', 'health'], code: ['studio', 'github'] };
 const where = (v) => MOVED[v] || [VIEWS.includes(v) ? v : 'overview'];
 const startAt = where(params.get('v'));
 

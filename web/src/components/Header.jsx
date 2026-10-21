@@ -15,7 +15,7 @@ import { toggleRail, toggleSide, layout } from '../lib/layout.js';
 
 const TITLES = { overview: 'overview', activity: 'activity', tasks: 'tasks', studio: 'studio', settings: 'settings' };
 const DESC = { overview: "what's running and what needs you", activity: 'every prompt, reply and message as it happens', tasks: 'every request and task, who has it and how far along it is',
-  studio: 'the brief, timeline, gallery and builds', settings: 'people, usage, health, integrations and rules' };
+  studio: 'the brief, timeline, gallery, builds and github', settings: 'people, usage, health, integrations and rules' };
 const FILTERS = [['all', 'everything', 'Every prompt, step, reply, message and file change'], ['key', 'highlights', 'Requests, prompts, replies, messages and hand-offs'], ['talk', 'messages', 'Only messages and requests']];
 const mac = /Mac|iPhone|iPad/.test(navigator.platform);
 // the return key, drawn in square pixels like a terminal font

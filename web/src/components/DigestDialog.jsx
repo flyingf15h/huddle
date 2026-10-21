@@ -21,7 +21,7 @@ export default function DigestDialog() {
         <div className="tiles" style={{ marginBottom: 6 }}>
           <div className="tile"><div className="k">Finished</div><div className="v">{d.stats.done}</div></div>
           <div className="tile"><div className="k">In progress</div><div className="v">{d.stats.inProgress}</div></div>
-          <div className="tile"><div className="k">Stuck</div><div className="v" style={d.stats.stuck ? { color: 'var(--bad)' } : undefined}>{d.stats.stuck}</div></div>
+          <div className="tile"><div className="k">Blocked</div><div className="v" style={d.stats.stuck ? { color: 'var(--bad)' } : undefined}>{d.stats.stuck}</div></div>
           <div className="tile"><div className="k">Usage</div><div className="v">{money(d.stats.cost)}</div></div>
         </div>
         {d.sections.map(s => (

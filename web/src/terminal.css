@@ -202,3 +202,77 @@ header .vdesc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; 
   .newreq .nrl { display: none; }
   header { padding: 8px 10px; gap: 6px; }
 }
+
+/* ---------- smaller controls ---------- */
+/* segmented switches read as cursor tabs: > on the current one */
+.seg, .tfilter { background: none; border: 0; padding: 0; gap: 14px; border-radius: 0; }
+.seg button, .tfilter button { background: none; border: 0; padding: 2px 0; font-size: 12.5px; font-weight: 400; color: var(--muted); border-radius: 0; box-shadow: none; }
+.seg button::before, .tfilter button::before { content: "> "; color: transparent; white-space: pre; }
+.seg button:hover, .tfilter button:hover { color: var(--ink); background: none; }
+.seg button.on, .tfilter button.on { background: none; color: var(--ink); font-weight: 500; box-shadow: none; }
+.seg button.on::before, .tfilter button.on::before { color: var(--accent); }
+.seg .ct { color: var(--faint); font-weight: 400; }
+/* buttons: a thin box; the main action is bracketed text in the accent, like [ new request ] */
+button, a.btn, .filebtn, .ghbtn { border-radius: 2px; border-color: var(--pane-line); background: transparent; font-weight: 400; }
+button:hover, a.btn:hover, .filebtn:hover, .ghbtn:hover { border-color: var(--accent); background: transparent; }
+button.primary { border-color: transparent; background: transparent; color: var(--accent); font-weight: 500; padding-left: 4px; padding-right: 4px; }
+button.primary::before { content: "[\00a0"; } button.primary::after { content: "\00a0]"; }
+button.primary:hover { filter: none; background: color-mix(in srgb, var(--accent) 12%, transparent); border-color: transparent; }
+button.primary:disabled:hover { background: transparent; }
+button.danger { border-color: transparent; color: var(--bad); font-weight: 500; padding-left: 4px; padding-right: 4px; }
+button.danger::before { content: "[\00a0"; } button.danger::after { content: "\00a0]"; }
+button.danger:hover { background: var(--bad-soft); border-color: transparent; }
+button.ghost { border-color: transparent; color: var(--muted); }
+button.ghost:hover { border-color: transparent; color: var(--ink); background: var(--hover); }
+button.link { color: var(--accent); }
+/* the bracket buttons in the overview and the header keep their own look */
+.iconbtn { border-color: transparent; }
+.iconbtn:hover { border-color: transparent; background: var(--hover); }
+/* inputs: a sunk box with a hard edge, the accent on focus */
+input, select, textarea { background: color-mix(in srgb, var(--page) 70%, var(--raised)); border-color: var(--pane-line); }
+:root[data-theme="dark"] :is(input, select, textarea) { background: color-mix(in srgb, var(--page) 85%, #000); }
+input:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: none; }
+input[type=checkbox], input[type=radio] { accent-color: var(--accent); }
+::placeholder { color: var(--faint); }
+/* switches: square track and knob */
+.toggle { border-radius: 2px; width: 34px; height: 18px; background: color-mix(in srgb, var(--ink) 18%, transparent); }
+.toggle::after { border-radius: 1px; width: 14px; height: 14px; box-shadow: none; }
+.toggle[aria-checked="true"] { background: var(--accent); } .toggle[aria-checked="true"]::after { background: var(--accent-ink); }
+.toggle:hover { border-color: transparent; }
+/* task board: columns are panes with the name in the top edge, cards are flat */
+.tbar { border-bottom: 1px dashed var(--pane-line); }
+.cols { gap: 22px 14px; padding-top: 24px; }
+.col { position: relative; background: var(--pane); border: 1px solid var(--pane-line); border-radius: 0; min-height: 100px; padding-top: 10px; }
+.col h3 { position: absolute; top: -9px; left: 10px; right: 10px; padding: 0; justify-content: space-between; font: 500 12.5px/18px var(--tmono); }
+.col h3 > * { background: linear-gradient(transparent 8px, var(--pane) 8px); }
+.col h3 { gap: 0; }
+.col h3 .count { margin-left: auto; padding: 0 6px; color: var(--faint); font-weight: 400; }
+.col h3 .dot { display: none; }
+.col h3 > :not(.count):not(.dot) { padding: 0 6px; }
+.tcard { background: transparent; border: 0; border-top: 1px dashed var(--line); border-radius: 0; margin: 0 10px; padding: 10px 2px; box-shadow: none; }
+.tcard:first-of-type { border-top: 0; }
+.tcard:hover { background: var(--hover); border-color: var(--line); }
+.tcard.sel { box-shadow: inset 2px 0 0 var(--accent); border-color: var(--line); background: var(--accent-soft); }
+.tcard .tt { font-weight: 500; font-size: 12.5px; }
+.tcard .tm { font-size: 11.5px; }
+.tdpanel { background: var(--pane); border-left: 1px solid var(--pane-line); }
+.tdpanel .lbl { font-weight: 400; color: var(--faint); }
+/* composer, tiles, cards and lists: the pane surface with a hard edge */
+#composer { background: transparent; border-top: 1px solid var(--pane-line); }
+.cbox { background: var(--pane); border-color: var(--pane-line); box-shadow: none; }
+.cbox:focus-within { border-color: var(--accent); box-shadow: none; }
+.ctop .clabel { font-weight: 500; }
+.tile { background: var(--pane); border-color: var(--pane-line); }
+.tile .k { color: var(--faint); font-size: 12px; }
+.tile .v { font: 700 22px/1.25 var(--tnum); letter-spacing: -.02em; }
+.stats { background: var(--pane); border-color: var(--pane-line); } .stats th { background: transparent; font-weight: 400; color: var(--faint); }
+.row-item, .mem, details.goal, .goal.single, .fdetail, #asks, .embed, .it.tools ul, .card { background: var(--pane); border-color: var(--pane-line); box-shadow: none; border-radius: 0; }
+.kbar { border-bottom: 1px dashed var(--pane-line); background: transparent; }
+.pill { font-size: 11.5px; padding: 0 7px; }
+.slabel, .tag, .ttag, .bottag, .ncount, .navbadge { border-radius: 2px; }
+.menu { border-color: var(--pane-line); box-shadow: 0 10px 30px -12px rgba(0, 0, 0, .6); }
+.menu .mi { border-radius: 0; font-weight: 400; } .menu .mh { font-weight: 400; color: var(--faint); }
+dialog, .palette, .sheet { border-color: var(--pane-line); }
+.dlg-head h3, .sheet h3 { font-weight: 500; }
+.empty h3 { font-weight: 500; }
+.av { font-weight: 500; }

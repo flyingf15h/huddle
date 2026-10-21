@@ -48,7 +48,7 @@ export default function Tasks() {
           {COLUMNS.map(([k, label]) => (
             <section key={k} className={'col' + (over === k ? ' drop' : '')} aria-label={label}
               onDragOver={(e) => { e.preventDefault(); setOver(k); }} onDragLeave={() => setOver(over === k ? null : over)} onDrop={(e) => { e.preventDefault(); drop(k); }}>
-              <h3><span className={'dot ' + k} aria-hidden="true"></span>{label}<span className="count">{shown.filter(t => t.status === k).length}</span></h3>
+              <h3><span className={'dot ' + k} aria-hidden="true"></span><span className="cl">{label}</span><span className="count">{shown.filter(t => t.status === k).length}</span></h3>
               {byCol[k].map(t => {
                 const x = titleOf(t), gg = goalOf(t);
                 return (
@@ -66,7 +66,7 @@ export default function Tasks() {
                   </button>
                 );
               })}
-              {!byCol[k].length && <div className="quiet" style={{ padding: '4px 12px 12px' }}>{k === 'blocked' ? 'Nothing stuck.' : 'None.'}</div>}
+              {!byCol[k].length && <div className="quiet" style={{ padding: '4px 12px 12px' }}>{k === 'blocked' ? 'nothing blocked' : 'none'}</div>}
               {k === 'done' && !showDone && shown.filter(t => t.status === 'done').length > 15 && <button className="link small" style={{ margin: '0 12px 10px' }} onClick={() => setShowDone(true)}>Show all</button>}
             </section>
           ))}

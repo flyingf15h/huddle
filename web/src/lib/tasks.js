@@ -2,7 +2,7 @@
 import { S, api, loadBoard, myName, keys, auth } from './state.js';
 import { bestTitle, stuckReason as stuckReasonRaw } from './words.js';
 
-export const COLUMNS = [['todo', 'To do'], ['doing', 'In progress'], ['blocked', 'Stuck'], ['done', 'Done']];
+export const COLUMNS = [['todo', 'queued'], ['doing', 'working'], ['blocked', 'blocked'], ['done', 'merged']];
 export const RUN_WORD = { ok: 'Finished', retrying: 'Retried', crashed: 'Crashed', failed: 'Failed', limit: 'Usage limit', waiting: 'Waiting' };
 export const runPill = (o) => (o === 'ok' ? 'ok' : o === 'retrying' ? 'warn' : o === 'limit' ? 'acc' : 'bad');
 export const titleOf = (t) => bestTitle(t.title, t.detail);

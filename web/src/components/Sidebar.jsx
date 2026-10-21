@@ -48,7 +48,7 @@ export default function Sidebar() {
                 <i className="sdot" aria-hidden="true"></i>
                 <span className="pbd">
                   <span className="top"><span className="name">{dn(p.name)}{p.name === me && <span className="faint"> (you)</span>}</span><span className="tool">{toolOf(p.name).toLowerCase()}</span>{u && <span className={'use' + (u.high ? ' usehigh' : '')} title={u.title}>{u.left}% left</span>}</span>
-                  <span className="doing">{st.tone === 'w' ? 'waiting on you' : c.main || c.live}</span>
+                  <span className="doing">{st.tone === 'w' ? st.word : c.main || c.live}</span>
                 </span>
               </button>
             </div>

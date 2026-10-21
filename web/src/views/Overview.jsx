@@ -11,7 +11,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 const midnight = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
 const hm = (ms) => { const m = Math.round(ms / 60000); return m < 60 ? [[m, 'm']] : [[Math.floor(m / 60), 'h'], [m % 60, 'm']]; };
 const short = (t) => ago(t).replace(/ ago$/, '').replace(/^just now$/, 'now').replace(/ minutes?/, 'm').replace(/ hours?/, 'h').replace(/ days?/, 'd');
-const STATUS = { doing: ['working', 'a'], todo: ['queued', ''], blocked: ['stuck', 'w'], done: ['done', 'g'] };
+const STATUS = { doing: ['working', 'a'], todo: ['queued', ''], blocked: ['blocked', 'w'], done: ['merged', 'g'] };
 
 function Pane({ title, right, hot, className = '', children }) {
   return (
@@ -47,14 +47,14 @@ export default function Overview() {
   const tasks = S.board.tasks.filter(t => t.status !== 'done' || (t.updated || t.at) > Date.now() - 864e5)
     .sort((a, b) => RANK[a.status] - RANK[b.status] || (b.updated || b.at) - (a.updated || a.at)).slice(0, 8);
 
-  // needs you: commands waiting for my OK, stuck work that's mine or that I asked for, my merge conflicts
+  // needs you: commands waiting for my OK, blocked work that's mine or that I asked for, my merge conflicts
   const groups = new Map();
   for (const x of S.approvals.filter(a => a.owner === me)) { const k = x.taskId || x.id; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(x); }
   const canHere = !!keys[auth.project];
   const choose = (list, allow) => decide(list.map(x => x.id), allow).catch(e => setErr(m => ({ ...m, [list[0].id]: /huddle open/.test(e.message) ? 'open the dashboard with huddle open to decide here' : e.message })));
   const needs = [
     ...S.board.tasks.filter(t => t.status === 'blocked' && (t.owner === me || t.by === me)).map(t => ({
-      key: t.id, shut: true, at: t.updated || t.at, title: 'Stuck, waiting on you',
+      key: t.id, shut: true, at: t.updated || t.at, title: 'Blocked, waiting on you',
       text: stuckReason(t) || titleOf(t).title, sub: titleOf(t).title + (t.owner && t.owner !== me ? ' · ' + dn(t.owner) : ''),
       acts: [['open', () => go('tasks', { task: t.id }), true], ['run again', () => runAgain(t)]],
     })),
@@ -80,9 +80,9 @@ export default function Overview() {
     <main data-main className="overview">
       <div className="ogrid">
         <Pane title="requests" right={<span>today</span>} className="p-stat">
-          <div className="cmdl"><span>$</span>huddle board</div>
+          <div className="cmdl"><span>$</span>huddle requests --today</div>
           <div className="out"><b>{todays.length}</b>{todays.length === 1 ? 'request' : 'requests'}<br />
-            <i className="g">{count('done')}</i> done  <i className="a">{count('doing')}</i> working  <i className="w">{count('blocked')}</i> stuck{count('todo') ? <>  <i>{count('todo')}</i> queued</> : null}</div>
+            <i className="g">{count('done')}</i> merged  <i className="a">{count('doing')}</i> working  <i className="w">{count('blocked')}</i> blocked{count('todo') ? <>  <i>{count('todo')}</i> queued</> : null}</div>
         </Pane>
         <Pane title="agent time" right={<span>today</span>} className="p-stat">
           <div className="cmdl"><span>$</span>huddle cost</div>

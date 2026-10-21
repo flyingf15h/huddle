@@ -64,7 +64,7 @@ export default function Home() {
                     <>
                       <span>{online(i) ? <b style={{ color: 'var(--ok)' }}>{online(i)} online</b> : 'Nobody online'}</span>
                       <span>{i.board ? i.board.tasks.filter(t => t.status !== 'done').length : 0} open tasks</span>
-                      {i.board && i.board.tasks.some(t => t.status === 'blocked') && <span style={{ color: 'var(--bad)' }}>{i.board.tasks.filter(t => t.status === 'blocked').length} stuck</span>}
+                      {i.board && i.board.tasks.some(t => t.status === 'blocked') && <span style={{ color: 'var(--bad)' }}>{i.board.tasks.filter(t => t.status === 'blocked').length} blocked</span>}
                     </>
                   )}</span>
                 </button>
