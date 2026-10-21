@@ -276,3 +276,25 @@ dialog, .palette, .sheet { border-color: var(--pane-line); }
 .dlg-head h3, .sheet h3 { font-weight: 500; }
 .empty h3 { font-weight: 500; }
 .av { font-weight: 500; }
+
+/* ---------- text colours from the theme itself (the old greys were warm, which read yellow on the dark themes) ---------- */
+:root { --ink: color-mix(in srgb, var(--accent) 14%, #15171c); --muted: color-mix(in srgb, var(--accent) 16%, #5a5f6b); --faint: color-mix(in srgb, var(--accent) 12%, #8d929d); --grid-dot: color-mix(in srgb, var(--ink) 6%, transparent); }
+:root[data-theme="dark"] { --ink: color-mix(in srgb, var(--rail-ink) 94%, var(--page)); --muted: color-mix(in srgb, var(--rail-ink) 62%, var(--page)); --faint: color-mix(in srgb, var(--rail-ink) 40%, var(--page));
+  --line: color-mix(in srgb, var(--rail-ink) 9%, transparent); --line-strong: color-mix(in srgb, var(--rail-ink) 16%, transparent); --hover: color-mix(in srgb, var(--rail-ink) 5%, transparent); }
+/* light themes: flat panes, no drop shadow */
+:root:not([data-theme="dark"]) .panel, :root:not([data-theme="dark"]) .ogrid .pane, :root:not([data-theme="dark"]) .col { box-shadow: none; }
+:root:not([data-theme="dark"]) { --pane-line: color-mix(in srgb, var(--ink) 13%, transparent); }
+
+/* ---------- header buttons are words, like the rest of the page ---------- */
+.hbtn { border: 0; background: none; padding: 4px 6px; font-size: 12.5px; font-weight: 400; color: var(--muted); border-radius: 2px; display: inline-flex; gap: 4px; align-items: baseline; position: relative; }
+.hbtn:hover { color: var(--ink); background: var(--hover); }
+.hbtn[aria-expanded="true"] { color: var(--ink); }
+.hbtn .hcount { color: var(--wait); }
+.headbtns { gap: 2px; }
+.newreq .key { color: var(--faint); font-weight: 400; }
+
+/* ---------- the bottom edge: the sidebar's footer and the status line are one band of the same height ---------- */
+.mepanel, #statusline { height: 34px; min-height: 34px; padding-top: 0; padding-bottom: 0; border-top: 1px solid var(--pane-line); box-sizing: border-box; }
+#statusline { background: var(--rail); padding-left: 18px; gap: 16px; }
+#statusline .faint { color: var(--faint); }
+#statusline b { font-weight: 500; }

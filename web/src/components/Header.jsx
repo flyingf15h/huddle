@@ -18,9 +18,6 @@ const DESC = { overview: "what's running and what needs you", activity: 'every p
   studio: 'the brief, timeline, gallery, builds and github', settings: 'people, usage, health, integrations and rules' };
 const FILTERS = [['all', 'everything', 'Every prompt, step, reply, message and file change'], ['key', 'highlights', 'Requests, prompts, replies, messages and hand-offs'], ['talk', 'messages', 'Only messages and requests']];
 const mac = /Mac|iPhone|iPad/.test(navigator.platform);
-// the return key, drawn in square pixels like a terminal font
-const ENTER = [[6, 0], [6, 1], [2, 2], [6, 2], [1, 3], [2, 3], [6, 3], [0, 4], [1, 4], [2, 4], [3, 4], [4, 4], [5, 4], [6, 4], [1, 5], [2, 5], [2, 6]];
-export const EnterKey = () => <svg className="enterkey" viewBox="0 0 14 14" aria-hidden="true">{ENTER.map(([x, y]) => <rect key={x + '-' + y} x={x * 2} y={y * 2} width="2" height="2" />)}</svg>;
 export const newRequest = () => { if (S.view !== 'activity') go('activity'); setTimeout(() => dispatchEvent(new Event('huddle:compose')), 0); };
 
 export default function Header() {
@@ -34,7 +31,7 @@ export default function Header() {
   return (
     <header className={mini ? 'wide' : ''}>
       <button className="ghost iconbtn menubtn" aria-label="Open the menu" onClick={() => (S.drawer = true)}><Icon name="menu" /></button>
-      <button className="ghost iconbtn hide-sm" aria-label={mini ? 'Show the sidebar' : 'Fold the sidebar away and show the pages as tabs'} title={mini ? 'Show the sidebar' : 'Fold the sidebar away (pages move to tabs)'} onClick={toggleRail}><Icon name="panelLeft" size={18} /></button>
+      <button className="hbtn hide-sm" aria-label={mini ? 'Show the sidebar' : 'Fold the sidebar away and show the pages as tabs'} title={mini ? 'Show the sidebar' : 'Fold the sidebar away (pages move to tabs)'} onClick={toggleRail}>{mini ? '»' : '«'}</button>
       {mini ? (
         <>
           <ProjectMenu />
@@ -59,17 +56,17 @@ export default function Header() {
       <span className="grow"></span>
       <button className="searchbtn" onClick={() => (S.search = true)} aria-label="Search the project"><span className="slash">/</span><span className="label">search</span><span className="kbdk">{mac ? '⌘K' : 'ctrl k'}</span></button>
       <div className="headbtns" style={{ position: 'relative' }}>
-        <button className="ghost iconbtn" id="btn-notify" aria-haspopup="menu" aria-expanded={notesOpen} aria-label={'Notifications' + (unread ? ` (${unread} unread)` : '')} onClick={() => setNotesOpen(!notesOpen)}>
-          <Icon name={dnd ? 'belloff' : 'bell'} size={18} />{unread > 0 && <span className="nbadge">{unread > 99 ? '99+' : unread}</span>}
+        <button className="hbtn" id="btn-notify" aria-haspopup="menu" aria-expanded={notesOpen} aria-label={'Notifications' + (unread ? ` (${unread} unread)` : '')} title={dnd ? 'Notifications (do not disturb is on)' : 'Notifications'} onClick={() => setNotesOpen(!notesOpen)}>
+          {dnd ? 'inbox (muted)' : 'inbox'}{unread > 0 && <span className="hcount">({unread > 99 ? '99+' : unread})</span>}
         </button>
         {notesOpen && <Notifications close={() => setNotesOpen(false)} />}
-        {S.view === 'activity' && <button className="ghost iconbtn hide-sm" aria-label="Show or hide the side panel" title="Show or hide the side panel" onClick={toggleSide}><Icon name="panelRight" size={18} /></button>}
-        <button className="ghost iconbtn hide-sm" aria-haspopup="dialog" aria-expanded={themeOpen} aria-label="Theme" title="Theme" onClick={() => { setThemeOpen(!themeOpen); setNotesOpen(false); }}><Icon name="palette" size={18} /></button>
+        {S.view === 'activity' && <button className="hbtn hide-sm" aria-label="Show or hide the side panel" title="Show or hide the side panel" onClick={toggleSide}>panel</button>}
+        <button className="hbtn hide-sm" aria-haspopup="dialog" aria-expanded={themeOpen} aria-label="Theme" title="Theme" onClick={() => { setThemeOpen(!themeOpen); setNotesOpen(false); }}>theme</button>
         {themeOpen && <><button className="clickaway" aria-label="Close" onClick={() => setThemeOpen(false)} /><div className="menu" role="dialog" aria-label="Theme" style={{ position: 'absolute', top: 44, right: 0, maxWidth: 'none' }}><div className="mh">theme</div><ThemePicker compact /></div></>}
-        <button className="ghost iconbtn hide-sm" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)" onClick={() => (S.shortcuts = true)}><Icon name="keyboard" size={18} /></button>
-        <button className="ghost iconbtn hide-sm" aria-label="How huddle works" title="How huddle works" onClick={() => (S.help = true)}><Icon name="help" size={18} /></button>
+        <button className="hbtn hide-sm" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)" onClick={() => (S.shortcuts = true)}>keys</button>
+        <button className="hbtn hide-sm" aria-label="How huddle works" title="How huddle works" onClick={() => (S.help = true)}>help</button>
       </div>
-      <button className="newreq" onClick={newRequest} title="New request (c)"><span className="br">[</span>new<span className="nrl"> request</span> <EnterKey /><span className="br">]</span></button>
+      <button className="newreq" onClick={newRequest} title="New request (c)"><span className="br">[</span>new<span className="nrl"> request</span> <span className="key">(c)</span><span className="br">]</span></button>
     </header>
   );
 }

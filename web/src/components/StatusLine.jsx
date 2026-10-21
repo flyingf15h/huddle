@@ -14,8 +14,7 @@ export default function StatusLine() {
   const waiting = S.approvals.filter(a => a.owner === me).length + S.board.tasks.filter(t => t.status === 'blocked' && (t.owner === me || t.by === me)).length;
   return (
     <footer id="statusline" aria-label="Status">
-      <span className="mode">huddle</span>
-      <span><b>{prettyProject(auth.project)}</b>{mine && mine.branch ? ' ' + mine.branch : ''}</span>
+      <span><span className="faint">~/</span><b>{prettyProject(auth.project)}</b>{mine && mine.branch ? <span className="faint"> on {mine.branch}</span> : ''}</span>
       <span>{running} running{waiting ? <> · <em>{waiting} waiting on you</em></> : ''}</span>
       <span className="grow"></span>
       <span className={'sconn ' + S.conn}>{S.conn === 'live' ? 'live' : S.conn === 'connecting' ? 'connecting' : 'reconnecting'}</span>
