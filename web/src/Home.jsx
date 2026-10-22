@@ -71,7 +71,7 @@ export default function Home() {
         <div className="hhero"><h1 className="htitle"><span className="prompt">$</span> huddle projects</h1><p>Open one to see every teammate's agent at work.</p></div>
 
         <section className="pane hlist">
-          <div className="pt"><b>projects <span className="cnt">{names.length}</span></b></div>
+          <div className="phd"><b>projects</b><span>{names.length}</span></div>
           {names.length > 0 && <div className="hrow hth"><span>project</span><span>latest</span><span>team</span><span>open</span><span>blocked</span><span>active</span></div>}
           {rows.map(({ n, i }) => {
             const team = i ? people(i) : [], last = i && latest(i), on = team.filter(p => p.online).length, seen = Math.max(0, ...team.map(p => p.seen));
@@ -94,7 +94,7 @@ export default function Home() {
 
         <div className="hcols">
           <form className="pane hcard" onSubmit={join}>
-            <div className="pt"><b>join with an invite</b></div>
+            <div className="phd"><b>join with an invite</b></div>
             <div className="hfields">
               <input value={invite} onChange={(e) => setInvite(e.target.value)} placeholder="invite code or link" autoComplete="off" aria-label="Invite code" />
               <input value={name} onChange={(e) => setName(e.target.value)} placeholder="your name" autoComplete="name" aria-label="Your name" className="hname-in" />
@@ -102,12 +102,12 @@ export default function Home() {
             </div>
           </form>
           <div className="pane hcard">
-            <div className="pt"><b>start a project</b><span>in the repo's folder</span></div>
+            <div className="phd"><b>start a project</b><span>run in the repo's folder</span></div>
             <div className="hcmd"><code><span className="prompt">$</span> {cmd}</code><button type="button" onClick={copy}>{copied ? 'copied' : 'copy'}</button></div>
           </div>
           {!S.account.user && (S.account.email || S.account.github) && (
             <div className="pane hcard hsign">
-              <div className="pt"><b>sign in</b><span>your projects in any browser</span></div>
+              <div className="phd"><b>sign in</b><span>your projects in any browser</span></div>
               {S.account.email && (!sent
                 ? <form onSubmit={sendCode} className="hfields"><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" aria-label="Email" required /><button className="primary">email me a code</button></form>
                 : <>
@@ -121,14 +121,14 @@ export default function Home() {
         </div>
       </div>
 
-      <footer id="statusline" className="hstatus" aria-label="Status">
-        <span className="mode">huddle</span>
-        <span>{names.length} project{names.length === 1 ? '' : 's'}</span>
-        <span><b>{total(i => people(i).filter(p => p.online).length)}</b> online</span>
+      <footer className="hstatus" aria-label="Status">
+        <span className="hs-live"><i />live</span>
+        <span className="hs-count">{names.length} project{names.length === 1 ? '' : 's'}</span>
+        <span><i className="ok" /><b>{total(i => people(i).filter(p => p.online).length)}</b> online</span>
         <span><b>{total(open)}</b> open</span>
-        {total(blocked) > 0 && <span><em>{total(blocked)} blocked</em></span>}
+        <span className={total(blocked) ? 'warn' : ''}><i className={total(blocked) ? 'bad' : ''} /><b>{total(blocked)}</b> blocked</span>
         <span className="grow"></span>
-        <span>{location.host}</span>
+        <span className="hs-host">{location.host}</span>
       </footer>
     </div>
   );

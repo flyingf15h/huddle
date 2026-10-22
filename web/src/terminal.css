@@ -490,3 +490,32 @@ main.overview { display: flex; flex-direction: column; }
 @media (min-width: 1100px) { .home .hcols { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) minmax(0, 1fr); } }
 .hfields .hname-in { flex: 0 1 110px; }
 @media (min-width: 1100px) { .home .hcols:not(:has(.hsign)) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+/* home: pane headers sit inside the pane here, and a calmer status bar */
+.home .phd { display: flex; align-items: baseline; gap: 10px; margin: -4px -16px 12px; padding: 0 16px 10px; border-bottom: 1px solid var(--pane-line); font-size: 12.5px; }
+.home .phd b { font-weight: 500; color: var(--ink); }
+.home .phd span { color: var(--faint); font-size: 12px; }
+.home .phd b + span:last-child:not(:only-child) { margin-left: 0; }
+.home .hcard .phd span { margin-left: auto; }
+.home .hlist { padding-top: 14px; }
+.home .hlist .phd { margin-bottom: 0; }
+.home .hlist .hth { border-bottom: 1px dashed var(--line); padding-top: 9px; }
+.home .hcard { padding-top: 14px; gap: 0; }
+.home .hcard > :not(.phd) + :not(.phd) { margin-top: 10px; }
+.hstatus { position: sticky; bottom: 0; display: flex; align-items: center; gap: 0; padding: 0 20px; height: 34px; border-top: 1px solid var(--pane-line);
+  background: color-mix(in srgb, var(--rail) 85%, var(--page)); font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; }
+.hstatus > span { display: inline-flex; align-items: center; gap: 6px; }
+.hstatus > span:not(.grow):not(.hs-host) + span:not(.grow)::before { content: ''; width: 1px; height: 12px; background: var(--pane-line); margin: 0 14px; }
+.hstatus b { font-weight: 500; color: var(--ink); font-family: var(--tnum); }
+.hstatus i { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); }
+.hstatus i.ok { background: var(--ok); }
+.hstatus i.bad { background: var(--bad); }
+.hstatus .warn b { color: var(--bad); }
+.hstatus .hs-live { color: var(--ok); }
+.hstatus .hs-live i { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 20%, transparent); }
+.hstatus .grow { flex: 1; }
+.hstatus .hs-host { color: var(--faint); }
+@media (max-width: 640px) { .hstatus .hs-host { display: none; } .hstatus > span:not(.grow):not(.hs-host) + span:not(.grow)::before { margin: 0 9px; } }
+.home .phd b { white-space: nowrap; }
+.home .hcard .phd span { margin-left: 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 640px) { .hstatus .hs-count, .hstatus .hs-live { display: none; } .hstatus { padding: 0 16px; } }
+@media (max-width: 640px) { .hstatus .hs-count + span::before { display: none !important; } }
