@@ -413,3 +413,47 @@ main.overview { display: flex; flex-direction: column; }
 .ogrid { flex: 1; grid-template-rows: auto minmax(260px, 1fr); align-items: stretch; min-height: 0; }
 .ogrid .p-req, .ogrid .p-needs { min-height: 0; }
 @media (max-width: 1000px) { .ogrid { grid-template-rows: none; } }
+
+/* ---------- home: the project list, in the same panes as the dashboard ---------- */
+body:has(#login:not([hidden])) { background: radial-gradient(circle, var(--grid-dot) 1px, transparent 1.2px) 0 0 / 14px 14px, var(--page); }
+#login { max-width: 980px; padding: 22px 20px 48px; gap: 26px; }
+.hhead { padding-bottom: 14px; border-bottom: 1px solid var(--pane-line); }
+.hhead .brand { font-size: 15px; font-weight: 500; gap: 0; }
+.hhead .brand .tilde { color: var(--faint); font-weight: 400; margin-right: 2px; }
+.hhero .htitle { font-size: 22px; font-weight: 500; letter-spacing: -.01em; display: flex; align-items: baseline; gap: 10px; }
+.hhero .htitle .prompt { color: var(--accent); }
+.hhero .htitle .hcount { font: 400 13px var(--tnum); color: var(--faint); }
+.hhero .muted { font-size: 13px; }
+.hgrid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 22px 16px; padding-top: 9px; }
+.pane { position: relative; }
+.pcard.pane, .hcard.pane { background: var(--pane); border: 1px solid var(--pane-line); border-radius: 0; box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 4%, transparent), 0 6px 18px -12px rgba(0, 0, 0, .55); }
+.pcard.pane { padding: 0; min-height: 0; gap: 0; }
+.pcard.pane:hover { border-color: var(--accent); }
+.pcard.pane > .pt { font-size: 13px; padding-right: 0; right: 34px; }
+.pcard.pane > .pt b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pcard.pane > button.ghost { all: unset; box-sizing: border-box; cursor: pointer; display: flex; flex-direction: column; gap: 14px; padding: 20px 14px 12px; flex: 1; }
+.pcard.pane > button.ghost:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.pcard .pm { font-size: 12.5px; color: var(--muted); gap: 6px 14px; }
+.pcard .pm .on { color: var(--ok); }
+.pcard .pm .bad { color: var(--bad); }
+.pcard .pm .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; border: 1px solid currentColor; margin-right: 7px; vertical-align: 0; }
+.pcard .pm .dot.full { background: currentColor; }
+.pcard .popen { font-size: 12px; color: var(--faint); }
+.pcard.pane:hover .popen { color: var(--accent); }
+.pcard .pforget { top: -9px; right: 8px; padding: 0 6px; font-size: 14px; line-height: 18px; background: linear-gradient(transparent 8px, var(--pane) 8px); border-radius: 0; }
+.pcard .pforget:hover { background: linear-gradient(transparent 8px, var(--pane) 8px); }
+.hempty { border-radius: 0; border-color: var(--pane-line); font-size: 12.5px; }
+.hcols { gap: 22px 16px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.hcard.pane { padding: 22px 16px 14px; gap: 12px; }
+.hcard.pane .muted { font-size: 12.5px; margin: 0; }
+.hcard.pane input { border-radius: 0; }
+.hcard.pane .lrow { margin-top: auto; display: flex; justify-content: flex-end; }
+.hcard .cmd { margin: 0; }
+.hcard .cmd code { border-radius: 0; border-color: var(--pane-line); font-size: 12px; color: var(--ink); background: color-mix(in srgb, var(--page) 60%, transparent); }
+.ghbtn { border-radius: 0; font-weight: 500; font-size: 12.5px; background: none; border-color: var(--pane-line); }
+@media (max-width: 640px) { #login { padding: 16px 16px 40px; } .hcols { grid-template-columns: minmax(0, 1fr); } }
+.dotfield { display: none; }
+.hhead a { text-decoration: none; } .hhead a:hover { color: var(--ink); }
+.pcard .pm .err { font-weight: 400; font-size: 12.5px; }
+.hcard.pane form button { white-space: nowrap; }
+.hcard.pane form[style] { flex-wrap: wrap; } .hcard.pane form[style] input { min-width: 0; flex-basis: 100% !important; } .hcard.pane form[style] button { margin-left: auto; }

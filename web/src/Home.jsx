@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import { S, auth, known, decodeInvite, lookUpInvite, SHORT_INVITE, startProject, openProject, forgetProject, prettyProject, loadAccount } from './lib/state.js';
 import { useS } from './lib/store.js';
 import { store } from './lib/words.js';
-import Avatar from './components/Avatar.jsx';
 import Icon from './components/Icon.jsx';
 
 const online = (i) => (i ? new Set(i.state.agents.filter(a => a.online && a.kind !== 'human').map(a => a.name)).size : 0);
@@ -43,30 +42,31 @@ export default function Home() {
 
   return (
     <div id="login" data-main>
-      <div className="hhead"><div className="brand"><svg viewBox="0 0 32 32"><rect width="32" height="32" rx="9" fill="var(--accent)" /><circle cx="11" cy="13" r="4.2" fill="var(--raised)" /><circle cx="21" cy="13" r="4.2" fill="var(--raised)" opacity=".85" /><circle cx="16" cy="21" r="4.2" fill="var(--raised)" opacity=".7" /></svg>huddle</div>
+      <div className="hhead"><div className="brand"><span className="tilde">~/</span>huddle</div>
         <span className="grow"></span>
         {S.account.user && <span className="small muted">Signed in as <b>{S.account.user.email || S.account.user.login}</b> · <a href="/auth/logout">Sign out</a></span>}
-        <a className="small muted" href="/?about">About</a></div>
+        <a className="small muted" href="/?about">about</a></div>
       {S.demoStatus && <div className="muted" role="status">{S.demoStatus}</div>}
       {(err || S.fatal) && <div className="err" role="alert">{err || S.fatal}</div>}
       <div className="hhero">
-        <div><p className="hlabel">Multiplayer for AI agents</p><h1 className="htitle">Your projects</h1><p className="muted">Open a project to see every teammate's agent at work, or join one with an invite.</p></div>
+        <div><h1 className="htitle"><span className="prompt">$</span> huddle projects{names.length ? <span className="hcount">{names.length}</span> : null}</h1><p className="muted">Open a project to see every teammate's agent at work, or join one with an invite.</p></div>
       </div>
       <section>
         <div className="hgrid">
           {names.map(n => {
             const i = infos[n];
             return (
-              <div className="pcard" style={{ padding: 0 }} key={n}>
-                <button className="ghost" data-nav style={{ all: 'unset', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 10, padding: 16, flex: 1 }} onClick={() => openProject(n)}>
-                  <span className="pt"><Avatar name={prettyProject(n)} sm /><span>{prettyProject(n)}</span>{store.get('huddle.demo.' + n) && <span className="pill acc">Demo</span>}</span>
+              <div className="pcard pane" key={n}>
+                <div className="pt"><b>{prettyProject(n)}</b>{store.get('huddle.demo.' + n) && <span>demo</span>}</div>
+                <button className="ghost" data-nav onClick={() => openProject(n)}>
                   <span className="pm">{i === null ? <span className="err">Your access to this project ended</span> : !i ? 'Loading…' : (
                     <>
-                      <span>{online(i) ? <b style={{ color: 'var(--ok)' }}>{online(i)} online</b> : 'Nobody online'}</span>
-                      <span>{i.board ? i.board.tasks.filter(t => t.status !== 'done').length : 0} open tasks</span>
-                      {i.board && i.board.tasks.some(t => t.status === 'blocked') && <span style={{ color: 'var(--bad)' }}>{i.board.tasks.filter(t => t.status === 'blocked').length} blocked</span>}
+                      <span className={online(i) ? 'on' : ''}><i className={online(i) ? 'dot full' : 'dot'} />{online(i) ? `${online(i)} online` : 'nobody online'}</span>
+                      <span>{i.board ? i.board.tasks.filter(t => t.status !== 'done').length : 0} open</span>
+                      {i.board && i.board.tasks.some(t => t.status === 'blocked') && <span className="bad">{i.board.tasks.filter(t => t.status === 'blocked').length} blocked</span>}
                     </>
                   )}</span>
+                  {i !== null && <span className="popen">open project ⏎</span>}
                 </button>
                 <button className="pforget" aria-label={`Remove ${prettyProject(n)} from this list`} title="Remove from this list" onClick={() => { forgetProject(n); location.reload(); }}>×</button>
               </div>
@@ -76,16 +76,16 @@ export default function Home() {
         </div>
       </section>
       <div className="hcols">
-        <form className="hcard" onSubmit={join}>
-          <h2>Join a project</h2>
+        <form className="hcard pane" onSubmit={join}>
+          <div className="pt"><b>join a project</b></div>
           <p className="muted">Paste the invite code or link someone sent you.</p>
           <input value={invite} onChange={(e) => setInvite(e.target.value)} placeholder="Invite code" autoComplete="off" aria-label="Invite code" />
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" autoComplete="name" aria-label="Your name" />
-          <div className="lrow"><button className="primary" disabled={busy}>Open project</button></div>
+          <div className="lrow"><button className="primary" disabled={busy}>open project</button></div>
         </form>
         {!S.account.user && (S.account.email || S.account.github) && (
-          <div className="hcard">
-            <h2>Sign in</h2>
+          <div className="hcard pane">
+            <div className="pt"><b>sign in</b></div>
             <p className="muted">Your projects follow you to any browser, and you can get notifications by email.</p>
             {S.account.email && (!sent
               ? <form onSubmit={sendCode} style={{ display: 'flex', gap: 8 }}><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" aria-label="Email" required style={{ flex: 1 }} /><button className="primary">Email me a code</button></form>
@@ -98,11 +98,11 @@ export default function Home() {
             {signErr && <p className="err small" style={{ margin: 0 }}>{signErr}</p>}
           </div>
         )}
-        <div className="hcard">
-          <h2>Start your own</h2>
+        <div className="hcard pane">
+          <div className="pt"><b>start your own</b></div>
           <p className="muted">In your project's folder, run:</p>
           <div className="cmd"><code>curl -fsSL {location.origin}/install.sh | sh</code></div>
-          <button disabled={busy} onClick={demo}>Try a demo project</button>
+          <div className="lrow"><button className="primary" disabled={busy} onClick={demo}>try a demo project</button></div>
         </div>
       </div>
     </div>
