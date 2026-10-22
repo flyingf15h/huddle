@@ -283,7 +283,7 @@ dialog, .palette, .sheet { border-color: var(--pane-line); }
   --line: color-mix(in srgb, var(--rail-ink) 9%, transparent); --line-strong: color-mix(in srgb, var(--rail-ink) 16%, transparent); --hover: color-mix(in srgb, var(--rail-ink) 5%, transparent); }
 /* light themes: flat panes, no drop shadow */
 :root:not([data-theme="dark"]) .panel, :root:not([data-theme="dark"]) .ogrid .pane, :root:not([data-theme="dark"]) .col { box-shadow: none; }
-:root:not([data-theme="dark"]) { --pane-line: color-mix(in srgb, var(--ink) 13%, transparent); }
+:root:not([data-theme="dark"]) { --pane-line: color-mix(in srgb, var(--ink) 24%, transparent); }
 
 /* ---------- header buttons are words, like the rest of the page ---------- */
 .hbtn { border: 0; background: none; padding: 4px 6px; font-size: 12.5px; font-weight: 400; color: var(--muted); border-radius: 2px; display: inline-flex; gap: 4px; align-items: baseline; position: relative; }
