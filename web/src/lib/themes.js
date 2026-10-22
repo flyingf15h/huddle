@@ -34,9 +34,7 @@ export function applyTheme(pref) {
   const root = document.documentElement;
   root.dataset.theme = t.dark ? 'dark' : 'light';
   root.dataset.palette = t.id;
-  // light pages sit a step darker than the white panes, so panes read as raised blocks the way they do on dark themes
-  const page = t.dark ? t.page : `color-mix(in srgb, ${t.page} 94%, #1c1e23)`;
-  const vars = { '--page': page, '--raised': t.raised, '--rail': t.rail, '--rail-ink': t.railInk, '--rail-active': t.railActive, '--accent': t.accent };
+  const vars = { '--page': t.page, '--raised': t.raised, '--rail': t.rail, '--rail-ink': t.railInk, '--rail-active': t.railActive, '--accent': t.accent };
   for (const [k, v] of Object.entries(vars)) root.style.setProperty(k, v);
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.content = t.rail;
