@@ -15,7 +15,9 @@
 })();
 </script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2324365e'/%3E%3Ccircle cx='11' cy='13' r='4.2' fill='%23f8f7f3'/%3E%3Ccircle cx='21' cy='13' r='4.2' fill='%23f8f7f3' opacity='.85'/%3E%3Ccircle cx='16' cy='21' r='4.2' fill='%23f8f7f3' opacity='.7'/%3E%3C/svg%3E">
-<meta name="theme-color" content="#f8f7f3">
+<meta name="theme-color" content="#07090e">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=JetBrains+Mono:wght@400;700&display=swap">
 <style>
 /* off-white and navy with one bright signal blue for live things; light only */
 :root {
@@ -326,6 +328,73 @@ footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
   .marquee .row { animation: none; }
   .frame { transform: none !important; }
 }
+
+/* ---------- the terminal look, matching the dashboard: Night by default, the light Navy terminal for light
+   systems. Mono type, square corners, flat panes with hard edges, [ bracketed ] main actions. ---------- */
+:root {
+  --page: #07090e; --raised: #11151f; --rail: #0b0e15; --ink: #e6e9f0; --muted: #9aa1b4; --faint: #6b7287;
+  --line: rgba(230, 235, 245, .09); --line-strong: rgba(230, 235, 245, .16); --sunk: rgba(230, 235, 245, .04);
+  --accent: #a8bafc; --signal: #a8bafc; --ok: #85d1a9; --bad: #f07a6a; --warn: #e8b04b; --wait: #ccaeef;
+  --night: #0b0e15; --night-2: #11151f; --night-ink: #e6e9f0; --night-muted: #9aa1b4; --night-line: rgba(230, 235, 245, .1);
+  --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace; --num: "JetBrains Mono", var(--mono);
+  --grid-dot: rgba(168, 186, 252, .07); --on-accent: #0b0e16;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) { :root {
+  --page: #f8f7f3; --raised: #ffffff; --rail: #e9edf3; --ink: #1c1e23; --muted: #5d616b; --faint: #8b8f98;
+  --line: rgba(28, 30, 35, .1); --line-strong: rgba(28, 30, 35, .18); --sunk: rgba(28, 30, 35, .04);
+  --accent: #24365e; --signal: #24365e; --ok: #1f7a5c; --bad: #b42318; --wait: #7a4fb5;
+  --night: #0b0e15; --night-2: #11151f; --night-ink: #e6e9f0; --night-muted: #9aa1b4; --night-line: rgba(230, 235, 245, .1);
+  --grid-dot: rgba(28, 30, 35, .06); --on-accent: #ffffff; color-scheme: light;
+} }
+body { font-family: var(--mono); font-size: 15px; letter-spacing: -.005em; background: radial-gradient(circle, var(--grid-dot) 1px, transparent 1.2px) 0 0 / 14px 14px, var(--page); }
+h1, h2, h3 { font-family: var(--mono); letter-spacing: -.03em; font-weight: 600; }
+h1 { font-weight: 600; }
+h1 .dim { color: var(--faint); }
+.label { text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--accent); }
+.label::before { content: "## "; color: var(--faint); }
+.sub, .lede { font-size: 16px; }
+/* nav and buttons */
+nav, nav.stuck { background: color-mix(in srgb, var(--page) 88%, transparent); border-bottom: 1px solid var(--line); }
+.brand { font-weight: 500; }
+.brand::before { content: "~/"; color: var(--faint); font-weight: 400; margin-right: -6px; order: 0; }
+.brand svg { display: none; }
+nav .links { font-size: 13.5px; } nav .actions { font-size: 13.5px; }
+.btn { border-radius: 2px; font-weight: 500; font-size: 14px; background: transparent; border-color: var(--line-strong); box-shadow: none; }
+.btn:hover { border-color: var(--accent); transform: none; box-shadow: none; }
+.btn.primary { background: transparent; border-color: transparent; color: var(--accent); box-shadow: none; padding-left: 6px; padding-right: 6px; }
+.btn.primary::before { content: "["; margin-right: 4px; } .btn.primary::after { content: "]"; margin-left: 4px; }
+.btn.primary:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); box-shadow: none; }
+.btn .arrow { display: none; }
+.pill { border-radius: 2px; border-color: var(--line-strong); background: var(--raised); font-size: 13px; }
+.pill b { border-radius: 2px; background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+/* the screenshot tour: cursor tabs and a flat frame */
+.tour .tabs button { border-radius: 0; font-weight: 400; }
+.tour .tabs button::before { content: "> "; color: transparent; }
+.tour .tabs button[aria-selected=true] { background: none; color: var(--ink); }
+.tour .tabs button[aria-selected=true]::before { color: var(--accent); }
+.tour .tabs button i { border-radius: 0; }
+.frame { border-radius: 2px; border: 1px solid var(--line-strong); box-shadow: 0 30px 80px -30px rgba(0, 0, 0, .7); background: var(--raised); }
+.marquee span { font-size: 13px; }
+/* sections: no pastel gradients, the same panes as the app */
+.tint { background: var(--rail); border-top: 1px solid var(--line); }
+.tint .window { border-color: var(--line-strong); box-shadow: 0 30px 70px -30px rgba(0, 0, 0, .6); }
+.dotfield::before { background-image: radial-gradient(var(--grid-dot) 1px, transparent 1.3px); }
+.window, .cell, .approve, .term, .copyrow code, .copyrow button, details, .vs > div, .stage .window, .av, .msg, .talk div, .task-chip, .ubar, .ubar b, .code { border-radius: 2px !important; }
+.window, .cell, .approve, .vs > div { background: var(--raised); border-color: var(--line-strong); box-shadow: none; }
+.cell:hover { border-color: var(--accent); transform: none; box-shadow: none; }
+.viz { border-bottom-color: var(--line); background: radial-gradient(var(--grid-dot) 1px, transparent 1.3px) 0 0 / 14px 14px; }
+.msg.me, .talk div:nth-child(2), .approve .row span.yes { color: var(--on-accent); }
+.av { color: var(--on-accent); }
+.step .n { font-family: var(--num); }
+/* the closing call to action as a pane with its title in the border */
+.final .panel { border-radius: 0; background: var(--raised); border: 1px solid var(--line-strong); color: var(--ink); }
+.final h2 { color: var(--ink); }
+.final .btn { background: transparent; border-color: var(--line-strong); color: var(--ink); }
+.final .btn.primary { background: transparent; border-color: transparent; color: var(--accent); box-shadow: none; }
+.final .panel .cloud { opacity: .25; }
+footer { border-top: 1px solid var(--line); }
+@media (prefers-color-scheme: light) { .frame { box-shadow: 0 30px 70px -36px rgba(28, 30, 35, .35); } }
 </style>
 </head>
 <body>
@@ -368,19 +437,19 @@ footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
 
   <div class="tour playing rv" id="tour" style="--dwell: 2.8s; --d:.25s">
     <div class="tabs" role="tablist" aria-label="huddle screens">
-      <button role="tab" aria-selected="true" aria-controls="tourframe" data-i="0">Activity<i></i></button>
-      <button role="tab" aria-selected="false" aria-controls="tourframe" data-i="1">Tasks<i></i></button>
-      <button role="tab" aria-selected="false" aria-controls="tourframe" data-i="2">Memory<i></i></button>
-      <button role="tab" aria-selected="false" aria-controls="tourframe" data-i="3">Code<i></i></button>
-      <button role="tab" aria-selected="false" aria-controls="tourframe" data-i="4">Usage<i></i></button>
+      <button role="tab" aria-selected="true" aria-controls="tourframe" data-i="0">overview<i></i></button>
+      <button role="tab" aria-selected="false" aria-controls="tourframe" data-i="1">activity<i></i></button>
+      <button role="tab" aria-selected="false" aria-controls="tourframe" data-i="2">tasks<i></i></button>
+      <button role="tab" aria-selected="false" aria-controls="tourframe" data-i="3">timeline<i></i></button>
+      <button role="tab" aria-selected="false" aria-controls="tourframe" data-i="4">usage<i></i></button>
     </div>
-    <p class="cap" id="tourcap" aria-live="polite"><b>Everything, live.</b> Every request, agent step and message across the team, with who is on what.</p>
+    <p class="cap" id="tourcap" aria-live="polite"><b>At a glance.</b> What the team asked for today, what each agent is on, and what needs you.</p>
     <div class="frame" id="tourframe" role="tabpanel">
-      <img src="/shots/activity.webp" alt="huddle Activity screen" width="1400" height="860" class="on" fetchpriority="high">
-      <img src="/shots/tasks.webp" alt="huddle Tasks screen" width="1400" height="860">
-      <img src="/shots/memory.webp" alt="huddle shared memory screen" width="1400" height="860">
-      <img src="/shots/conflicts.webp" alt="huddle Code screen" width="1400" height="860">
-      <img src="/shots/usage.webp" alt="huddle Usage screen" width="1400" height="860">
+      <img src="/shots/overview.webp" alt="huddle overview screen" width="1400" height="860" class="on" fetchpriority="high">
+      <img src="/shots/activity.webp" alt="huddle activity screen" width="1400" height="860">
+      <img src="/shots/tasks.webp" alt="huddle tasks board" width="1400" height="860">
+      <img src="/shots/timeline.webp" alt="huddle timeline with deadlines" width="1400" height="860">
+      <img src="/shots/usage.webp" alt="huddle usage and cost" width="1400" height="860">
     </div>
   </div>
 </div></header>
@@ -625,10 +694,10 @@ footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
   // the tour: next screen every few seconds; picking a tab stops it
   var tour = document.getElementById('tour'), tabs = tour.querySelectorAll('[role=tab]'), imgs = frame.querySelectorAll('img');
   var cap = document.getElementById('tourcap'), cur = 0, timer = null, DWELL = 2800;
-  var CAPS = ['<b>Everything, live.</b> Every request, agent step and message across the team, with who is on what.',
+  var CAPS = ['<b>At a glance.</b> What the team asked for today, what each agent is on, and what needs you.',
+    '<b>Everything, live.</b> Every request, agent step and message across the team, with who is on what.',
     '<b>Work hands itself off.</b> Agents give tasks to whoever has the most usage left, and each is reviewed and tested before it lands.',
-    '<b>Shared memory.</b> A project brief, team notes and skills that every agent reads before it starts.',
-    '<b>Conflicts caught early.</b> huddle sees when two branches would collide and hands the merge to an agent.',
+    '<b>Deadlines everyone sees.</b> Put the team\'s deadlines on one line, and every agent knows how long is left.',
     '<b>What it costs.</b> Tokens and API-equivalent cost per person, model and task.'];
   function show(i) {
     cur = (i + tabs.length) % tabs.length;
@@ -724,6 +793,7 @@ footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
   }
   // hero: a new shape for every ~60% of a screen scrolled, starting as a sphere
   var art = document.getElementById('art'), tourEl = document.getElementById('tour');
+  var DARK = matchMedia('(prefers-color-scheme: dark)').matches;
   function mix(a, b, k) { return a + (b - a) * k; }
   cloud(document.getElementById('herocloud'), {
     loop: false,
@@ -740,7 +810,7 @@ footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
       return { ox: ox, oy: oy, S: S, a: a };
     },
     n: 2600, shapes: ['sphere', 'torus', 'wave'], scale: .42, cx: .5, cy: .5, dot: 1.7,
-    near: '#2f6bff', mid: '#4b6fc9', far: '#24365e', alpha: [.16, .72],
+    near: DARK ? '#a8bafc' : '#2f6bff', mid: DARK ? '#7d8fd0' : '#4b6fc9', far: DARK ? '#3d4a78' : '#24365e', alpha: [.16, .72],
     // sphere, then torus, then the wave by the time the tour is centred, each held for a while
     stage: function (t) {
       var tr = tourEl.getBoundingClientRect(), end = Math.max(1, tr.top + scrollY + tr.height / 2 - innerHeight / 2);
