@@ -519,8 +519,3 @@ main.overview { display: flex; flex-direction: column; }
 .home .hcard .phd span { margin-left: 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 640px) { .hstatus .hs-count, .hstatus .hs-live { display: none; } .hstatus { padding: 0 16px; } }
 @media (max-width: 640px) { .hstatus .hs-count + span::before { display: none !important; } }
-
-/* ---------- light themes: the title cut into the border gets one solid chip. Half see-through, it sat on the
-   cream page (and its dots) above the line and the white pane below it, which made the letters hard to read. ---------- */
-:root:not([data-theme="dark"]) :is(.panel > h3, .pane > .pt b, .pane > .pt span, .pane > .pt button, .col h3 > *) { background: var(--pane); }
-:root:not([data-theme="dark"]) :is(.panel > h3, .pane > .pt b, .col h3 > :not(.count)) { color: var(--ink); font-weight: 500; }
