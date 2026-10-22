@@ -519,3 +519,19 @@ main.overview { display: flex; flex-direction: column; }
 .home .hcard .phd span { margin-left: 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 640px) { .hstatus .hs-count, .hstatus .hs-live { display: none; } .hstatus { padding: 0 16px; } }
 @media (max-width: 640px) { .hstatus .hs-count + span::before { display: none !important; } }
+
+/* ---------- light themes: pane titles sit inside the pane as a header row. Cut into the border they straddled
+   the cream page and the white pane, which read as a smudge; dark themes keep the tmux-style cut. ---------- */
+:root:not([data-theme="dark"]) :is(.pane > .pt, .panel > h3, .col h3) {
+  position: static; inset: auto; display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  padding: 9px 16px 8px; border-bottom: 1px solid var(--pane-line); background: color-mix(in srgb, var(--ink) 2.5%, var(--pane));
+  font: 500 12.5px/18px var(--tmono); color: var(--ink); }
+:root:not([data-theme="dark"]) :is(.pane > .pt, .col h3) > *, :root:not([data-theme="dark"]) .pane > .pt :is(b, span, button) { background: none; padding: 0; }
+:root:not([data-theme="dark"]) .panel > h3 { justify-content: flex-start; }
+:root:not([data-theme="dark"]) .ogrid .pane > .pt { margin: -18px -16px 12px; }
+:root:not([data-theme="dark"]) .ogrid .pane { padding-top: 18px; }
+:root:not([data-theme="dark"]) .col { padding-top: 0; }
+:root:not([data-theme="dark"]) .col h3 { padding: 8px 12px 7px; margin-bottom: 6px; }
+:root:not([data-theme="dark"]) .col h3 .count { margin-left: auto; }
+:root:not([data-theme="dark"]) .pane.hot > .pt { background: color-mix(in srgb, var(--wait) 7%, var(--pane)); border-bottom-color: color-mix(in srgb, var(--wait) 30%, transparent); }
+:root:not([data-theme="dark"]) .panel { margin-top: 16px; }
