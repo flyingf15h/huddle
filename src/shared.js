@@ -6,7 +6,10 @@ const fs = require('fs');
 const path = require('path');
 const { CONFIG_DIR, ago } = require('./client');
 
-const DOC_IN_CONTEXT = 12 * 1024;
+// The briefing is re-read on every request of the session, so it is a cost per
+// tool call, not per session: keep it to the start of the brief and a line per memory note, and
+// leave the rest one huddle_recall or file read away.
+const DOC_IN_CONTEXT = 6 * 1024;
 
 function sharedDir(root) { return path.join(root, CONFIG_DIR, 'shared'); }
 
@@ -111,8 +114,8 @@ function briefing(shared) {
     parts.push('The project has no shared PROJECT.md yet. If you learn the goals, conventions or architecture, write one with huddle_project so every agent starts with it.');
   }
   if (shared.memories.length) {
-    const lines = shared.memories.slice(-60).map(m => `- ${m.title}: ${oneLine(m.text, 200)} (${m.byName})`);
-    parts.push(`Shared memory from the team (full text in .huddle/shared/MEMORY.md, search with huddle_recall):\n${lines.join('\n')}`);
+    const lines = shared.memories.slice(-60).map(m => `- ${m.title}: ${oneLine(m.text, 80)} (${m.byName})`);
+    parts.push(`Shared memory from the team, shortened (full notes in .huddle/shared/MEMORY.md; huddle_recall one before relying on it):\n${lines.join('\n')}`);
   }
   if (shared.skills.length) {
     parts.push('Shared skills (installed in .claude/skills/, use them like any skill):\n' +
