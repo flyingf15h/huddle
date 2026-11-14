@@ -540,9 +540,10 @@ async function cmdNew({ pos, flags }) {
   const code = await shortInvite({ server, token: r.token, project: r.project, name: 'invite', root: process.cwd() });
   console.log(`created project ${r.project.replace(/-[0-9a-f]{6,8}$/, '')}
 
-Send your teammates this link (it shows them what to run):
+Send your teammates this link (it opens the project in their browser):
   ${server}/j/${code}
-or have them run this in their copy of the project (it asks for their name):
+To connect their Claude, they run this in their copy of the project (it asks for their name;
+${server}/j/${code}?setup shows the steps):
   ${joinCommand(code, server)}
 Anyone with the invite can join and see the project, so only send it to your team.`);
   if (flags['no-join']) return;

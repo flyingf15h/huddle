@@ -138,7 +138,10 @@ export default {
       }
       // screenshots, privacy and terms pages, icons
       if (request.method === 'GET' && env.ASSETS && !url.pathname.startsWith('/api/')) {
-        const page = /^\/j\/[\w-]{12}\/?$/.test(url.pathname) ? '/j.html' : url.pathname; // /j/<invite>: how to join
+        // /j/<invite> opens the project in the app; /j/<invite>?setup is the page that shows how to join from a computer
+        const inv = /^\/j\/([\w-]{12})\/?$/.exec(url.pathname);
+        if (inv && !url.searchParams.has('setup')) return Response.redirect(url.origin + '/#invite=' + inv[1], 302);
+        const page = inv ? '/j.html' : url.pathname;
         const a = await env.ASSETS.fetch(new Request(new URL(page.includes('.') ? page : page + '.html', url.origin)));
         if (a.ok) return a;
       }

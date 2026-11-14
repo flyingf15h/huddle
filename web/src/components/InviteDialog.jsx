@@ -6,7 +6,7 @@ import { useS } from '../lib/store.js';
 import { useEscape } from '../lib/hooks.js';
 
 const SHORT = /^[A-Za-z0-9][\w-]{11}$/;
-// the /j/ page shows the right one-liner for their computer; a long invite (no short code) only works as a command
+// the /j/ link opens the project in the app (/j/<code>?setup shows the one-liner for their computer); a long invite (no short code) only works as a command
 const linkFor = (code) => (SHORT.test(code) ? `${location.origin}/j/${code}` : '');
 const cmdFor = (code) => (SHORT.test(code) ? `curl -fsSL ${location.origin}/install.sh | sh -s -- ${code}` : `npx -y github:flyingf15h/huddle join ${code}`);
 const ROLE_DESC = { member: 'Can send requests and edit through their agent.', viewer: 'Can watch everything, change nothing.' };

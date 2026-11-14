@@ -104,7 +104,10 @@ function createServer(opts = {}) {
   const publicDir = path.join(__dirname, '..', 'public');
   const TYPES = { '.html': 'text/html; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.css': 'text/css', '.js': 'text/javascript', '.json': 'application/json', '.txt': 'text/plain', '.sh': 'text/plain; charset=utf-8', '.ps1': 'text/plain; charset=utf-8', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json' };
   function staticFile(pathname, res) {
-    if (/^\/j\/[\w-]{12}\/?$/.test(pathname)) pathname = '/j.html'; // the page that shows how to join with an invite
+    // /j/<invite> opens the project in the app; /j/<invite>?setup is the page that shows how to join from a computer
+    const inv = /^\/j\/([\w-]{12})\/?$/.exec(pathname);
+    if (inv && !/[?&]setup\b/.test(res.req.url)) { res.writeHead(302, { location: '/#invite=' + inv[1] }); res.end(); return true; }
+    if (inv) pathname = '/j.html';
     let rel = decodeURIComponent(pathname).replace(/^\/+/, '');
     if (!rel || rel.includes('..') || rel.startsWith('api/')) return false;
     if (!path.extname(rel)) rel += '.html';

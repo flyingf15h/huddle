@@ -71,7 +71,7 @@ export default function Sidebar() {
               </div>
             )}
           </>
-        ) : <span className="faint small">no agent of yours here yet</span>}
+        ) : <span className="faint small">start claude in your project folder to connect it</span>}
         {auth.name && <button className="you" onClick={() => (S.profile = true)} title="Your profile">{dn(auth.name)}</button>}
       </div>
     </nav>
