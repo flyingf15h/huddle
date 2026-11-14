@@ -43,7 +43,7 @@ export default function InviteDialog() {
         {accounts && <div className="invrole"><div className="seg sm" role="group" aria-label="Role">{['member', 'viewer'].map(r => <button key={r} className={role === r ? 'on' : ''} onClick={() => setRole(r)}>{r === 'member' ? 'Member' : 'Viewer'}</button>)}</div><span className="small muted">{ROLE_DESC[role]}</span></div>}
         {link ? (
           <>
-            <p>Send a teammate this link. It shows them the one command to run in their copy of the project, for their computer.</p>
+            <p>Send a teammate this link. It opens the project in their browser with the steps to connect their computer.</p>
             <div className="cmd"><code>{link}</code><button className="primary" onClick={() => copy(link, 'link')}>{copied === 'link' ? 'Copied' : 'Copy link'}</button></div>
             <p className="small muted" style={{ marginTop: 14 }}>Or send the command directly (Mac and Linux):</p>
             <div className="cmd"><code>{cmd}</code><button onClick={() => copy(cmd, 'cmd')}>{copied === 'cmd' ? 'Copied' : 'Copy'}</button></div>
