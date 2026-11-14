@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { S, api, go, myName, myTool, dn, people, usageOf, toolOf } from '../lib/state.js';
 import { useS } from '../lib/store.js';
 import { useLive } from '../lib/hooks.js';
-import { ago } from '../lib/words.js';
+import { ago, fmtNum } from '../lib/words.js';
 import { titleOf, stuckReason, decide, runAgain, canDecide } from '../lib/tasks.js';
 import { spanWord, spanStart, inSpan } from '../lib/span.js';
 
@@ -37,6 +37,8 @@ export default function Overview() {
   const count = (st) => todays.filter(t => t.status === st).length;
 
   // agent time in the span, from each person's counted active time
+  // tokens in this span: what the agent read (prompt, files, cache) and what it wrote
+  const tok = (n) => { const d = stats && stats[n] && stats[n].days; if (!d) return ''; const all = inSpan(d, 'tokens'), out = inSpan(d, 'output'); return all ? `input ${fmtNum(all - out)} · output ${fmtNum(out)} ${word}` : `no tokens ${word}`; };
   const time = Object.entries(stats || {}).map(([name, s]) => ({ name, ms: inSpan(s.days, 'activeMs') })).filter(x => x.ms > 0).sort((a, b) => b.ms - a.ms);
   const totalMs = time.reduce((n, x) => n + x.ms, 0);
 
@@ -90,12 +92,13 @@ export default function Overview() {
         </Pane>
         <Pane title="usage" right={<span>5-hour window</span>} className="p-use">
           {team.map(p => {
-            const u = usageOf(p.name), used = u ? 100 - u.left : null, on = used == null ? 0 : Math.round(used / 100 * 12);
+            const u = usageOf(p.name), used = u ? 100 - u.left : null;
             return (
               <div className={'u5' + (used != null && used >= 65 ? ' high' : '')} key={p.name} title={u ? u.title : `${dn(p.name)} hasn't reported usage`}>
                 <i className={'sdot' + (p.online ? '' : ' off')}></i><span className="nm">{dn(p.name)}</span><span className="tool">{toolOf(p.name).toLowerCase()}</span>
-                <span className="bar5" aria-hidden="true">[{[...Array(12)].map((_, i) => <i key={i} className={i < on ? 'on' : ''}></i>)}]</span>
-                <b>{used == null ? '--' : used + '%'}</b>
+                <span className="bar5" aria-hidden="true"><i style={{ width: (used || 0) + '%' }}></i></span>
+                <b>{used == null ? 'no data' : used + '% used'}</b>
+                <span className="io">{tok(p.name)}</span>
               </div>
             );
           })}

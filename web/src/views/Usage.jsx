@@ -71,7 +71,8 @@ export default function Usage() {
           {costs.trend && costs.trend.avg > 0 && <div className="tile"><div className="k">cost today</div><div className="v">{money(costs.trend.today)}</div><div className="small faint">usually {money(costs.trend.avg)}{costs.trend.today > costs.trend.avg * 1.5 ? ', running high' : ''}</div></div>}
           <div className="tile"><div className="k">agent time {spanWord()}</div><div className="v">{fmtDur(sum(p => inSpan(p.s.days, 'activeMs')))}</div></div>
           <div className="tile"><div className="k">prompts {spanWord()}</div><div className="v">{fmtNum(sum(p => inSpan(p.s.days, 'turns')))}</div></div>
-          <div className="tile"><div className="k">tokens {spanWord()}</div><div className="v">{fmtNum(sum(p => inSpan(p.s.days, 'tokens')))}</div></div>
+          <div className="tile"><div className="k">input tokens {spanWord()}</div><div className="v">{fmtNum(sum(p => inSpan(p.s.days, 'tokens') - inSpan(p.s.days, 'output')))}</div><div className="small faint">what the agents read</div></div>
+          <div className="tile"><div className="k">output tokens {spanWord()}</div><div className="v">{fmtNum(sum(p => inSpan(p.s.days, 'output')))}</div><div className="small faint">what the agents wrote</div></div>
         </div>
 
         <div className="panel"><h3>Cost per day</h3>
@@ -101,11 +102,11 @@ export default function Usage() {
         )}
 
         <div className="statswrap"><table className="stats">
-          <thead><tr><th>Person</th><th>Cost</th><th>Conversations</th><th>Time with agents</th><th>Prompts</th><th>Tokens</th><th>Requests for others</th><th>Last {SPARK} days</th></tr></thead>
+          <thead><tr><th>Person</th><th>Cost</th><th>Conversations</th><th>Time with agents</th><th>Prompts</th><th>Input tokens</th><th>Output tokens</th><th>Requests for others</th><th>Last {SPARK} days</th></tr></thead>
           <tbody>{people.map(({ name, s, own, all, cost }) => { const m = topModel(s); return (
             <tr key={name}><td><span className="who"><Avatar name={name} sm /><span>{dn(name)}<span className="sub">{m ? m[0] : 'no model usage yet'} · {ago(s.last)}</span></span></span></td>
               <td>{money(cost)}</td><td>{s.conversations}</td><td>{fmtDur(own)}</td><td>{fmtNum(s.turns)}</td>
-              <td title={`input ${fmtNum(tokenSum(s, 'input'))} · cache read ${fmtNum(tokenSum(s, 'cacheRead'))} · cache write ${fmtNum(tokenSum(s, 'cacheWrite'))} · output ${fmtNum(tokenSum(s, 'output'))}`}>{fmtNum(all)}</td>
+              <td title={`new ${fmtNum(tokenSum(s, 'input'))} · cache read ${fmtNum(tokenSum(s, 'cacheRead'))} · cache write ${fmtNum(tokenSum(s, 'cacheWrite'))}`}>{fmtNum(all - tokenSum(s, 'output'))}</td><td>{fmtNum(tokenSum(s, 'output'))}</td>
               <td title={`${fmtDur(s.requestMs || 0)} on requests from others`}>{s.requests || 0}</td>
               <td><span className="spark" title={`time with agents, last ${SPARK} days`}>{spark(s.days).map(b => <i key={b.k} style={{ height: b.h + '%' }} title={`${b.k}: ${fmtDur(b.v)}`}></i>)}</span></td></tr>); })}</tbody></table></div>
 

@@ -147,14 +147,14 @@ main.overview { flex: 1; min-height: 0; overflow-y: auto; padding: 22px 20px 20p
 .out b { font: 700 30px/1.2 var(--tnum); letter-spacing: -.03em; color: var(--ink); margin-right: 8px; }
 .out i { font-style: normal; color: var(--c, var(--ink)); }
 .out .tper { margin-right: 14px; white-space: nowrap; }
-.u5 { display: grid; grid-template-columns: 8px minmax(40px, auto) 52px minmax(0, 1fr) 38px; gap: 10px; align-items: center; padding: 7px 0; font-size: 12.5px; --c: var(--run); }
+.u5 { display: grid; grid-template-columns: 8px minmax(40px, auto) 52px minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; padding: 7px 0; font-size: 12.5px; --c: var(--run); }
 .u5 + .u5 { border-top: 1px dashed var(--line); }
 .u5.high { --c: var(--wait); }
 .u5 .sdot { --c: var(--ok); } .u5 .sdot.off { --c: transparent; box-shadow: inset 0 0 0 1.5px var(--faint); }
 .u5 .nm { color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .u5 .tool { color: var(--faint); }
-.bar5 { display: flex; align-items: center; gap: 3px; color: var(--faint); min-width: 0; }
-.bar5 i { flex: 1; height: 8px; background: color-mix(in srgb, var(--ink) 8%, transparent); }
-.bar5 i.on { background: var(--c); }
+.bar5 { display: block; height: 8px; min-width: 0; border-radius: 4px; overflow: hidden; background: color-mix(in srgb, var(--ink) 10%, transparent); }
+.bar5 i { display: block; height: 100%; border-radius: 4px; background: var(--c); }
+.u5 .io { grid-column: 2 / -1; color: var(--muted); font-size: 12px; }
 .u5 b { font-weight: 500; text-align: right; color: var(--ink); } .u5.high b { color: var(--wait); }
 .th5, .r5 { display: grid; grid-template-columns: minmax(0, 1fr) 96px 90px 40px; gap: 12px; align-items: center; }
 .th5 { font-size: 11.5px; color: var(--faint); padding: 2px 0 6px; border-bottom: 1px solid var(--pane-line); }
@@ -326,7 +326,7 @@ dialog, .palette, .sheet { border-color: var(--pane-line); }
 /* (c) is a quiet hint */
 .newreq .key { color: var(--wait); opacity: .5; }
 /* dots are flat */
-.chan i, .sdot, .bar5 i.on { box-shadow: none !important; }
+.chan i, .sdot, .bar5 i { box-shadow: none !important; }
 .chan.off i, .person.off .sdot, .u5 .sdot.off { box-shadow: inset 0 0 0 1.5px var(--faint) !important; }
 /* the activity header stays on one line */
 #filters, header .seg { flex-wrap: nowrap; white-space: nowrap; }
