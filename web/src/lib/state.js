@@ -87,7 +87,7 @@ export function forgetProject(n) {
 // ---------- people ----------
 export const hasClaude = (name) => Object.values(S.agents).some(x => x.name === name && x.kind !== 'human');
 export const aiName = (n) => (S.settings[n] && S.settings[n].aiName) || '';
-export const toolOf = (n) => ({ codex: 'Codex', cursor: 'Cursor' }[S.settings[n] && S.settings[n].tool] || 'Claude');
+export const toolOf = (n) => ({ codex: 'Codex', cursor: 'Cursor', pi: 'pi' }[S.settings[n] && S.settings[n].tool] || 'Claude');
 export const myTool = () => toolOf(myName());
 export const dn = (n) => (S.settings[n] && S.settings[n].displayName) || n;
 export const claudeOf = (n) => aiName(n) || `${dn(n)}'s ${toolOf(n)}`;

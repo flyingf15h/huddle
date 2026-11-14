@@ -18,7 +18,7 @@ const studio = require('./studio');
 // Claude Code edits with these; Codex edits with apply_patch (one patch can touch several files)
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'apply_patch']);
 // which coding agent ran this hook: set by the hook command (--agent codex) or the MCP server's env
-const agentKind = () => (['codex', 'cursor'].includes(process.env.HUDDLE_AGENT) ? process.env.HUDDLE_AGENT : 'claude');
+const agentKind = () => (['codex', 'cursor', 'pi'].includes(process.env.HUDDLE_AGENT) ? process.env.HUDDLE_AGENT : 'claude');
 const INBOX_EVERY_MS = 10 * 1000;
 
 function withNotice(text, obj) { return { ...(obj || {}), systemMessage: text }; }
@@ -870,7 +870,7 @@ async function reportProblem(cfg, event, e) {
   sent[key] = Date.now();
   try { fs.writeFileSync(file, JSON.stringify(sent)); } catch {}
   const client = new Client(cfg, identity(cfg));
-  await client.post('problem', { kind: 'hook', message: `the ${event} hook failed (${{ codex: 'Codex', cursor: 'Cursor' }[agentKind()] || 'Claude Code'}): ${e.message}`, detail: String(e.stack || '').slice(0, 1500) });
+  await client.post('problem', { kind: 'hook', message: `the ${event} hook failed (${{ codex: 'Codex', cursor: 'Cursor', pi: 'pi' }[agentKind()] || 'Claude Code'}): ${e.message}`, detail: String(e.stack || '').slice(0, 1500) });
 }
 
 module.exports = { runHook, handlers, sha, targetsOf, sharingLevel };

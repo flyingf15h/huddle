@@ -50,7 +50,7 @@ function fileKey(branch, fp) { return branch ? `${branch}::${fp}` : fp; }
 // "Pip (tszfei's Claude)", or just "tszfei's Claude" when the person hasn't named it
 function aiLabel(settings, person) {
   const s = (settings || {})[person] || {};
-  const tool = s.tool === 'codex' ? 'Codex' : s.tool === 'cursor' ? 'Cursor' : 'Claude';
+  const tool = s.tool === 'codex' ? 'Codex' : s.tool === 'cursor' ? 'Cursor' : s.tool === 'pi' ? 'pi' : 'Claude';
   return s.aiName ? `${s.aiName} (${person}'s ${tool})` : `${person}'s ${tool}`;
 }
 // lets people address someone's Claude by the name they gave it: "Pip" -> "tszfei"
@@ -357,7 +357,7 @@ const routes = {
     if (b.runner !== undefined) a.runner = ['off', 'requests', 'full'].includes(b.runner) ? b.runner : null;
     // Claude Code or Codex: remembered per person too, so the team knows whose is whose while they're away
     if (b.tool !== undefined && !a.clone && a.kind !== 'human') {
-      a.tool = ['codex', 'cursor'].includes(b.tool) ? b.tool : 'claude';
+      a.tool = ['codex', 'cursor', 'pi'].includes(b.tool) ? b.tool : 'claude';
       p.settings = p.settings || {};
       if ((p.settings[a.name] || {}).tool !== a.tool) { p.settings[a.name] = { ...(p.settings[a.name] || {}), tool: a.tool }; p.emit('setting', { name: a.name, settings: p.settings[a.name] }); }
     }

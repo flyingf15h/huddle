@@ -45,7 +45,7 @@ async function doctor({ installDir, hookMark }) {
   const agent = raw.agent || 'claude';
   const tool = agent === 'cursor' ? (has('agent') || has('cursor-agent') ? 'agent' : null) : has(agent) ? agent : null;
   add(tool ? 'ok' : agent === 'cursor' ? 'warn' : 'bad', tool ? `${agent} is installed` : `${agent}'s command line isn't installed`,
-    agent === 'codex' ? 'npm install -g @openai/codex' : agent === 'cursor' ? 'only needed for background requests: curl https://cursor.com/install -fsS | bash' : 'npm install -g @anthropic-ai/claude-code');
+    agent === 'codex' ? 'npm install -g @openai/codex' : agent === 'pi' ? 'npm install -g @earendil-works/pi-coding-agent' : agent === 'cursor' ? 'only needed for background requests: curl https://cursor.com/install -fsS | bash' : 'npm install -g @anthropic-ai/claude-code');
 
   // the server and this project's token
   let state = null;
@@ -58,7 +58,7 @@ async function doctor({ installDir, hookMark }) {
   }
 
   // hooks and tools wired into this folder
-  const hookFile = agent === 'codex' ? path.join(cfg.root, '.codex', 'hooks.json') : agent === 'cursor' ? path.join(cfg.root, '.cursor', 'hooks.json') : path.join(cfg.root, '.claude', 'settings.local.json');
+  const hookFile = agent === 'codex' ? path.join(cfg.root, '.codex', 'hooks.json') : agent === 'cursor' ? path.join(cfg.root, '.cursor', 'hooks.json') : agent === 'pi' ? path.join(cfg.root, '.pi', 'extensions', 'huddle.js') : path.join(cfg.root, '.claude', 'settings.local.json');
   let hooked = false;
   try { hooked = fs.readFileSync(hookFile, 'utf8').includes(hookMark); } catch {}
   add(hooked ? 'ok' : 'bad', hooked ? 'hooks are installed' : 'huddle\'s hooks are missing from this folder', 'run `huddle join` again here (your invite or `huddle invite`)');

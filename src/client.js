@@ -46,6 +46,9 @@ function loadConfig(start) {
 // it's wrong when Claude was started from inside another Claude session.
 const DEFAULT_SHARING = 'tools'; // steps only until someone opts into sharing their conversation
 
+function isPi(pid) {
+  try { return /(^|[\/])pi(\0|$)|pi-coding-agent/.test(fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8')); } catch { return false; }
+}
 function claudePid() {
   if (process.env.HUDDLE_SESSION) return process.env.HUDDLE_SESSION;
   if (process.platform === 'win32') return windowsAgentPid() || process.env.CLAUDE_PID || String(process.ppid);
@@ -65,6 +68,7 @@ function claudePid() {
       }
     } catch { break; }
     if (comm === 'claude' || /^codex/.test(comm)) return String(pid); // Claude Code or Codex
+    if (comm === 'pi' || (comm === 'node' && isPi(pid))) return String(pid); // pi (a node script)
     pid = ppid;
   }
   return process.env.CLAUDE_PID || String(process.ppid);

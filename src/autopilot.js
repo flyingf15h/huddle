@@ -32,6 +32,7 @@ const gitx = require('./git');
 const policy = require('./policy');
 const codex = require('./codex');
 const cursor = require('./cursor');
+const piAgent = require('./pi');
 const procs = require('./bin');
 const APP_DIR = path.join(__dirname, '..');
 const q = (s) => process.platform === 'win32' ? `"${s}"` : `'${String(s).replace(/'/g, `'\\''`)}'`;
@@ -295,7 +296,7 @@ function openPr(cfg, c, t, checks, me) {
   const base = onOrigin(c.person) ? c.person : dflt || 'main';
   const ck = checks || {};
   const body = [`**${t.title}**`, '', t.detail && t.detail.trim() !== t.title ? t.detail.slice(0, 3000) : '', '',
-    `Asked by ${t.by}${t.direct ? ` (sent to ${me}'s agent)` : ''} · done by ${me}'s ${cfg.agent === 'codex' ? 'Codex' : 'Claude'} in the background with [huddle](https://github.com/flyingf15h/huddle) · task \`${t.id}\``,
+    `Asked by ${t.by}${t.direct ? ` (sent to ${me}'s agent)` : ''} · done by ${me}'s ${{ codex: 'Codex', cursor: 'Cursor', pi: 'pi' }[cfg.agent] || 'Claude'} in the background with [huddle](https://github.com/flyingf15h/huddle) · task \`${t.id}\``,
     '', '| Check | Result |', '| --- | --- |',
     `| Review | ${ck.review === 'ok' ? 'No problems found' : ck.review === 'fixed' ? 'Problems found and fixed' : ck.review ? ck.review : 'Skipped'} |`,
     `| Tests | ${ck.tests === 'passed' ? `Pass (\`${ck.testCommand}\`)` : ck.tests === 'failed' ? `**Fail** (\`${ck.testCommand}\`)` : ck.tests === 'already failing' ? 'Were already failing before this change' : 'No test command'} |`].join('\n');
@@ -342,8 +343,8 @@ async function getMode(client) {
 // log: status lines; out: Claude's own output (null to discard).
 function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
   let me = cfg.name;
-  const tool = ['codex', 'cursor'].includes(cfg.agent) ? cfg.agent : 'claude';
-  const toolName = { codex: 'Codex', cursor: 'Cursor' }[tool] || 'Claude';
+  const tool = ['codex', 'cursor', 'pi'].includes(cfg.agent) ? cfg.agent : 'claude';
+  const toolName = { codex: 'Codex', cursor: 'Cursor', pi: 'pi' }[tool] || 'Claude';
   // auto, like the person's own sessions: Claude Code's safety check approves what's safe and refuses what's
   // risky. Accounts without auto mode fall back to acceptEdits (edits plus the allowed commands).
   let permission = flags['permission-mode'] || cfg.autopilotPermissionMode || 'auto';
@@ -417,14 +418,26 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
   });
   // a different vendor's reviewer, when the team uses more than one kind of agent and this computer has
   // another one's command line: 'codex', 'cursor' or 'claude', or null
-  const BIN = { claude: ['claude'], codex: ['codex'], cursor: ['agent', 'cursor-agent'] };
+  const BIN = { claude: ['claude'], codex: ['codex'], cursor: ['agent', 'cursor-agent'], pi: ['pi'] };
   const onPath = (name) => require('child_process').spawnSync(process.platform === 'win32' ? 'where' : 'which', [name], { stdio: 'ignore' }).status === 0;
   const otherVendor = () => {
     if (projectSettings.crossReview === false) return null;
     const used = new Set(Object.values(teamSettings || {}).map(s => (s && s.tool) || 'claude'));
-    return ['claude', 'codex', 'cursor'].find(v => v !== tool && used.has(v) && BIN[v].some(onPath)) || null;
+    return ['claude', 'codex', 'cursor', 'pi'].find(v => v !== tool && used.has(v) && BIN[v].some(onPath)) || null;
   };
-  const runOnce = (prompt, opts = {}) => (opts.as || tool) === 'cursor' ? runCursor(prompt, opts) : (opts.as || tool) === 'codex' ? runCodex(prompt, opts) : new Promise((resolve) => {
+  // pi: `pi -p` with huddle's extension and MCP server in the worktree (pi has no permission flags)
+  const runPi = (prompt, opts = {}) => new Promise((resolve) => {
+    const { cwd = cfg.root, session, mcpRoot, model, shown = '', taskId } = opts;
+    if (cwd !== cfg.root) { try { piAgent.install(cwd, APP_DIR, mcpRoot || cwd); } catch (e) { log('could not set up pi in the worktree: ' + e.message); } }
+    const env = { ...process.env, HUDDLE_AUTOPILOT: '1', HUDDLE_AGENT: 'pi', HUDDLE_SHOWN: String(shown).slice(0, 4000), ...(taskId ? { HUDDLE_TASK: taskId } : {}), ...(session ? { HUDDLE_SESSION: session } : {}), ...(mcpRoot ? { HUDDLE_ROOT: mcpRoot } : {}) };
+    const child = procs.spawn('pi', piAgent.execArgs({ model: model && model !== 'sonnet' ? model : (flags.model || cfg.autopilotModel || null), prompt }), { cwd, stdio: ['ignore', 'pipe', 'pipe'], env });
+    let text = '', err = '';
+    child.stdout.on('data', d => { text += d; if (out) out(String(d)); });
+    child.stderr.on('data', d => { err += d; if (out) out(String(d)); });
+    child.on('error', e => resolve({ code: 127, out: text, err: 'could not start pi: ' + e.message, missing: e.code === 'ENOENT' }));
+    child.on('close', code => resolve({ code, out: text, err }));
+  });
+  const runOnce = (prompt, opts = {}) => (opts.as || tool) === 'pi' ? runPi(prompt, opts) : (opts.as || tool) === 'cursor' ? runCursor(prompt, opts) : (opts.as || tool) === 'codex' ? runCodex(prompt, opts) : new Promise((resolve) => {
     const { cwd = cfg.root, session, mcpRoot, model, allow = [], readOnly = false, shown = '', taskId } = opts;
     // in its own worktree (on its own branch) a Claude can also bring in and rearrange history freely:
     // nothing reaches the person's branch until it has been reviewed, tested and merged by huddle
@@ -449,7 +462,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     child.on('close', code => resolve({ code, out: text, err }));
   });
   // each run is its own Claude Code session, started for this one job and ended when it's done (claude -p exits)
-  const VENDOR_NAME = { claude: 'Claude', codex: 'Codex', cursor: 'Cursor' };
+  const VENDOR_NAME = { claude: 'Claude', codex: 'Codex', cursor: 'Cursor', pi: 'pi' };
   const runClaude = async (prompt, opts) => {
     const res = await runOnce(prompt, opts);
     if (res.missing) await reportProblem('missing', `${toolName} isn't installed or isn't on PATH on ${me}'s computer, so background work can't run there`, res.err);

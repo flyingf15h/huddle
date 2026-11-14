@@ -25,7 +25,7 @@ Start a project (one person, in the project folder):
       --open lets anyone create projects on it with \`huddle new --server URL\`.
 
 Everyone (in the project folder):
-  huddle join <invite> [--name YOUR_NAME] [--agent claude|codex|cursor]
+  huddle join <invite> [--name YOUR_NAME] [--agent claude|codex|cursor|pi]
       Set up this folder: config, hooks and the huddle MCP tools for Claude Code or Codex.
   huddle doctor                 check this folder's setup (hooks, tools, privacy) and say what to fix
   huddle leave                  remove huddle from this folder
@@ -491,6 +491,17 @@ function installCodex(root, dir, projectRoot) {
   if (want.length) fs.appendFileSync(exclude, (cur && !cur.endsWith('\n') ? '\n' : '') + want.join('\n') + '\n');
   if (tracked) console.log('  note: .codex/ is in git here; huddle added its hooks and MCP server to it. Don\'t commit those lines (they hold paths on your computer).');
 }
+// pi: .pi/mcp.json and .pi/extensions/huddle.js, kept out of git
+function installPi(root, dir, projectRoot) {
+  const pi = require('./pi');
+  pi.install(root, dir, projectRoot || root);
+  if (!fs.existsSync(path.join(root, '.git'))) return;
+  const exclude = path.join(root, '.git', 'info', 'exclude');
+  let cur = '';
+  try { cur = fs.readFileSync(exclude, 'utf8'); } catch {}
+  const want = pi.FILES.filter(l => !cur.split('\n').includes(l));
+  if (want.length) fs.appendFileSync(exclude, (cur && !cur.endsWith('\n') ? '\n' : '') + want.join('\n') + '\n');
+}
 // Cursor: .cursor/mcp.json, .cursor/hooks.json and a rule, kept out of git unless the project tracks them
 function installCursor(root, dir, projectRoot) {
   require('./cursor').install(root, dir, projectRoot || root, (ev) => hookCmd(dir, ev, projectRoot, 'cursor'), HOOK_MARK);
@@ -508,6 +519,7 @@ function folderAgent(root) {
 }
 // set a folder up for the coding agent it uses
 function installFor(root, dir, projectRoot) {
+  if (folderAgent(projectRoot || root) === 'pi') return installPi(root, dir, projectRoot);
   if (folderAgent(projectRoot || root) === 'codex') return installCodex(root, dir, projectRoot);
   if (folderAgent(projectRoot || root) === 'cursor') return installCursor(root, dir, projectRoot);
   installHooks(root, dir, projectRoot);
@@ -571,12 +583,13 @@ const hasTool = (cmd) => procs.spawnSync(cmd, ['--version'], { encoding: 'utf8',
 function checkTools(agent) {
   if (agent === 'codex' && !hasTool('codex')) console.log('! Codex isn\'t installed here yet. Install it with: npm install -g @openai/codex');
   if (agent === 'cursor' && !hasTool('agent') && !hasTool('cursor-agent')) console.log('! Cursor\'s command line (`agent`) isn\'t installed here. Cursor itself works without it; it is only needed for background requests (curl https://cursor.com/install -fsS | bash).');
-  if (agent !== 'codex' && agent !== 'cursor' && !hasTool('claude')) console.log('! Claude Code isn\'t installed here yet. Install it with: npm install -g @anthropic-ai/claude-code');
+  if (agent === 'pi' && !hasTool('pi')) console.log('! pi isn\'t installed here yet. Install it with: npm install -g @earendil-works/pi-coding-agent');
+  if (agent !== 'codex' && agent !== 'cursor' && agent !== 'pi' && !hasTool('claude')) console.log('! Claude Code isn\'t installed here yet. Install it with: npm install -g @anthropic-ai/claude-code');
   if (!hasTool('git')) console.log('! git isn\'t installed, so code won\'t be shared through huddle (live edits still are).');
 }
 // --agent, what this folder used before, or whichever of Claude Code and Codex is installed (asked when both are)
 async function pickAgent(flags, root) {
-  if (flags.agent) return ['codex', 'cursor'].includes(String(flags.agent).toLowerCase()) ? String(flags.agent).toLowerCase() : 'claude';
+  if (flags.agent) return ['codex', 'cursor', 'pi'].includes(String(flags.agent).toLowerCase()) ? String(flags.agent).toLowerCase() : 'claude';
   if (fs.existsSync(path.join(root, CONFIG_DIR, 'config.json'))) return folderAgent(root);
   const claude = hasTool('claude'), cdx = hasTool('codex');
   if (cdx && !claude) return 'codex';
@@ -624,7 +637,7 @@ async function cmdJoin({ pos, flags }) {
   await recordBuild(dir);
   rememberFolder(root);
   installFor(root, dir);
-  const mcp = agent === 'codex' || agent === 'cursor' ? true : installMcp(root, dir);
+  const mcp = agent === 'codex' || agent === 'cursor' || agent === 'pi' ? true : installMcp(root, dir);
   // (a personal token opens the dashboard as this person; it's never swapped for the shared invite)
   const code = inv.token.startsWith('hm_') ? encodeInvite(inv.server, inv.token, inv.project) : await shortInvite(cfg);
   console.log(`
@@ -637,7 +650,10 @@ async function cmdJoin({ pos, flags }) {
     const n = addPermissions(path.join(root, '.claude', 'settings.local.json'), permissionPreset(root));
     console.log(n ? '  done (in your own .claude/settings.local.json; deploys and anything risky still ask)' : '  already set');
   }
-  if (agent === 'cursor') console.log(`
+  if (agent === 'pi') console.log(`
+Next: run \`pi\` in this folder. The first time, pi asks whether to trust the project: say yes, so it loads
+huddle's extension (.pi/extensions/huddle.js) and MCP server (.pi/mcp.json). After that pi is in the huddle.`);
+  else if (agent === 'cursor') console.log(`
 Next: open this folder in Cursor and start the agent. The first time, Cursor asks you to enable the huddle MCP
 server (Settings, MCP) and to trust the project hooks (Settings, Hooks). After that Cursor is in the huddle.
 Background requests for your Cursor need Cursor's command line (\`agent\`) and CURSOR_API_KEY or \`agent login\`.`);
@@ -1147,6 +1163,7 @@ function cmdLeave() {
   procs.spawnSync('claude', ['mcp', 'remove', '-s', 'local', 'huddle'], { cwd: cfg.root, stdio: 'ignore' });
   require('./codex').uninstall(cfg.root, HOOK_MARK);
   require('./cursor').uninstall(cfg.root, HOOK_MARK);
+  require('./pi').uninstall(cfg.root);
   fs.rmSync(path.join(cfg.root, CONFIG_DIR), { recursive: true, force: true });
   console.log('left the huddle; hooks and MCP server removed from this folder');
 }
