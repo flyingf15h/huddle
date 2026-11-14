@@ -158,7 +158,7 @@ async function resolveInvite(text, flags = {}) {
       r = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(r.error || `HTTP ${res.status}`);
     } catch (e) { need(false, `Couldn't look up invite ${short} on ${server}: ${e.message}${link || flags.server ? '' : '\n(If it was made on your own server, add --server URL.)'}`); }
-    return { server: (link && link[1]) || flags.server ? server : r.server || server, token: r.token, project: r.project, ...(r.personal ? { personal: short } : {}) };
+    return { server: (link && link[1]) || flags.server ? server : String(r.server || server).replace(/\/+$/, ''), token: r.token, project: r.project, ...(r.personal ? { personal: short } : {}) };
   }
   return decodeInvite(text);
 }
