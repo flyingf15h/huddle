@@ -748,6 +748,8 @@ const routes = {
   'POST project-setting': (p, b) => {
     const a = p.touch(b.agent);
     p.projectSettings = p.projectSettings || {};
+    // the name people see; the project id (and every invite) stays the same, so renaming is safe
+    if (b.title !== undefined) p.projectSettings.title = String(b.title || '').replace(/[<>\n\r\t]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60) || null;
     if (b.testCommand !== undefined) p.projectSettings.testCommand = String(b.testCommand || '').trim().slice(0, 300) || null;
     if (b.review !== undefined) p.projectSettings.review = b.review !== false;
     if (b.crossReview !== undefined) p.projectSettings.crossReview = b.crossReview !== false;
@@ -762,7 +764,7 @@ const routes = {
     if (b.delivery !== undefined) p.projectSettings.delivery = b.delivery === 'pr' ? 'pr' : 'merge';
     // editors the team's agents drive through MCP (huddle apps): each teammate's folder gets their servers
     if (b.apps !== undefined) p.projectSettings.apps = [...new Set((Array.isArray(b.apps) ? b.apps : []).map(String).filter(x => ['unity', 'godot', 'blender', 'figma'].includes(x)))];
-    const said = { testCommand: (v) => v ? `test command: ${v}` : 'test command: guessed', crossReview: (v) => `review by another vendor: ${v === false ? 'off' : 'on'}`, review: (v) => `review before merging: ${v === false ? 'off' : 'on'}`,
+    const said = { title: (v) => v ? `renamed the project to ${String(v).slice(0, 60)}` : 'cleared the project name', testCommand: (v) => v ? `test command: ${v}` : 'test command: guessed', crossReview: (v) => `review by another vendor: ${v === false ? 'off' : 'on'}`, review: (v) => `review before merging: ${v === false ? 'off' : 'on'}`,
       sharedToken: (v) => v === false ? 'switched the shared invite off' : 'switched the shared invite on', membersCanInvite: (v) => `members can invite: ${v === false ? 'no' : 'yes'}`,
       delivery: (v) => v === 'pr' ? 'finished work opens a pull request' : "finished work merges into its person's branch",
       apps: (v) => `editors: ${(Array.isArray(v) && v.length ? v : ['none']).join(', ')}` };

@@ -34,7 +34,7 @@ export default function Settings({ tab }) {
   const ps = S.projectSettings || {};
   const [pol, setPol] = useState({ allow: '', deny: '', priv: '', sharing: 'full', delivery: 'merge', test: '' });
   const [nUrl, setNUrl] = useState(''), [nEvents, setNEvents] = useState(Object.fromEntries(Object.keys(KINDS).map(k => [k, k !== 'done']))), [repoText, setRepoText] = useState(''), [repoToken, setRepoToken] = useState('');
-  const [ret, setRet] = useState({ activityDays: '', messageDays: '', auditDays: '', taskDays: '' }), [delName, setDelName] = useState('');
+  const [ret, setRet] = useState({ activityDays: '', messageDays: '', auditDays: '', taskDays: '' }), [delName, setDelName] = useState(''), [title, setTitle] = useState(null);
   const owner = isOwner();
   const say = (k, t, bad) => setMsg(m => ({ ...m, [k]: t ? { t, bad } : null }));
   const run = (k, fn) => async (...a) => { say(k, ''); try { await fn(...a); } catch (e) { say(k, "Couldn't save: " + e.message, true); } };
@@ -69,6 +69,7 @@ export default function Settings({ tab }) {
   const forgetName = run('names', async (name) => { if (!confirm(`Remove ${name} from the team list? Their past work stays.`)) return; await api('forget-agent', { name }); say('names', `Removed ${name}.`); });
   const linkAccount = run('acct', async () => { await api('link-account', {}); say('acct', 'Linked. This project now opens from your account, and you get its notifications by email.'); await loadTab(); await loadNotes(); });
   const soleOwner = S.me.accounts && S.me.via === 'member' && owner && members.length > 1 && members.filter(m => m.role === 'owner').length < 2;
+  const saveTitle = run('title', async () => { await api('project-setting', { title: (title ?? '').trim() || null }); await loadMe(); setTitle(null); say('title', 'Renamed. Invites and joined folders keep working.'); });
   const leave = async () => {
     if (!confirm(`Leave ${prettyProject(auth.project)}?`)) return;
     try { if (!iAmDemo()) await api('leave', {}); forgetProject(auth.project); goHome(); } catch (e) { say('leave', e.message, true); }
@@ -142,6 +143,8 @@ export default function Settings({ tab }) {
                 <div className="srow" key={p.name}><span className="grow"><b>{dn(p.name)}</b><span className="sub">last seen {ago(p.lastSeen)}</span></span>
                   <button className="ghost" onClick={() => forgetName(p.name)}>remove</button></div>))}</div>
               <div className="pactions"><M k="names" /></div></div>}
+            {!iAmDemo() && <div className="panel"><h3>project name</h3><p className="pdesc">What everyone sees. Invites and joined folders keep working.</p>
+              <div className="pactions" style={{ paddingTop: 12 }}><M k="title" /><input value={title ?? prettyProject(auth.project)} onChange={(e) => setTitle(e.target.value)} aria-label="Project name" style={{ width: 240 }} /><button disabled={title === null} onClick={saveTitle}>Rename</button></div></div>}
             <div className="panel"><h3>leave this project</h3><p className="pdesc">{iAmDemo() ? 'Removes the demo from your projects.' : soleOwner ? "You're the only owner. Make someone else an owner first." : S.me.accounts && S.me.via === 'member' ? 'Your access ends right away. Your past work stays.' : 'Removes it from this browser. The shared invite still opens it.'} Run <code>huddle leave</code> to disconnect your computer too.</p>
               <div className="pactions" style={{ paddingTop: 12 }}><M k="leave" /><button className="danger" disabled={soleOwner} onClick={leave}>Leave {prettyProject(auth.project)}</button></div></div>
           </>

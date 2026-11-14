@@ -88,6 +88,8 @@ Day to day:
                                 a locked folder is only editable by whoever locked it
   huddle handoff ["note"]       leave a note on where you left off; no note: show everyone's
   huddle invite                 print this project's invite code again
+  huddle rename [NAME]          rename the project for everyone (--clear goes back to the id);
+                                invites and joined folders keep working
   huddle open                   open the live dashboard in your browser (it can approve
                                 commands for your Claude, so don't share that link)
   huddle approve [ID|--all] [--deny]  commands your background Claudes need your OK for
@@ -1077,6 +1079,13 @@ async function cmdTests({ pos, flags }) {
   console.log(`Sonnet review: ${ps.review === false ? 'off' : 'on'}`);
 }
 
+// huddle rename [NAME]: the project's name for everyone (invites and folders keep working)
+async function cmdRenameProject({ pos, flags }) {
+  const client = humanClient();
+  const ps = pos.length || flags.clear ? (await client.post('project-setting', { title: flags.clear ? null : pos.join(' ') })).settings : ((await client.get('state')).projectSettings || {});
+  console.log(`project name: ${ps.title || client.cfg.project.replace(/-[0-9a-f]{6,8}$/, '')}${ps.title ? '' : ' (from the id)'}`);
+}
+
 async function cmdBoard() {
   console.log(require('./board').format(await humanClient('human').get('board')));
 }
@@ -1552,7 +1561,7 @@ async function main() {
   const args = parseArgs(rest);
   const cmds = {
     server: cmdServer, new: cmdNew, join: cmdJoin, leave: cmdLeave, status: cmdStatus, send: cmdSend, inbox: cmdInbox,
-    lock: cmdLock, unlock: cmdUnlock, watch: cmdWatch, invite: cmdInvite, open: cmdOpen, approve: cmdApprove, tests: cmdTests, apps: cmdApps, _summarize: cmdSummarize,
+    lock: cmdLock, unlock: cmdUnlock, watch: cmdWatch, invite: cmdInvite, open: cmdOpen, approve: cmdApprove, tests: cmdTests, rename: cmdRenameProject, apps: cmdApps, _summarize: cmdSummarize,
     project: cmdProject, sharing: cmdSharing, doctor: cmdDoctor, 'ai-name': cmdAiName, update: cmdUpdate, permissions: cmdPermissions, tidy: cmdTidy, handoff: cmdHandoff, handoffs: cmdHandoff,
     sync: cmdSync, branches: cmdBranches, branch: cmdBranch, publish: cmdPublish, fetch: cmdFetch, merge: cmdMerge,
     ask: cmdAsk, board: cmdBoard, requests: cmdRequests, autopilot: cmdAutopilot, worker: cmdWorker, unpublish: cmdUnpublish, forget: cmdForget, 'same-person': cmdSamePerson, link: cmdLink, unlink: cmdUnlink, statusline: cmdStatusline, memory: cmdMemory, memories: cmdMemory, skill: cmdSkill, skills: cmdSkill,

@@ -20,7 +20,9 @@ const readJson = (k, d) => { try { return JSON.parse(store.get(k) || '') || d; }
 export const known = readJson('huddle.projects', {});
 // `huddle open` adds this person's approve key; kept per project, never put back in the address bar
 export const keys = readJson('huddle.keys', {});
-export const prettyProject = (p) => String(p || '').replace(/-[0-9a-f]{6,8}$/, '');
+const titles = readJson('huddle.titles', {});
+export const prettyProject = (p) => (p && p === auth.project && S.projectSettings && S.projectSettings.title) || titles[p] || String(p || '').replace(/-[0-9a-f]{6,8}$/, '');
+const rememberTitle = () => { const t = (S.projectSettings || {}).title || undefined; if (!auth.project || titles[auth.project] === t) return; if (t) titles[auth.project] = t; else delete titles[auth.project]; store.set('huddle.titles', JSON.stringify(titles)); document.title = `${prettyProject(auth.project)} · huddle`; };
 export const saveKnown = () => store.set('huddle.projects', JSON.stringify(known));
 
 export const auth = reactive({ token: null, project: null, name: store.get('huddle.name') === 'human' ? '' : (store.get('huddle.name') || '') });
@@ -250,7 +252,7 @@ function applySnapshot(s) {
   S.locks = Object.fromEntries(s.locks.map(l => [(l.branch || '') + '::' + l.path, l]));
   S.files = Object.fromEntries(s.files.map(f => [(f.branch || '') + '::' + f.path, f]));
   S.settings = s.settings || {}; S.aliases = s.aliases || {}; S.usage = s.usage || {};
-  S.approvals = s.approvals || []; S.projectSettings = s.projectSettings || {}; S.problems = s.problems || []; S.members = s.members || []; S.timeline = s.timeline || null;
+  S.approvals = s.approvals || []; S.projectSettings = s.projectSettings || {}; rememberTitle(); S.problems = s.problems || []; S.members = s.members || []; S.timeline = s.timeline || null;
   setTeamNames(Object.keys(S.settings));
 }
 
@@ -269,7 +271,7 @@ function onEvent(ev) {
     case 'setting': S.settings[ev.name] = ev.settings; break;
     case 'usage': S.usage[ev.name] = ev.usage; break;
     case 'approval': S.approvals = [...S.approvals.filter(x => x.id !== ev.approval.id), ev.approval].filter(x => x.status === 'waiting'); break;
-    case 'project-setting': S.projectSettings = ev.settings || {}; break;
+    case 'project-setting': S.projectSettings = ev.settings || {}; rememberTitle(); break;
     case 'timeline': S.timeline = ev.timeline; break;
     case 'problem': S.problems = [...S.problems, ev.problem].slice(-100); break;
     case 'conflicts': loadConflicts(); break;
