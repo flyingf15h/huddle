@@ -114,7 +114,6 @@ function createServer(opts = {}) {
     res.end(fs.readFileSync(file));
     return true;
   }
-  const landing = fs.readFileSync(path.join(__dirname, 'landing.html'), 'utf8');
   const invitesFile = path.join(dataDir, 'invites.json');
   let invites = {};
   try { invites = JSON.parse(fs.readFileSync(invitesFile, 'utf8')); } catch {}
@@ -182,12 +181,8 @@ function createServer(opts = {}) {
       res.end(JSON.stringify(obj));
     };
     try {
-      // the landing page at /, the app at /app (the landing page sends invite links and returning people on)
-      if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
-        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-        return res.end(landing);
-      }
-      if (req.method === 'GET' && (url.pathname === '/app' || url.pathname === '/app/')) {
+      // the app is the main page; /app stays for links people already have
+      if (req.method === 'GET' && ['/', '/index.html', '/app', '/app/'].includes(url.pathname)) {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
         return res.end(dashboard);
       }

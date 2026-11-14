@@ -7,7 +7,6 @@ import core from '../../src/core.js';
 import accounts from '../../src/accounts.js';
 import statusPageMod from '../../src/status-page.js';
 import dashboard from '../../src/dashboard.html';
-import landing from '../../src/landing.html';
 
 const { Project, dispatch, authorize, takeOutbox, waitOn, httpError, now } = core;
 const { statusPage } = statusPageMod;
@@ -95,11 +94,8 @@ export default {
     const url = new URL(request.url);
     try {
       if (!env.HUDDLE_SECRET) throw httpError(500, 'server is missing HUDDLE_SECRET');
-      // the landing page at /, the app at /app (the landing page sends invite links and returning people on)
-      if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
-        return new Response(landing, { headers: { 'content-type': 'text/html; charset=utf-8' } });
-      }
-      if (request.method === 'GET' && (url.pathname === '/app' || url.pathname === '/app/')) {
+      // the app is the main page; /app stays for links people already have
+      if (request.method === 'GET' && ['/', '/index.html', '/app', '/app/'].includes(url.pathname)) {
         return new Response(dashboard, { headers: { 'content-type': 'text/html; charset=utf-8' } });
       }
       if (url.pathname === '/health') return json({ ok: true, open: true });

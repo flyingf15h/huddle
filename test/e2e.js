@@ -182,10 +182,10 @@ const edit = (who) => ({ tool_name: 'Edit', tool_input: { file_path: who.file } 
     ok('huddle_inbox can block for a reply');
 
     assert.match(await (await fetch(url + '/app')).text(), /<title>huddle<\/title>/);
-    assert.match(await (await fetch(url + '/')).text(), /Try the demo/);
+    assert.match(await (await fetch(url + '/')).text(), /<title>huddle<\/title>/);
     const bad = await fetch(url + `/api/p/${project}/state`, { headers: { authorization: 'Bearer nope' } });
     assert.equal(bad.status, 401);
-    ok('the landing page and the dashboard are served, and a wrong token is rejected');
+    ok('the dashboard is served at / and /app, and a wrong token is rejected');
 
     // shared knowledge: PROJECT.md, memory, skills
     bob.hook('post', { tool_name: 'Read', tool_input: {} }); // bob has now seen the (empty) shared state
