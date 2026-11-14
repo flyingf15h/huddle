@@ -97,8 +97,8 @@ export const isOwner = () => S.me.role === 'owner';
 export function people() {
   const by = {};
   for (const a of Object.values(S.agents)) {
-    // people who joined from a computer show before their first Claude session, and so do you in the browser
-    if (a.kind === 'human' && !hasClaude(a.name) && !a.checkout && a.name !== auth.name) continue;
+    // people who joined from a computer show before their first Claude session, and so does anyone looking at the dashboard now
+    if (a.kind === 'human' && !hasClaude(a.name) && !a.checkout && !a.online && a.name !== auth.name) continue;
     const p = by[a.name] = by[a.name] || { name: a.name, online: false, lastSeen: 0, status: '', statusAt: 0, statusRank: 0, branch: null, runner: null, clones: [] };
     if (a.clone) { if (a.online) p.clones.push(a); continue; }
     p.online = p.online || a.online;
