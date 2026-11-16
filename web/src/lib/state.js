@@ -43,7 +43,7 @@ export const S = reactive({
   account: { checked: false, github: false, email: false, user: null },
   filter: 'all', who: null,      // activity feed filter and person
   openTask: null,                // task shown in the details panel (Tasks view and side panel)
-  search: false, shortcuts: false, invite: false, help: false, drawer: false, profile: false,
+  search: false, shortcuts: false, invite: false, connectOpen: false, help: false, drawer: false, profile: false,
   demo: false, fatal: '', contact: null, settingsTab: startAt[0] === 'settings' && startAt[1] || null, askTo: null, fileOpen: null, diffOpen: null, codeOpen: null, briefOpen: null, feedJump: null, catchup: '', demoStatus: '', digestShow: null, digests: [], digestRecipient: false,
 });
 
@@ -383,6 +383,7 @@ export async function boot() {
   if (fromInvite && params.get('k')) { keys[fromInvite.project] = params.get('k'); store.set('huddle.keys', JSON.stringify(keys)); }
   if (params.get('name')) auth.name = params.get('name');
   const short = !fromInvite && SHORT_INVITE.test(String(params.get('invite') || '').trim()) ? params.get('invite').trim() : null;
+  if (params.get('invite')) S.connectOpen = true;
   if (fromInvite) Object.assign(auth, fromInvite);
   else if (short) {
     try { Object.assign(auth, await lookUpInvite(short)); if (params.get('k')) { keys[auth.project] = params.get('k'); store.set('huddle.keys', JSON.stringify(keys)); } }

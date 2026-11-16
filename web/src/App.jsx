@@ -69,7 +69,6 @@ export default function App() {
           {S.demo && <div id="demobar" role="status"><b>Demo project.</b><span className="grow">maya, dev and sam are simulated teammates (Claude Code, Codex and Cursor). Click around: nothing here touches a real codebase.</span><button onClick={() => { stopDemo(); goHome(); }}>Leave demo</button></div>}
           {S.fatal && <div id="catchup" role="alert"><span className="grow">{S.fatal}</span></div>}
           {S.catchup && <div id="catchup" role="status"><span className="grow">{S.catchup}</span><button aria-label="Dismiss" onClick={() => (S.catchup = '')}>×</button></div>}
-          {S.view !== 'settings' && <ConnectPanel />}
           {S.view === 'activity' ? <Activity ref={composer} />
             : S.view === 'tasks' ? <Tasks />
             : S.view === 'studio' ? <Studio />
@@ -79,7 +78,7 @@ export default function App() {
         </div>
         <TabBar />
       </div>
-      <NameDialog /><Profile /><InviteDialog />
+      <NameDialog /><Profile /><InviteDialog /><ConnectPanel />
       {S.search && <Search />}
       {S.shortcuts && <Shortcuts />}
       <Help />

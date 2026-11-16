@@ -71,7 +71,7 @@ export default function Sidebar() {
               </div>
             )}
           </>
-        ) : <span className="faint small">not connected yet</span>}
+        ) : <button className="tbtn" onClick={() => (S.connectOpen = true)}>connect your computer</button>}
         {auth.name && <button className="you" onClick={() => (S.profile = true)} title="Your profile">{dn(auth.name)}</button>}
       </div>
     </nav>
