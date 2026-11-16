@@ -2,7 +2,7 @@
 // prices (subscriptions aren't billed per token, so it's the equivalent value). Charts are single
 // series in one hue, with the numbers in tables beside them.
 import { useEffect, useRef, useState } from 'react';
-import { S, api, dn, go, isOwner } from '../lib/state.js';
+import { S, api, dn, go, isOwner, people as team, usageOf } from '../lib/state.js';
 import { useS } from '../lib/store.js';
 import { useLive } from '../lib/hooks.js';
 import { fmtDur, fmtNum, tokenSum, tokensAll, ago } from '../lib/words.js';
@@ -69,7 +69,13 @@ export default function Usage() {
           {costs.trend && costs.trend.projected != null && <div className="tile"><div className="k">month on course for</div><div className="v">{money(costs.trend.projected)}</div>{costs.budget && costs.trend.projected > costs.budget.monthly && <div className="small" style={{ color: 'var(--bad)' }}>over budget</div>}</div>}
           {costs.trend && costs.trend.avg > 0 && <div className="tile"><div className="k">cost today</div><div className="v">{money(costs.trend.today)}</div><div className="small faint">usually {money(costs.trend.avg)}{costs.trend.today > costs.trend.avg * 1.5 ? ', running high' : ''}</div></div>}
           <div className="tile"><div className="k">agent time {spanWord()}</div><div className="v">{fmtDur(sum(p => inSpan(p.s.days, 'activeMs')))}</div><div className="small faint">{fmtNum(sum(p => inSpan(p.s.days, 'turns')))} prompts</div></div>
+          <div className="tile"><div className="k">input tokens {spanWord()}</div><div className="v">{fmtNum(sum(p => inSpan(p.s.days, 'tokens') - inSpan(p.s.days, 'output')))}</div><div className="small faint">what the agents read</div></div>
+          <div className="tile"><div className="k">output tokens {spanWord()}</div><div className="v">{fmtNum(sum(p => inSpan(p.s.days, 'output')))}</div><div className="small faint">what the agents wrote</div></div>
         </div>
+
+        <div className="panel"><h3>Session use</h3><p className="pdesc">How much of each person's 5-hour window is used.</p><div className="pbody">
+          {team().map(p => { const u = usageOf(p.name), used = u ? 100 - u.left : null; return <div className="hbar" key={p.name} title={u ? u.title : `${dn(p.name)} hasn't reported a session yet`}><span className="who"><Avatar name={p.name} sm /><span>{dn(p.name)}</span></span><span className="track"><i style={{ width: (used || 0) + '%', background: used >= 85 ? 'var(--bad)' : used >= 65 ? 'var(--warn)' : undefined }}></i></span><span className="num">{used == null ? 'no data' : used + '%'}</span></div>; })}
+          {!team().length && <div className="quiet">Nobody has joined yet.</div>}</div></div>
 
         <div className="panel"><h3>Cost per day</h3>
           <p className="pdesc">Last <span className="seg sm" style={{ margin: '0 4px' }}>{[14, 30, 60].map(n => <button key={n} className={range === n ? 'on' : ''} onClick={() => setRange(n)}>{n}</button>)}</span> days, API-equivalent dollars.</p>
@@ -99,11 +105,12 @@ export default function Usage() {
 
         <button className="link small" style={{ margin: '4px 0 8px' }} onClick={() => setShowAll(!showAll)}>{showAll ? "Hide everyone's numbers" : "Show everyone's numbers"}</button>
         {showAll && <div className="statswrap"><table className="stats">
-          <thead><tr><th>Person</th><th>Cost</th><th>Time with agents</th><th>Prompts</th><th>Tokens in / out</th><th>Last {SPARK} days</th></tr></thead>
+          <thead><tr><th>Person</th><th>Cost</th><th>Time with agents</th><th>Prompts</th><th>Session</th><th>Input tokens</th><th>Output tokens</th><th>Last {SPARK} days</th></tr></thead>
           <tbody>{people.map(({ name, s, own, all, cost }) => { const m = topModel(s); return (
             <tr key={name}><td><span className="who"><Avatar name={name} sm /><span>{dn(name)}<span className="sub">{m ? m[0] : 'no model usage yet'} · {ago(s.last)}</span></span></span></td>
               <td>{money(cost)}</td><td title={`plus ${fmtDur(s.requestMs || 0)} on ${s.requests || 0} requests from others`}>{fmtDur(own)}</td><td title={`${s.conversations} conversations`}>{fmtNum(s.turns)}</td>
-              <td title={`in: new ${fmtNum(tokenSum(s, 'input'))} · cache read ${fmtNum(tokenSum(s, 'cacheRead'))} · cache write ${fmtNum(tokenSum(s, 'cacheWrite'))}`}>{fmtNum(all - tokenSum(s, 'output'))} / {fmtNum(tokenSum(s, 'output'))}</td>
+              <td title={usageOf(name) ? usageOf(name).title : ''}>{usageOf(name) ? 100 - usageOf(name).left + '%' : '--'}</td>
+              <td title={`new ${fmtNum(tokenSum(s, 'input'))} · cache read ${fmtNum(tokenSum(s, 'cacheRead'))} · cache write ${fmtNum(tokenSum(s, 'cacheWrite'))}`}>{fmtNum(all - tokenSum(s, 'output'))}</td><td>{fmtNum(tokenSum(s, 'output'))}</td>
               <td><span className="spark" title={`time with agents, last ${SPARK} days`}>{spark(s.days).map(b => <i key={b.k} style={{ height: b.h + '%' }} title={`${b.k}: ${fmtDur(b.v)}`}></i>)}</span></td></tr>); })}</tbody></table></div>}
 
         {missing.length > 0 && <p className="small muted">No usage yet from {missing.map((m, i) => <span key={m.name} title={m.why} style={{ borderBottom: '1px dotted currentColor', cursor: 'help' }}>{i ? ', ' : ''}{dn(m.name)}</span>)}. Hover a name for why.</p>}
