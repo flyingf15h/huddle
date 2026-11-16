@@ -4,7 +4,6 @@ import { S, auth, known, decodeInvite, lookUpInvite, SHORT_INVITE, startProject,
 import { useS } from './lib/store.js';
 import { store } from './lib/words.js';
 
-const agoShort = (t) => { const s = Math.max(0, Math.round((Date.now() - t) / 1000)); return s < 60 ? 'now' : s < 3600 ? Math.round(s / 60) + 'm' : s < 86400 ? Math.round(s / 3600) + 'h' : Math.round(s / 86400) + 'd'; };
 import Icon from './components/Icon.jsx';
 import Avatar from './components/Avatar.jsx';
 
@@ -48,9 +47,6 @@ export default function Home() {
   };
   const latest = (i) => i.state.agents.filter(a => a.status && a.kind !== 'human').sort((a, b) => (b.statusAt || 0) - (a.statusAt || 0))[0];
   const rows = names.map(n => ({ n, i: infos[n] }));
-  const total = (f) => rows.reduce((sum, r) => sum + (r.i ? f(r.i) : 0), 0);
-  const blocked = (i) => i.board ? i.board.tasks.filter(t => t.status === 'blocked').length : 0;
-  const open = (i) => i.board ? i.board.tasks.filter(t => t.status !== 'done').length : 0;
   const cmd = `curl -fsSL ${location.origin}/install.sh | sh`;
   const [copied, setCopied] = useState(false);
   const copy = () => navigator.clipboard.writeText(cmd).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }, () => {});
@@ -68,23 +64,19 @@ export default function Home() {
       {(err || S.fatal) && <div className="hnote err" role="alert">{err || S.fatal}</div>}
 
       <div className="hbody">
-        <div className="hhero"><h1 className="htitle"><span className="prompt">$</span> huddle projects</h1><p>Open one to see every teammate's agent at work.</p></div>
+        <div className="hhero"><h1 className="htitle"><span className="prompt">$</span> huddle projects</h1></div>
 
         <section className="pane hlist">
           <div className="phd"><b>projects</b><span>{names.length}</span></div>
-          {names.length > 0 && <div className="hrow hth"><span>project</span><span>latest</span><span>team</span><span>open</span><span>blocked</span><span>active</span></div>}
+          {names.length > 0 && <div className="hrow hth"><span>project</span><span>latest</span><span>team</span></div>}
           {rows.map(({ n, i }) => {
-            const team = i ? people(i) : [], last = i && latest(i), on = team.filter(p => p.online).length, seen = Math.max(0, ...team.map(p => p.seen));
-            const b = i ? blocked(i) : 0;
+            const team = i ? people(i) : [], last = i && latest(i), on = team.filter(p => p.online).length;
             return (
               <div className={'hrow' + (i === null ? ' gone' : '')} key={n}>
                 <button className="hopen" data-nav onClick={() => openProject(n)} aria-label={`Open ${prettyProject(n)}`}></button>
                 <span className="hname"><i className={'dot' + (on ? ' full' : '')} />{prettyProject(n)}{store.get('huddle.demo.' + n) && <em>demo</em>}</span>
                 <span className="hlast">{i === null ? <span className="bad">your access to this project ended</span> : !i ? <span className="faint">loading…</span> : last ? <><b>{last.name}</b> {last.status}</> : <span className="faint">nothing yet</span>}</span>
                 <span className="hteam">{team.slice(0, 5).map(p => <span key={p.name} className={p.online ? 'on' : ''} title={`${p.name}${p.online ? ', online' : ''}`}><Avatar name={p.name} sm settings={i.state.settings} /></span>)}{team.length > 5 && <small>+{team.length - 5}</small>}</span>
-                <span className="hnum">{i ? open(i) : '--'}</span>
-                <span className={'hnum' + (b ? ' bad' : '')}>{i ? b : '--'}</span>
-                <span className="hnum faint">{seen ? agoShort(seen) : '--'}</span>
                 <button className="hforget" aria-label={`Remove ${prettyProject(n)} from this list`} title="Remove from this list" onClick={() => { forgetProject(n); location.reload(); }}>×</button>
               </div>
             );
@@ -121,15 +113,6 @@ export default function Home() {
         </div>
       </div>
 
-      <footer className="hstatus" aria-label="Status">
-        <span className="hs-live"><i />live</span>
-        <span className="hs-count">{names.length} project{names.length === 1 ? '' : 's'}</span>
-        <span><i className="ok" /><b>{total(i => people(i).filter(p => p.online).length)}</b> online</span>
-        <span><b>{total(open)}</b> open</span>
-        <span className={total(blocked) ? 'warn' : ''}><i className={total(blocked) ? 'bad' : ''} /><b>{total(blocked)}</b> blocked</span>
-        <span className="grow"></span>
-        <span className="hs-host">{location.host}</span>
-      </footer>
     </div>
   );
 }

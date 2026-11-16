@@ -53,6 +53,29 @@ const ok = (m) => console.log('✓ ' + m);
     ok('cost alerts: a day far above the usual, a month on course to pass the budget, and a runaway task, each once');
   }
 
+  // stopping a background Claude from the dashboard: its runner hears a stop event, and the session
+  // goes offline and lets go of its locks even when no runner is left to hear it
+  {
+    const core = require('../src/core');
+    const P = new core.Project('unit-stop01');
+    const R = core.routes;
+    const human = { id: 'human:bo', name: 'bo', kind: 'human', host: 'dashboard' };
+    const own = { id: 'ana#aaaaa', name: 'ana', kind: 'agent', host: 'h', checkout: 'c' };
+    const bg = { id: 'ana#bbbbb', name: 'ana', kind: 'agent', host: 'h', checkout: 'c2' };
+    R['POST hello'](P, { agent: own });
+    R['POST hello'](P, { agent: bg, clone: 'board task' });
+    P.locks['src/ai/'] = { path: 'src/ai/', holder: bg.id, holderName: 'ana', branch: null };
+    P.locks['src/x.ts'] = { path: 'src/x.ts', holder: own.id, holderName: 'ana', branch: null };
+    assert.throws(() => R['POST stop-session'](P, { agent: human, id: own.id }), /only background/);
+    assert.throws(() => R['POST stop-session'](P, { agent: human, id: 'nope#00000' }), /no such session/);
+    R['POST stop-session'](P, { agent: human, id: bg.id });
+    const ev = P.events.find(e => e.type === 'stop');
+    assert.deepStrictEqual([ev.agent, ev.owner, ev.by], [bg.id, 'ana', 'bo']);
+    assert.ok(!P.locks['src/ai/'] && P.locks['src/x.ts'], 'only the stopped session\'s locks go');
+    assert.ok(!P.online(P.agents[bg.id]) && P.online(P.agents[own.id]));
+    ok('stop a background Claude: a stop event for its runner, its locks released, shown offline; a person\'s own session can\'t be stopped');
+  }
+
   // automations, in-process: GitHub starts requests from a label or "/huddle", and says so when they're done
   {
     const core = require('../src/core'), crypto = require('crypto');

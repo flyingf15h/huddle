@@ -1,7 +1,7 @@
 // Tasks: every task as a card in To do / In progress / Stuck / Done, filtered by person and words.
 // Drag a card to another column, or open it for details, comments, runs, checks and cost.
 import { useEffect, useState } from 'react';
-import { S, go, myName, dn, people, isOwner } from '../lib/state.js';
+import { S, go, myName, dn, people, isOwner, api } from '../lib/state.js';
 import { useS } from '../lib/store.js';
 import { ago, statusWord, EFFORT_WORD, fmtDur } from '../lib/words.js';
 import { COLUMNS, titleOf, goalOf, waitsOn, checks, stuckReason, money, RUN_WORD, runPill, setStatus, runAgain, markDone, editTask, comment, deleteTask } from '../lib/tasks.js';
@@ -39,9 +39,8 @@ export default function Tasks() {
         <div className="seg sm" role="group" aria-label="Whose">{[['all', 'Everyone'], ['mine', 'Mine'], ['none', 'Unassigned']].map(([k, l]) => <button key={k} className={who === k ? 'on' : ''} onClick={() => setWho(k)}>{l}</button>)}</div>
         <select aria-label="Person" value={['all', 'mine', 'none'].includes(who) ? '' : who} onChange={(e) => setWho(e.target.value || 'all')}><option value="">Anyone</option>{team.map(n => <option key={n} value={n}>{dn(n)}</option>)}</select>
         <input type="search" placeholder="Filter tasks" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Filter tasks" />
-        <span className="grow"></span>
-        <span className="small faint hide-sm">drag a card to move it</span>
       </div>
+      <WaitingPlans />
       <div className={'tbody2' + (open ? '' : ' nodetail')}>
         {open && <Resizer which="detail" label="Resize the task details" />}
         <div className="cols">
@@ -126,5 +125,24 @@ export default function Tasks() {
         )}
       </div>
     </main>
+  );
+}
+
+// plans nobody has started: nothing in them runs until someone presses Start
+function WaitingPlans() {
+  const [err, setErr] = useState('');
+  const waiting = S.board.goals.filter(g => g.waiting && S.board.tasks.some(t => t.goalId === g.id && t.status !== 'done'));
+  if (!waiting.length) return null;
+  const start = (g) => api('goal-start', { id: g.id }).then(r => { g.waiting = false; S.board = { ...S.board }; }).catch(e => setErr("Couldn't start it: " + e.message));
+  return (
+    <div className="waitplans">
+      {waiting.map(g => (
+        <div key={g.id} className="waitplan">
+          <span className="grow"><b>{g.title || titleOf({ title: g.text || '' }).title}</b> <span className="faint">planned, not started · {S.board.tasks.filter(t => t.goalId === g.id).length} tasks</span></span>
+          <button className="primary" onClick={() => start(g)}>Start</button>
+        </div>
+      ))}
+      {err && <small className="err">{err}</small>}
+    </div>
   );
 }

@@ -10,7 +10,8 @@ function oneLine(s, n) {
 function signature(b) {
   return {
     goals: Object.fromEntries(b.goals.map(g => [g.id, `${g.status}:${g.planner || ''}`])),
-    tasks: Object.fromEntries(b.tasks.map(t => [t.id, `${t.status}:${t.owner || ''}:${t.updated}`])),
+    // (tasks of a plan nobody started aren't counted as seen, so starting it later still tells their owners)
+    tasks: Object.fromEntries(b.tasks.filter(t => !(b.goals || []).some(g => g.waiting && g.id === t.goalId)).map(t => [t.id, `${t.status}:${t.owner || ''}:${t.updated}`])),
   };
 }
 
@@ -25,16 +26,18 @@ function describe(seen, b, me) {
     if (seen.goals && seen.goals[g.id]) continue;
     if (g.to && g.to !== me) out.push(`${g.byName} asked ${g.to}'s Claude: ${oneLine(g.text, 400)}`);
     else if (g.to === me) out.push(`${g.byName} gave you (your Claude) a task directly: ${oneLine(g.text, 800)}`);
-    else out.push(`New team goal from ${g.byName} [${g.id}]: ${oneLine(g.text, 800)}\n  Nobody has planned it yet. If you're free (and your user hasn't given you something else), claim it with huddle_claim_goal, split it into tasks for the online agents and call huddle_plan.`);
+    else out.push(`New team goal from ${g.byName} [${g.id}]: ${oneLine(g.text, 200)} (don't take it up unless your user asks)`);
   }
+  const waiting = new Set(b.goals.filter(g => g.waiting).map(g => g.id));
   for (const t of b.tasks) {
+    if (waiting.has(t.goalId)) continue;
     const before = seen.tasks && seen.tasks[t.id];
     const now = `${t.status}:${t.owner || ''}:${t.updated}`;
     if (before === now) continue;
     if (t.owner === me && (!before || !before.includes(`:${me}:`)) && t.status !== 'done') {
-      out.push(`Task assigned to you [${t.id}]: ${t.title}${t.detail ? '\n  ' + oneLine(t.detail, 600) : ''}\n  Work on it when you can (tell your user if they asked for something else), and mark it with huddle_update_task.`);
+      out.push(`Task assigned to you [${t.id}]: ${t.title}${t.detail ? '\n  ' + oneLine(t.detail, 300) : ''}\n  Tell your user; start it only if they say so. Mark it with huddle_update_task.`);
     } else if (!before && !t.owner) {
-      out.push(`New unassigned task [${t.id}]: ${t.title} (take it with huddle_claim_task)`);
+      out.push(`New unassigned task [${t.id}]: ${t.title}`);
     } else if (before && t.status === 'done' && !before.startsWith('done')) {
       out.push(`${t.owner || 'someone'} finished task [${t.id}]: ${t.title}${t.notes && t.notes.length ? ' (' + oneLine(t.notes[t.notes.length - 1].text, 200) + ')' : ''}`);
     }

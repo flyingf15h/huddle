@@ -330,8 +330,9 @@ function handOn(p) {
   const seen = {};
   for (const a of Object.values(p.agents)) if (a.kind !== 'human') seen[a.name] = Math.max(seen[a.name] || 0, p.online(a) ? t0 : a.lastSeen);
   const low = (n) => { const u = (p.usage || {})[n]; return !!(u && t0 - u.at < 3600 * 1000 && u.five >= 90); };
+  const waiting = new Set(p.board.goals.filter(g => g.waiting).map(g => g.id));
   for (const t of p.board.tasks) {
-    if (!t.owner || t.direct || t.held || t.status === 'done') continue;
+    if (!t.owner || t.direct || t.held || t.status === 'done' || waiting.has(t.goalId)) continue;
     const away = t0 - (seen[t.owner] || 0);
     const why = t.limitHit ? `${t.owner}'s Claude hit its usage limit`
       : t.status === 'todo' && low(t.owner) ? `${t.owner} has under 10% of their Claude window left`
@@ -550,6 +551,27 @@ const routes = {
     p.dirty = true;
     const withContent = f && f.content != null && b.baseHash !== f.hash && b.wantContent;
     return { ok: true, lock, latest, elsewhere, content: withContent ? f.content : undefined };
+  },
+  // Stop a background Claude from the dashboard: its person's runner kills the process (and puts the
+  // task back on the board); here it goes offline and lets go of its locks at once, so a runner that is
+  // gone too (a closed laptop) doesn't leave a ghost session holding files
+  'POST stop-session': (p, b) => {
+    const a = p.touch(b.agent);
+    const target = p.agents[String(b.id || '')];
+    if (!target) throw httpError(404, 'no such session');
+    if (!target.clone) throw httpError(400, "only background Claudes can be stopped from here; a person's own session stops on their computer");
+    p.emit('stop', { agent: target.id, owner: target.name, by: a.name });
+    for (const [key, l] of Object.entries(p.locks)) {
+      if (l.holder !== target.id) continue;
+      delete p.locks[key];
+      p.emit('unlock', { path: l.path, branch: l.branch || null, holder: target.id, holderName: target.name, reason: 'stopped' });
+    }
+    target.lastSeen = now() - ONLINE_MS;
+    target.status = '';
+    p.emit('leave', { agent: p.publicAgent(target) });
+    audit(p, a.name, 'stop', `stopped ${target.name}'s background Claude (${target.clone})`);
+    p.dirty = true;
+    return { ok: true };
   },
   'POST unlock': (p, b) => {
     const a = p.touch(b.agent);
@@ -889,7 +911,7 @@ const routes = {
     const text = String(b.text || '').trim().slice(0, 8000);
     if (!text) throw httpError(400, 'what should the team do?');
     const to = personFor(p, b.to);
-    const goal = { id: crypto.randomBytes(4).toString('hex'), text, by: a.id, byName: a.name, at: now(), status: 'open', planner: null, to: to || null };
+    const goal = { id: crypto.randomBytes(4).toString('hex'), text, by: a.id, byName: a.name, at: now(), status: 'open', planner: null, to: to || null, go: !!b.start };
     // a short title from whoever sent it (a Claude handing work on gives one), else one made from the text
     const given = String(b.title || '').replace(/\s+/g, ' ').trim().slice(0, 80);
     if (given) goal.title = given;
@@ -927,6 +949,8 @@ const routes = {
     if (!tasks.length) throw httpError(400, 'a plan needs at least one task');
     g.planner = a.name;
     g.status = 'planned';
+    // a plan is only a plan: nothing runs until someone says go (huddle_plan start, or Start in the dashboard)
+    g.waiting = !(b.start || g.go);
     g.plan = String(b.summary || '').slice(0, 4000);
     if (b.title) g.title = String(b.title).replace(/\s+/g, ' ').trim().slice(0, 80);
     // "keep": the planner's own session does it (so its background runner leaves it alone)
@@ -942,6 +966,16 @@ const routes = {
     X.conflictAware(p, made, tasks);
     boardChanged(p, 'plan', { goal: g, tasks: made }, a);
     return { ok: true, tasks: made };
+  },
+  // start a plan that was waiting for a go
+  'POST goal-start': (p, b) => {
+    const a = p.touch(b.agent);
+    const g = p.board.goals.find(x => x.id === b.id);
+    if (!g) throw httpError(404, 'no such goal');
+    g.waiting = false; g.startedBy = a.name;
+    for (const t of p.board.tasks) if (t.goalId === g.id && t.status !== 'done') t.updated = now();
+    boardChanged(p, 'goal-start', { goal: g }, a);
+    return { ok: true, goal: g };
   },
   'POST task': (p, b) => {
     const a = p.touch(b.agent);

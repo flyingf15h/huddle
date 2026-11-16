@@ -9,7 +9,7 @@ import { S, go } from './state.js';
 
 export const SHORTCUTS = [
   ['/', 'Search the project'], ['Ctrl K', 'Search the project'], ['c', 'New request'], ['j / k', 'Next / previous item'],
-  ['Enter', 'Open the item'], ['1 to 5', 'Overview, Activity, Tasks, Studio, Settings'], ['g o', 'Go to Overview'], ['g a', 'Go to Activity'], ['g t', 'Go to Tasks'],
+  ['Enter', 'Open the item'], ['1 to 5', 'Overview, Activity, Tasks, Project, Settings'], ['g o', 'Go to Overview'], ['g a', 'Go to Activity'], ['g t', 'Go to Tasks'],
   ['g b', 'Go to the brief'], ['g l', 'Go to the timeline'], ['g u', 'Go to Usage'], ['g h', 'Go to Health'], ['g s', 'Go to Settings'], ['?', 'Show these shortcuts'], ['Esc', 'Close'],
 ];
 const GO = { o: 'overview', a: 'activity', t: 'tasks', b: 'brief', l: 'timeline', u: 'usage', h: 'health', s: 'settings' };

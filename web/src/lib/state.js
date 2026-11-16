@@ -29,7 +29,8 @@ export const auth = reactive({ token: null, project: null, name: store.get('hudd
 export const VIEWS = ['overview', 'activity', 'tasks', 'studio', 'settings'];
 // pages that became tabs inside another page (and Code, which is gone): old links and shortcuts still land somewhere
 const MOVED = { brief: ['studio', 'brief'], timeline: ['studio', 'timeline'], gallery: ['studio', 'gallery'], builds: ['studio', 'gallery'], integrations: ['settings', 'integrations'], github: ['studio', 'github'], conflicts: ['studio', 'github'], usage: ['studio', 'usage'], health: ['studio', 'health'], code: ['studio', 'github'] };
-const where = (v) => MOVED[v] || [VIEWS.includes(v) ? v : 'overview'];
+const MOVED_TABS = { audit: ['settings', 'data'] };
+const where = (v) => MOVED_TABS[v] || MOVED[v] || [VIEWS.includes(v) ? v : 'overview'];
 const startAt = where(params.get('v'));
 
 export const S = reactive({
@@ -63,7 +64,7 @@ export function go(view, extra = {}) {
   const [v, tab] = where(view);
   S.view = v;
   if (tab && v === 'studio') S.studioTab = tab;
-  if (tab && v === 'settings') S.settingsTab = tab;
+  if (tab && v === 'settings') S.settingsTab = tab === 'audit' ? 'data' : tab;
   S.drawer = false;
   if (extra.task !== undefined) S.openTask = extra.task;
   setHash();

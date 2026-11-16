@@ -463,6 +463,8 @@ function markTurn(cfg, agent, busy) {
 // work, several areas of the code, many files). Plain text heuristics, so it costs nothing to check.
 function looksBig(prompt) {
   if (process.env.HUDDLE_AUTOPILOT || prompt.length < 30) return false;
+  // asking for a plan, ideas or an answer is not asking for the work to be done
+  if (/\b(plan|planning|brainstorm|outline|roadmap|spec|ideas?|think (about|through)|discuss|propose|suggest|explain|review|what (should|would|do)|how (should|would|could|do)|should (we|i)|don'?t (build|code|start|implement|make)|do not (build|code|start|implement|make))\b|\?\s*$/i.test(prompt)) return false;
   const items = prompt.split('\n').filter(l => /^\s*([-*•]|\d+[.)])\s+\S/.test(l)).length;
   const asks = (prompt.match(/\b(also|and then|plus|as well as|additionally)\b|[.?!]\s+(?=[a-z]*\s*(add|make|fix|change|switch|have|set|allow|get rid|remove|build|update|create|move|let)\b)/gi) || []).length;
   if (prompt.length > 2000 || items >= 5 || asks >= 4) return true;
@@ -474,11 +476,8 @@ function looksBig(prompt) {
 }
 function distributeNote(s, me) {
   const others = [...new Set(s.agents.filter(a => a.online && !a.clone && a.name !== me.name && ['agent', 'autopilot'].includes(a.kind)).map(a => a.name))];
-  const u = (n) => { const x = (s.usage || {})[n]; return x && typeof x.five === 'number' ? ` (${x.five}% of 5-hour window used)` : ''; };
-  return `huddle: this prompt looks like several pieces of work, or one big one. ${others.length ? `Other Claudes online: ${others.map(n => n + u(n)).join(', ')}; you${u(me.name)}.` : 'Nobody else is online, but your own background Claudes can take parts in parallel.'} ` +
-    'If it splits into parts that can be done independently (different files or areas), call huddle_distribute first: give each part a title, a detail with what "done" means, and an effort (light, medium or heavy). ' +
-    'huddle hands the heavier parts to whoever has the most usage left, and their Claudes start right away. Keep the parts you\'re best placed to do with keep_for_me, then do those here. ' +
-    'Skip this for one tightly connected change that can\'t be split cleanly, or when your user wants to do it themselves.';
+  return `huddle: if your user asked for this work to be done now and it splits into independent parts, you can hand parts out with huddle_distribute${others.length ? ` (online: ${others.join(', ')})` : ''}. ` +
+    'Not for plans, ideas or questions, and not unless they asked for the work itself.';
 }
 
 function teamSummary(s, me) {

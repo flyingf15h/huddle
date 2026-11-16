@@ -11,7 +11,7 @@ import SlackSetup from '../components/SlackSetup.jsx';
 import ThemePicker from '../components/ThemePicker.jsx';
 import Editors from '../components/Editors.jsx';
 
-export const TABS = [['team', 'team'], ['integrations', 'integrations'], ['rules', 'rules'], ['notify', 'notifications'], ['look', 'appearance'], ['data', 'data'], ['audit', 'audit log']];
+export const TABS = [['team', 'team'], ['integrations', 'integrations'], ['rules', 'rules'], ['notify', 'notifications'], ['look', 'appearance'], ['data', 'data & audit']];
 const ROLE = { owner: 'Owner', member: 'Member', viewer: 'Viewer' };
 const KINDS = { approval: 'Needs approval', stuck: 'Task stuck', done: 'Request done', failed: 'Something failed', member: 'Someone joined', budget: 'Budget alert', cost: 'Cost spike or forecast', digest: 'Daily digest' };
 const lines = (t) => t.split('\n').map(x => x.trim()).filter(Boolean);
@@ -50,7 +50,7 @@ export default function Settings({ tab }) {
     try {
       await loadMe();
       if (tab === 'team' && S.me.accounts) { setMembers((await api('members')).members); setInvites(S.me.role === 'owner' ? (await api('invites')).invites : []); }
-      if (tab === 'audit' && S.me.role !== 'viewer') setAudit((await api('audit?limit=300')).audit);
+      if (tab === 'data' && S.me.role !== 'viewer') setAudit((await api('audit?limit=300')).audit);
       if (tab === 'notify') await loadNotes();
     } catch (e) { say('load', e.message, true); }
   }
@@ -241,13 +241,14 @@ export default function Settings({ tab }) {
           </>
         )}
 
-        {tab === 'audit' && (S.me.role === 'viewer' ? <p className="muted">Viewers cannot see the audit log.</p> : (
+        {tab === 'data' && S.me.role !== 'viewer' && (
           <>
+            <h3 style={{ margin: '24px 0 10px' }}>audit log</h3>
             <div className="seg sm" style={{ marginBottom: 12 }}>{[['all', 'everything'], ['commands', 'commands'], ['access', 'access'], ['changes', 'settings and approvals']].map(([k, l]) => <button key={k} className={afilter === k ? 'on' : ''} onClick={() => setAfilter(k)}>{l}</button>)}</div>
             <div className="panel" style={{ overflowX: 'auto' }}><table className="audit"><tbody>{auditRows.map((e, i) => <tr key={i}><td title={new Date(e.at).toLocaleString()}>{new Date(e.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</td><td>{e.by}</td><td>{e.action === 'command' ? <>ran <code>{e.detail}</code>{e.agent && <> <span className="muted">({e.agent})</span></>}</> : e.detail}</td></tr>)}
               {!auditRows.length && <tr><td colSpan={3} className="muted" style={{ textAlign: 'center', padding: 24 }}>Nothing here yet.</td></tr>}</tbody></table></div>
           </>
-        ))}
+        )}
       </div>
     </main>
   );

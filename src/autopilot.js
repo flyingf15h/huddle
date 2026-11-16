@@ -53,6 +53,9 @@ function depsDone(b, t) { return (t.after || []).every(id => { const d = b.tasks
 
 function pick(b, me, skip, mode = 'full', { low = false } = {}) {
   if (mode === 'off') return null;
+  // a plan nobody has started yet: its tasks wait (planning was asked for, not building)
+  const waiting = new Set(b.goals.filter(g => g.waiting).map(g => g.id));
+  b = { ...b, tasks: b.tasks.filter(t => !waiting.has(t.goalId)) };
   // (a task the person's own session kept for itself with huddle_distribute is done there, not here)
   const mine = b.tasks.filter(t => t.owner === me && ['todo', 'doing'].includes(t.status) && !skip.has(t.id) && depsDone(b, t)
     && !t.held && !t.editor && (mode === 'full' || t.direct));
@@ -353,6 +356,24 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
   const max = Math.max(1, Number(flags.parallel || cfg.requestsParallel || 3));
   const skip = new Set();
   const running = new Map(); // task or goal id -> what it's doing
+  // live agent processes, so a run can be stopped from the dashboard
+  const kids = new Set();      // { child, taskId, session }
+  const runAgents = new Map(); // a background Claude's huddle agent id -> its run (task id, or msg-/plan- key)
+  const halted = new Map();    // run -> who stopped it
+  const track = (child, taskId, session) => {
+    const k = { child, taskId: taskId || null, session: session || null };
+    kids.add(k);
+    child.on('close', () => kids.delete(k));
+    child.on('error', () => kids.delete(k));
+  };
+  function stopRun(run, by) {
+    halted.set(run, by);
+    for (const k of kids) {
+      if (k.taskId !== run && k.session !== run) continue;
+      try { k.child.kill('SIGTERM'); } catch {}
+      setTimeout(() => { try { if (k.child.exitCode === null) k.child.kill('SIGKILL'); } catch {} }, 5000).unref();
+    }
+  }
   const replied = new Set(), answeredAt = []; // message ids answered, and when (a cap per hour)
   let usage = null, projectSettings = {}, teamSettings = {};      // this person's window use; the team's test and review settings
   const later = (id) => { skip.add(id); setTimeout(() => { skip.delete(id); work(); }, 3 * 60 * 1000).unref(); };
@@ -380,6 +401,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     args.push(prompt);
     const env = { ...process.env, HUDDLE_AUTOPILOT: '1', HUDDLE_AGENT: 'codex', HUDDLE_SHOWN: String(shown).slice(0, 4000), ...(taskId ? { HUDDLE_TASK: taskId } : {}), ...(session ? { HUDDLE_SESSION: session } : {}), ...(mcpRoot ? { HUDDLE_ROOT: mcpRoot } : {}) };
     const child = procs.spawn('codex', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env });
+    track(child, taskId, session);
     let text = '', err = '';
     child.stdout.on('data', d => { text += d; if (out) out(String(d)); });
     child.stderr.on('data', d => { err += d; if (out) out(String(d)); });
@@ -407,6 +429,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     const args = cursor.execArgs({ model: model && model !== 'sonnet' ? model : (flags.model || cfg.autopilotModel || null), prompt });
     const run = (bin) => {
       const child = procs.spawn(bin, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env });
+      track(child, taskId, session);
       let text = '', err = '';
       child.stdout.on('data', d => { text += d; if (out) out(String(d)); });
       child.stderr.on('data', d => { err += d; if (out) out(String(d)); });
@@ -431,6 +454,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     if (cwd !== cfg.root) { try { piAgent.install(cwd, APP_DIR, mcpRoot || cwd); } catch (e) { log('could not set up pi in the worktree: ' + e.message); } }
     const env = { ...process.env, HUDDLE_AUTOPILOT: '1', HUDDLE_AGENT: 'pi', HUDDLE_SHOWN: String(shown).slice(0, 4000), ...(taskId ? { HUDDLE_TASK: taskId } : {}), ...(session ? { HUDDLE_SESSION: session } : {}), ...(mcpRoot ? { HUDDLE_ROOT: mcpRoot } : {}) };
     const child = procs.spawn('pi', piAgent.execArgs({ model: model && model !== 'sonnet' ? model : (flags.model || cfg.autopilotModel || null), prompt }), { cwd, stdio: ['ignore', 'pipe', 'pipe'], env });
+    track(child, taskId, session);
     let text = '', err = '';
     child.stdout.on('data', d => { text += d; if (out) out(String(d)); });
     child.stderr.on('data', d => { err += d; if (out) out(String(d)); });
@@ -455,6 +479,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     // (the session's MCP server runs with HUDDLE_ROOT set to the person's folder; a clone has its own)
     const env = { ...process.env, HUDDLE_AUTOPILOT: '1', HUDDLE_SHOWN: String(shown).slice(0, 4000), ...(taskId ? { HUDDLE_TASK: taskId } : {}), ...(session ? { HUDDLE_SESSION: session } : {}), ...(mcpRoot ? { HUDDLE_ROOT: mcpRoot } : {}) };
     const child = procs.spawn('claude', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env });
+    track(child, taskId, session);
     let text = '', err = '';
     child.stdout.on('data', d => { text += d; if (out) out(String(d)); });
     child.stderr.on('data', d => { err += d; if (out) out(String(d)); });
@@ -514,10 +539,13 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     log(`answering a message from ${m.fromName}`);
     const key = 'msg-' + m.id;
     const who = cloneClient(cfg.root, key, gitx.currentBranch(cfg.root, 0));
+    runAgents.set(who.agent.id, key);
     await who.post('hello', { clone: `answering ${m.fromName}` }).catch(() => {});
     await who.post('status', { status: `answering ${m.fromName}: ${m.text.split('\n')[0].slice(0, 70)}` }).catch(() => {});
     const res = await runClaude(replyPrompt(m, me, await myAiName(client).catch(() => null), m.fromName), { session: key, shown: `Reply to ${m.fromName}: ${m.text}`, model: cfg.answerModel || 'sonnet' });
     const text = res.out.trim().slice(-2000) || (res.code === 0 ? '' : "I couldn't answer this automatically; it'll wait for my person.");
+    if (halted.has(key)) { halted.delete(key); runAgents.delete(who.agent.id); log(`stopped answering ${m.fromName}`); return; }
+    runAgents.delete(who.agent.id);
     if (text) await client.post('message', { to: m.fromName, text, auto: true }).catch(e => log('could not send the answer: ' + e.message));
     await who.post('bye', {}).catch(() => {});
   }
@@ -532,11 +560,14 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     log(`planning goal ${goal.id}: ${goal.text.split('\n')[0]}`);
     const key = 'plan-' + goal.id;
     const who = cloneClient(cfg.root, key, gitx.currentBranch(cfg.root, 0));
+    runAgents.set(who.agent.id, key);
     await who.post('hello', { clone: `planning a goal from ${goal.byName}` }).catch(() => {});
     await who.post('status', { status: `planning: ${goal.text.split('\n')[0].slice(0, 80)}` }).catch(() => {});
     const s = await client.get('state');
     const team = [...new Set(s.agents.filter(a => a.online && (a.kind === 'agent' || a.kind === 'autopilot')).map(a => a.name))];
     await runClaude(planPrompt(goal, team.length ? team : [me], me, await myAiName(client).catch(() => null), s.usage), { session: key, shown: `Plan: ${goal.text}`, model: cfg.planModel || 'sonnet' });
+    runAgents.delete(who.agent.id);
+    if (halted.has(key)) { halted.delete(key); log(`stopped planning goal ${goal.id}`); return; }
     const after = (await client.get('board')).goals.find(g => g.id === goal.id);
     if (after && after.status !== 'planned' && after.status !== 'done') {
       log('Claude did not record a plan; taking the whole goal as one task');
@@ -628,6 +659,19 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     const key = 'clone-' + t.id;
     const branch = c ? c.person : gitx.currentBranch(cfg.root, 0);
     const who = cloneClient(c ? c.dir : cfg.root, key, branch);
+    runAgents.set(who.agent.id, t.id);
+    // stopped from the dashboard: keep what it did on its branch and park the task until someone runs it again
+    const stopped = async () => {
+      if (!halted.has(t.id)) return false;
+      const by = halted.get(t.id);
+      halted.delete(t.id); runAgents.delete(who.agent.id);
+      log(`${t.id}: stopped by ${by}`);
+      if (c) { commitClone(c, t.title); landClone(cfg, c, t.title, { merge: false }); }
+      await client.post('task-update', { id: t.id, status: 'blocked', note: `Stopped from the dashboard by ${by}${c ? `; its work so far is on ${c.branch}` : ''}. Run it again to restart.` }).catch(() => {});
+      await who.post('unlock', { all: true }).catch(() => {});
+      await who.post('bye', {}).catch(() => {});
+      return true;
+    };
     await who.post('hello', { clone: t.direct ? `request from ${t.by}` : 'board task' }).catch(() => {});
     const busy = await lockPaths(who, t, branch);
     if (busy) {
@@ -649,11 +693,12 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
         { taskId: t.id, cwd: c ? c.dir : cfg.root, session: key + (attempt > 1 ? '-' + attempt : ''), mcpRoot: c ? c.dir : null, allow: (t.allow || []).map(x => `Bash(${x})`), shown: t.detail && t.detail.trim() ? t.detail : t.title });
       const crashed = res.code !== 0 && !LIMIT.test(res.out + res.err) && !res.missing;
       const already = crashed && ((await client.get('board').catch(() => ({ tasks: [] }))).tasks.find(x => x.id === t.id) || {}).status;
-      if (!crashed || attempt >= 3 || already === 'done') break;
+      if (!crashed || attempt >= 3 || already === 'done' || halted.has(t.id)) break;
       await client.post('task-update', { id: t.id, run: { attempt, outcome: 'retrying', ms: Date.now() - started, error: lastLine(res), agent: tool } }).catch(() => {});
       log(`${t.id}: ${toolName} exited with an error (attempt ${attempt}); trying again`);
       await new Promise(r => setTimeout(r, Number(process.env.HUDDLE_RETRY_MS || 0) || (attempt === 1 ? 20000 : 60000)));
     }
+    if (await stopped()) return;
     const outcome = res.missing ? 'crashed' : res.code !== 0 && LIMIT.test(res.out + res.err) ? 'limit' : res.code !== 0 ? 'crashed' : 'ok';
     await client.post('task-update', { id: t.id, run: { attempt, outcome, ms: Date.now() - started, error: outcome === 'ok' ? '' : lastLine(res), agent: tool } }).catch(() => {});
     if (outcome === 'crashed' && !res.missing) await reportProblem('crash', `${toolName} crashed ${attempt} time${attempt === 1 ? '' : 's'} on "${t.title}"`, (res.err || '') + '\n' + (res.log || res.out || ''), t.id);
@@ -670,6 +715,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
     let pr = null;
     if (c) {
       if (commitClone(c, t.title)) checks = await check(t, c).catch(e => { log('checks: ' + e.message); return null; });
+      if (await stopped()) return;
       // the project wants pull requests: the work goes up as one instead of merging here
       if (projectSettings.delivery === 'pr' && gitx.git(c.dir, ['rev-list', '--count', `${c.base}..HEAD`]).out.trim() !== '0') {
         pr = openPr(cfg, c, t, checks, me);
@@ -778,7 +824,12 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
 
   function start(id, what, job) {
     running.set(id, what);
-    job().catch(e => log('autopilot: ' + e.message)).finally(() => { running.delete(id); work(); });
+    job().catch(e => log('autopilot: ' + e.message)).finally(() => {
+      running.delete(id);
+      // a stop that arrives after the run ended must not stop the next run of the same task
+      for (const run of [id, 'plan-' + id]) { halted.delete(run); for (const [ag, r] of runAgents) if (r === run) runAgents.delete(ag); }
+      work();
+    });
   }
 
   // hand out work until `max` Claudes are busy; each finished one makes room for the next
@@ -831,6 +882,7 @@ function createRunner({ cfg, client, flags = {}, log = () => {}, out = null }) {
         return start('msg-' + ev.message.id, 'answer', () => answer(ev.message));
       }
       if (ev.type === 'usage' && ev.name === me) usage = ev.usage;
+      if (ev.type === 'stop' && ev.owner === me && runAgents.has(ev.agent)) { log(`${ev.by} stopped a background run from the dashboard`); return stopRun(runAgents.get(ev.agent), ev.by); }
       if (ev.type === 'board' && ev.action === 'merge-request' && ev.task && ev.task.owner === me && gitx.isRepo(cfg.root)) return mergeLeft(ev.task);
       // a teammate shared new commits: fetch them and say whether they'd conflict with this branch
       if (ev.type === 'git' && ev.action === 'publish' && ev.ref && ev.ref.owner !== me) checkConflictsSoon();
@@ -886,7 +938,7 @@ function listenWs(client, since, onEvent) {
     let ws, opened = false, ping;
     try { ws = new WebSocket(`${client.base.replace(/^http/, 'ws')}/ws?${q}`); } catch { return resolve(false); }
     ws.onopen = () => { opened = true; ping = setInterval(() => { try { ws.send('ping'); } catch {} }, 30000); };
-    ws.onmessage = (m) => { if (m.data === 'pong') return; try { const ev = JSON.parse(m.data); if (['board', 'setting', 'message', 'usage', 'project-setting', 'git', 'note'].includes(ev.type)) onEvent(ev); } catch {} };
+    ws.onmessage = (m) => { if (m.data === 'pong') return; try { const ev = JSON.parse(m.data); if (['board', 'setting', 'message', 'usage', 'project-setting', 'git', 'note', 'stop'].includes(ev.type)) onEvent(ev); } catch {} };
     // newer Node versions report a failed handshake as "error" alone, with no "close" after it
     let done = false;
     const finish = () => { if (done) return; done = true; clearInterval(ping); try { ws.close(); } catch {} setTimeout(() => resolve(opened), opened ? 1000 : 0); };

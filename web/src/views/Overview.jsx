@@ -1,14 +1,11 @@
-// Overview: today in numbers, everyone's usage window, what's being worked on, and what needs me.
+// Overview: what needs me, what's being worked on, and everyone's usage window.
 // Drawn as terminal panes; each stat pane reads like the output of the huddle command that shows it.
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { S, api, go, myName, myTool, dn, people, usageOf, toolOf } from '../lib/state.js';
 import { useS } from '../lib/store.js';
-import { useLive } from '../lib/hooks.js';
-import { ago, fmtNum } from '../lib/words.js';
+import { ago } from '../lib/words.js';
 import { titleOf, stuckReason, decide, runAgain, canDecide } from '../lib/tasks.js';
-import { spanWord, spanStart, inSpan } from '../lib/span.js';
 
-const hm = (ms) => { const m = Math.round(ms / 60000); return m < 60 ? [[m, 'm']] : [[Math.floor(m / 60), 'h'], [m % 60, 'm']]; };
 const short = (t) => ago(t).replace(/ ago$/, '').replace(/^just now$/, 'now').replace(/ minutes?/, 'm').replace(/ hours?/, 'h').replace(/ days?/, 'd');
 const STATUS = { doing: ['working', 'a'], todo: ['queued', ''], blocked: ['blocked', 'w'], done: ['merged', 'g'] };
 
@@ -25,24 +22,20 @@ const Act = ({ main, disabled, onClick, children }) => <button className={'bact'
 
 export default function Overview() {
   useS();
-  const [stats, setStats] = useState(null), [err, setErr] = useState({});
-  const timer = useRef(null);
-  const load = () => api('stats').then(r => setStats(r.stats)).catch(() => setStats({}));
-  useEffect(() => { load(); }, []);
-  useLive((ev) => { if (ev.type === 'stats') { clearTimeout(timer.current); timer.current = setTimeout(load, 1500); } });
 
+  const [err, setErr] = useState({});
   const me = myName();
-  const since = spanStart(), word = spanWord();
-  const todays = S.board.tasks.filter(t => (t.at || 0) >= since);
-  const count = (st) => todays.filter(t => t.status === st).length;
 
-  // agent time in the span, from each person's counted active time
-  // tokens in this span: what the agent read (prompt, files, cache) and what it wrote
-  const tok = (n) => { const d = stats && stats[n] && stats[n].days; if (!d) return ''; const all = inSpan(d, 'tokens'), out = inSpan(d, 'output'); return all ? `input ${fmtNum(all - out)} · output ${fmtNum(out)} ${word}` : `no tokens ${word}`; };
-  const time = Object.entries(stats || {}).map(([name, s]) => ({ name, ms: inSpan(s.days, 'activeMs') })).filter(x => x.ms > 0).sort((a, b) => b.ms - a.ms);
-  const totalMs = time.reduce((n, x) => n + x.ms, 0);
 
   const team = people();
+  // background Claudes (autopilot runs) anyone on the team can stop
+  const bg = team.flatMap(p => p.clones);
+  const [stopping, setStopping] = useState({}), [stopErr, setStopErr] = useState('');
+  const stop = async (c) => {
+    setStopErr(''); setStopping(x => ({ ...x, [c.id]: true }));
+    try { await api('stop-session', { id: c.id }); }
+    catch (e) { setStopErr("Couldn't stop it: " + e.message); setStopping(x => ({ ...x, [c.id]: false })); }
+  };
   const RANK = { blocked: 0, doing: 1, todo: 2, done: 3 };
   const tasks = S.board.tasks.filter(t => t.status !== 'done' || (t.updated || t.at) > Date.now() - 864e5)
     .sort((a, b) => RANK[a.status] - RANK[b.status] || (b.updated || b.at) - (a.updated || a.at)).slice(0, 8);
@@ -53,6 +46,12 @@ export default function Overview() {
   const canHere = canDecide();
   const choose = (list, allow) => decide(list.map(x => x.id), allow).catch(e => setErr(m => ({ ...m, [list[0].id]: /huddle open/.test(e.message) ? 'open the dashboard with huddle open to decide here' : e.message })));
   const needs = [
+    ...S.board.goals.filter(g => g.waiting && S.board.tasks.some(t => t.goalId === g.id && t.status !== 'done')).map(g => ({
+      key: 'plan-' + g.id, at: g.at, title: 'Plan waiting for a go',
+      text: <>plan ready: <b>{g.title || titleOf({ title: g.text || '' }).title}</b></>, sub: 'nothing runs until someone starts it',
+      acts: [['start', () => api('goal-start', { id: g.id }).catch(e => setErr(m => ({ ...m, ['plan-' + g.id]: e.message }))), true], ['open', () => go('tasks')]],
+      note: err['plan-' + g.id] || '',
+    })),
     ...S.board.tasks.filter(t => t.status === 'blocked' && (t.owner === me || t.by === me)).map(t => ({
       key: t.id, shut: true, at: t.updated || t.at, title: 'Blocked, waiting on you',
       text: stuckReason(t) || titleOf(t).title, sub: titleOf(t).title + (t.owner && t.owner !== me ? ' · ' + dn(t.owner) : ''),
@@ -79,17 +78,19 @@ export default function Overview() {
   return (
     <main data-main className="overview">
       <div className="ogrid">
-        <Pane title="requests" right={<span>{word}</span>} className="p-stat">
-          <div className="cmdl"><span>$</span>huddle requests --{S.span === 'week' ? 'week' : 'today'}</div>
-          <div className="big"><b>{todays.length}</b><span>{todays.length === 1 ? 'request' : 'requests'}</span></div>
-          <div className="parts"><span><i className="g">{count('done')}</i> merged</span><span><i className="a">{count('doing')}</i> working</span><span><i className="w">{count('blocked')}</i> blocked</span>{count('todo') ? <span><i>{count('todo')}</i> queued</span> : null}</div>
+        <Pane title={`needs you (${needs.length})`} hot={needs.length > 0} className="p-needs">
+          {needs.map(n => (
+            <div className="n5" key={n.key}>
+              <span className={'sh4' + (n.shut ? ' shut' : '')} title={n.title}></span>
+              <div className="nb"><p>{n.text}</p><small>{n.sub}</small>
+                <div className="do5">{n.acts.map(([l, fn, main, dis]) => <Act key={l} main={main} disabled={dis} onClick={fn}>{l}</Act>)}</div>
+                {n.note && <small className="nnote">{n.note}</small>}</div>
+              <span className="age">{n.at ? short(n.at) : ''}</span>
+            </div>
+          ))}
+          {!needs.length && <div className="quiet">nothing needs you right now</div>}
         </Pane>
-        <Pane title="agent time" right={<span>{word}</span>} className="p-stat">
-          <div className="cmdl"><span>$</span>huddle cost</div>
-          {stats === null ? <div className="parts">counting…</div> : <>
-            <div className="big"><b>{totalMs ? hm(totalMs).map(([n, u]) => n + u).join(' ') : '0m'}</b><span>{time.length ? `across ${time.length} ${time.length === 1 ? 'agent' : 'agents'}` : 'no agent time yet'}</span></div>
-            <div className="parts">{time.slice(0, 4).map(x => <span key={x.name}>{dn(x.name)} {hm(x.ms).map(([n, u]) => n + u).join(' ')}</span>)}</div></>}
-        </Pane>
+
         <Pane title="usage" right={<span>5-hour window</span>} className="p-use">
           {team.map(p => {
             const u = usageOf(p.name), used = u ? 100 - u.left : null;
@@ -98,7 +99,6 @@ export default function Overview() {
                 <i className={'sdot' + (p.online ? '' : ' off')}></i><span className="nm">{dn(p.name)}</span><span className="tool">{toolOf(p.name).toLowerCase()}</span>
                 <span className="bar5" aria-hidden="true"><i style={{ width: (used || 0) + '%' }}></i></span>
                 <b>{used == null ? 'no data' : used + '% used'}</b>
-                <span className="io">{tok(p.name)}</span>
               </div>
             );
           })}
@@ -121,18 +121,19 @@ export default function Overview() {
           {!tasks.length && <div className="quiet">nothing on the board. <button className="link" onClick={() => { go('activity'); }}>send a request</button></div>}
         </Pane>
 
-        <Pane title={`needs you (${needs.length})`} hot={needs.length > 0} className="p-needs">
-          {needs.map(n => (
-            <div className="n5" key={n.key}>
-              <span className={'sh4' + (n.shut ? ' shut' : '')} title={n.title}></span>
-              <div className="nb"><p>{n.text}</p><small>{n.sub}</small>
-                <div className="do5">{n.acts.map(([l, fn, main, dis]) => <Act key={l} main={main} disabled={dis} onClick={fn}>{l}</Act>)}</div>
-                {n.note && <small className="nnote">{n.note}</small>}</div>
-              <span className="age">{n.at ? short(n.at) : ''}</span>
+        {bg.length > 0 && <Pane title={`background claudes (${bg.length})`} className="p-bg">
+          <div className="th5"><span>doing</span><span>whose</span><span>since</span><span></span></div>
+          {bg.map(c => (
+            <div className="r5" key={c.id} title={c.status || c.clone}>
+              <span className="t"><span className="tl">{c.status || c.clone || 'background run'}</span><small>{c.host}</small></span>
+              <span className="who">{dn(c.name)}</span>
+              <span className="tm">{short(c.statusAt || c.joined || c.lastSeen)}</span>
+              <Act disabled={stopping[c.id]} onClick={() => stop(c)}>{stopping[c.id] ? 'stopping…' : 'stop'}</Act>
             </div>
           ))}
-          {!needs.length && <div className="quiet">nothing needs you right now</div>}
-        </Pane>
+          {stopErr && <small className="nnote">{stopErr}</small>}
+        </Pane>}
+
       </div>
     </main>
   );

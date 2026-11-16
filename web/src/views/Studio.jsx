@@ -9,13 +9,15 @@ import GitHub from './GitHub.jsx';
 import Usage from './Usage.jsx';
 import Health from './Health.jsx';
 
-const TABS = [['brief', 'brief'], ['timeline', 'timeline'], ['gallery', 'test'], ['usage', 'usage'], ['health', 'health'], ['github', 'github']];
+const BASE = [['brief', 'brief'], ['timeline', 'timeline'], ['gallery', 'gallery'], ['usage', 'usage'], ['github', 'github']];
 
 export default function Studio() {
   useS();
+  // health only shows up when something went wrong in the last day
+  const TABS = S.problems.some(x => x.at > Date.now() - 86400000) || S.studioTab === 'health' ? [...BASE, ['health', 'health']] : BASE;
   const tab = TABS.some(([k]) => k === S.studioTab) ? S.studioTab : 'brief';
   return (
-    <SubPage tabs={TABS} tab={tab} onPick={(k) => (S.studioTab = k)} label="Studio">
+    <SubPage tabs={TABS} tab={tab} onPick={(k) => (S.studioTab = k)} label="Project">
       {tab === 'timeline' ? <Timeline /> : tab === 'gallery' ? <Media /> : tab === 'usage' ? <Usage /> : tab === 'health' ? <Health /> : tab === 'github' ? <GitHub /> : <Brief />}
     </SubPage>
   );

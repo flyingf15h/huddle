@@ -145,6 +145,9 @@ function person(name, pid, url, token, project, { git = true } = {}) {
     const plan = await api('plan', { agent: { id: `${planner}#x`, name: planner }, goalId: goal.id, summary: 'split by function',
       tasks: [{ title: 'multiply', owner: planner }, { title: 'divide', owner: other }, { title: 'tests for both', after: [0, 1] }] });
     assert.deepEqual(plan.tasks[2].after, [plan.tasks[0].id, plan.tasks[1].id]);
+    // a plan waits for a go: nobody is told to start on it yet
+    assert.equal(plan.tasks.length, 3);
+    await api('goal-start', { agent: { id: `${planner}#x`, name: planner }, id: goal.id });
     const told = o.hook('post', { tool_name: 'Read', tool_input: {} }).hookSpecificOutput.additionalContext;
     assert.match(told, /Task assigned to you \[[0-9a-f]+\]: divide/);
     assert.match(told, /New unassigned task \[[0-9a-f]+\]: tests for both/);

@@ -39,7 +39,7 @@ export async function createDemo(status) {
   say('Handing out the work…');
   const g = await demoCall(T, P, 'goal', { agent: { id: 'human:' + me, name: me, kind: 'human', host: 'dashboard' }, text: 'Add Apple Pay to checkout. Customers on iPhone should be able to pay in one tap, and card payments must keep working.' });
   await as('maya')('claim-goal', { id: g.goal.id });
-  const plan = await as('maya')('plan', { goalId: g.goal.id, title: 'Apple Pay at checkout', summary: 'UI, endpoint, domain file, then an end-to-end test.', tasks: [
+  const plan = await as('maya')('plan', { goalId: g.goal.id, start: true, title: 'Apple Pay at checkout', summary: 'UI, endpoint, domain file, then an end-to-end test.', tasks: [
     { title: 'Apple Pay button on checkout', detail: 'Show the Apple Pay button on supported devices, keep the card form for everyone else.', owner: 'maya', effort: 'medium', paths: ['src/checkout/'] },
     { title: 'Apple Pay session endpoint', detail: 'POST /api/payments/apple-session returns the merchant session.', owner: 'dev', effort: 'medium', paths: ['src/api/payments.ts'] },
     { title: 'Domain verification file', detail: 'Upload the Apple domain verification file.', owner: 'sam', effort: 'light' },

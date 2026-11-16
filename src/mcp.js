@@ -19,11 +19,11 @@ const INSTRUCTIONS = `huddle connects you with other Claude agents working on th
 - Locks are released when your turn ends. Use huddle_lock with hold=true to reserve files across turns, and huddle_unlock when done.
 - Folder locks: huddle_lock on a folder ("src/pages/") gives you everything inside it until you release it; nobody else can edit there, and nobody can lock a folder or file that overlaps it.
 - Hand-off: when your user wraps up or you pass work on, call huddle_handoff with where you left off and what comes next. The team and the next session see it.
-- Autopilot: your person chooses whether other people can start you on things (huddle_autopilot): "full" (default, "active") means messages other Claudes send you are answered in the background while your person is away, requests and tasks assigned to you run as background Claudes, and team goals get planned; "requests" only runs what is sent to this person's Claude directly; "off" means everything waits. If your user asks to turn autopilot on/off, use huddle_autopilot.
-- Big prompts: when your user asks for several independent pieces of work at once, split it with huddle_distribute. huddle gives heavier parts to the Claudes with the most usage left in their 5-hour window, and their Claudes start right away; you keep and do your own share.
+- Autopilot (huddle_autopilot): "full" (default) runs requests and started tasks in the background and answers other Claudes; "requests" runs only what is sent to this person directly; "off" runs nothing.
+- Only do work your user asked for. A request for a plan, ideas or an answer is not a request to build: plan with huddle_plan (it waits until someone starts it) and do not hand out or start tasks. huddle_distribute is only for work your user wants done now.
 - Your name: your person can name you (e.g. "Pip") so the team can tell the Claudes apart. If your user asks you to take a name, or what you are called, use huddle_name.
 - Branches: people on the same git branch share a live working copy and locks; people on different branches work independently and merge later (huddle_branches, huddle_merge). Your commits are shared automatically at the end of each turn.
-- Team board: people give the whole team goals (huddle_ask_team). The first free agent claims a goal (huddle_claim_goal), splits it into tasks for the online agents and records them with huddle_plan; each agent then works its own tasks and marks them with huddle_update_task. Prefer splitting so different people touch different files.
+- Team board: goals (huddle_ask_team) are split into tasks with huddle_plan; mark tasks with huddle_update_task. Split so different people touch different files.
 - Team knowledge lives in huddle, not git: PROJECT.md (goals, conventions, architecture, who owns what; huddle_project), memory notes (huddle_remember / huddle_recall / huddle_forget) and skills (huddle_save_skill). Save anything another agent would otherwise rediscover the hard way: gotchas, decisions and their reasons, how to build/run/test. Keep memories short and specific; put repeatable multi-step procedures in a skill.`;
 
 const TOOLS = [
@@ -68,15 +68,16 @@ const TOOLS = [
   { name: 'huddle_board', description: 'The team board: goals people gave the team and the tasks they were split into, with owners and status.',
     inputSchema: { type: 'object', properties: {} } },
   { name: 'huddle_ask_team', description: "Give the whole team (every agent) a goal, or one person's Claude a task with to=name. Use when your user wants to hand work to the team. title: 2 to 6 plain words naming the outcome, as the team will see it (no \"From …\" preamble, names, ids or parentheses). For a quick question to someone's Claude, use huddle_send instead.",
-    inputSchema: { type: 'object', properties: { title: { type: 'string' }, text: { type: 'string' }, to: { type: 'string' } }, required: ['title', 'text'] } },
+    inputSchema: { type: 'object', properties: { title: { type: 'string' }, text: { type: 'string' }, to: { type: 'string' }, start: { type: 'boolean', description: 'true only if your user wants the team to build it now; otherwise the plan waits for a go' } }, required: ['title', 'text'] } },
   { name: 'huddle_claim_goal', description: 'Claim the planning of a team goal. Only one agent wins; if you do, split the goal into tasks and call huddle_plan.',
     inputSchema: { type: 'object', properties: { goal_id: { type: 'string' } }, required: ['goal_id'] } },
-  { name: 'huddle_plan', description: "Record the plan for a goal you claimed: tasks with owners (agent names; balance the work, include yourself, avoid two people editing the same files) and optional dependencies (after = indexes of earlier tasks in this list).",
+  { name: 'huddle_plan', description: "Record the plan for a goal you claimed. The plan waits: nothing runs until someone starts it (Start in the dashboard, or start=true here when your user explicitly says to build it now; goal_id + start=true alone starts a saved plan). Tasks: tasks with owners (agent names; balance the work, include yourself, avoid two people editing the same files) and optional dependencies (after = indexes of earlier tasks in this list).",
     inputSchema: { type: 'object', properties: {
       goal_id: { type: 'string' }, title: { type: 'string', description: '2 to 5 plain words naming the whole request' }, summary: { type: 'string' },
+      start: { type: 'boolean', description: 'true only if your user explicitly asked for the work to start now, not just to plan it' },
       tasks: { type: 'array', items: { type: 'object', properties: { title: { type: 'string' }, detail: { type: 'string' }, owner: { type: 'string', description: 'leave empty (with an effort) to let huddle assign by remaining usage; empty without an effort leaves it for anyone' }, paths: { type: 'array', items: { type: 'string' }, description: 'files or folders ("src/ui/") it works in; locked for whoever does it from the start' }, effort: { type: 'string', enum: ['light', 'medium', 'heavy'] }, after: { type: 'array', items: { type: 'number' } } }, required: ['title'] } },
-    }, required: ['goal_id', 'tasks'] } },
-  { name: 'huddle_distribute', description: "Split your user's request into parts and hand them out across the team's Claudes in one step. Each part needs a title (under 7 plain words saying the outcome, like \"Fix login redirect\"; no names, ids or parentheses), a detail saying what to change and what done looks like, and an effort (light, medium, heavy). Parts without an owner are assigned by huddle: heavier ones go to whoever has the most of their 5-hour Claude window left. Set keep_for_me on the parts you will do yourself in this session. The others start on their own right away.",
+    }, required: ['goal_id'] } },
+  { name: 'huddle_distribute', description: "Only when your user asked for the work to be done now (not for a plan or ideas). Split your user's request into parts and hand them out across the team's Claudes in one step. Each part needs a title (under 7 plain words saying the outcome, like \"Fix login redirect\"; no names, ids or parentheses), a detail saying what to change and what done looks like, and an effort (light, medium, heavy). Parts without an owner are assigned by huddle: heavier ones go to whoever has the most of their 5-hour Claude window left. Set keep_for_me on the parts you will do yourself in this session. The others start on their own right away.",
     inputSchema: { type: 'object', properties: {
       title: { type: 'string', description: '2 to 5 plain words naming the whole request, like "Dashboard cleanup"' },
       summary: { type: 'string', description: 'one or two lines: what the whole request is' },
@@ -410,8 +411,8 @@ function runMcp() {
       }
       case 'huddle_board': return board.format(await client.get('board'));
       case 'huddle_ask_team': {
-        const r = await client.post('goal', { text: a.text, title: a.title, to: a.to || null });
-        return a.to ? `sent to ${a.to}'s Claude as a task` : `posted team goal ${r.goal.id}; a free agent will claim and plan it`;
+        const r = await client.post('goal', { text: a.text, title: a.title, to: a.to || null, start: !!a.start });
+        return a.to ? `sent to ${a.to}'s Claude as a task` : `posted team goal ${r.goal.id}; it gets planned${a.start ? ' and started' : ', then waits for someone to start it'}`;
       }
       case 'huddle_claim_goal': {
         const r = await client.post('claim-goal', { id: a.goal_id });
@@ -422,14 +423,15 @@ function runMcp() {
           'Look at the code first if you need to, then call huddle_plan with a 2 to 5 word title for the request and concrete tasks (titles under 7 plain words; details in detail) (what to change and where, done-criteria), each owned by one agent. Split by files/modules so people do not edit the same files. Then tell the team with huddle_send.';
       }
       case 'huddle_plan': {
-        const r = await client.post('plan', { goalId: a.goal_id, title: a.title, summary: a.summary || '', tasks: a.tasks || [] });
-        return `plan saved:\n${r.tasks.map(board.taskLine).join('\n')}\nEach owner sees their tasks automatically.`;
+        if (a.start && !(a.tasks || []).length) { await client.post('goal-start', { id: a.goal_id }); return 'Started: the tasks in this plan now run.'; }
+        const r = await client.post('plan', { goalId: a.goal_id, title: a.title, summary: a.summary || '', tasks: a.tasks || [], start: !!a.start });
+        return `plan saved:\n${r.tasks.map(board.taskLine).join('\n')}\n` + (a.start ? 'Started: owners run their tasks now.' : 'Nothing runs until someone starts it (Start in the dashboard, or huddle_plan with goal_id and start=true when your user says go).');
       }
       case 'huddle_distribute': {
         const parts = (a.tasks || []).filter(t => t && t.title);
         if (!parts.length) throw new Error('give at least one part');
         const g = await client.post('goal', { text: a.summary || parts.map(t => t.title).join('; '), claim: true });
-        const r = await client.post('plan', { goalId: g.goal.id, title: a.title, summary: a.summary || '', tasks: parts.map(t => ({
+        const r = await client.post('plan', { goalId: g.goal.id, title: a.title, summary: a.summary || '', start: true, tasks: parts.map(t => ({
           title: t.title, detail: t.detail, effort: t.effort, paths: t.paths, owner: t.keep_for_me ? me.name : (t.owner || null), keep: !!t.keep_for_me, after: t.after })) });
         // this session's own parts: their area is locked for it now, before anyone else starts there
         const taken = [];

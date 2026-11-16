@@ -4,7 +4,7 @@ import { S, go, myName } from '../lib/state.js';
 import { useS } from '../lib/store.js';
 import { openTaskCount } from '../lib/team.js';
 
-export const PAGES = [['overview', 'overview'], ['activity', 'activity'], ['tasks', 'tasks'], ['studio', 'studio'], ['settings', 'settings']];
+export const PAGES = [['overview', 'overview'], ['activity', 'activity'], ['tasks', 'tasks'], ['studio', 'project'], ['settings', 'settings']];
 
 export default function TopTabs() {
   useS();

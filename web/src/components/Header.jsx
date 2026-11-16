@@ -11,8 +11,7 @@ import Notifications from './Notifications.jsx';
 import ProjectMenu from './ProjectMenu.jsx';
 import { toggleRail, toggleSide, layout } from '../lib/layout.js';
 
-const TITLES = { overview: 'overview', activity: 'activity', tasks: 'tasks', studio: 'studio', settings: 'settings' };
-const DESC = { overview: "what's running and what needs you", activity: 'every prompt, reply and message as it happens', studio: 'manage your project', settings: 'people, integrations, rules and appearance' };
+const TITLES = { overview: 'overview', activity: 'activity', tasks: 'tasks', studio: 'project', settings: 'settings' };
 const FILTERS = [['all', 'everything', 'Every prompt, step, reply, message and file change'], ['key', 'conversation', 'Requests, prompts, replies, messages and hand-offs, without the tool steps and file changes'], ['talk', 'messages', 'Only messages and requests']];
 const mac = /Mac|iPhone|iPad/.test(navigator.platform);
 export const newRequest = () => { if (S.view !== 'activity') go('activity'); setTimeout(() => dispatchEvent(new Event('huddle:compose')), 0); };
@@ -39,7 +38,7 @@ export default function Header() {
           <button className="tbtn hide-sm" onClick={() => (S.invite = true)}>+ invite</button>
         </>
       ) : (
-        <><h1>{TITLES[S.view]}</h1>{S.view !== 'activity' && <span className="vdesc">{DESC[S.view] || ''}</span>}</>
+        <h1>{TITLES[S.view]}</h1>
       )}
       {S.view === 'activity' && (
         <>

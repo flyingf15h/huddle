@@ -10,12 +10,12 @@ const ITEMS = [
   ['join', 'See what everyone is doing', 'The team list shows what each person and their agent are working on. Every agent is told when someone starts something new.'],
   ['lock', 'No overwrites', 'A file an agent is editing is locked for everyone else. Whole folders can be locked for bigger changes.'],
   ['send', 'Hand off work', "Send a request to the team and one agent splits it into tasks, or send it to one person's agent. Each runs as its own agent in the background."],
-  ['tasks', 'Track progress and cost', "The Tasks board shows who owns what and how far along it is, and Studio's usage tab shows what the tokens would cost."],
+  ['tasks', 'Track progress and cost', "The Tasks board shows who owns what and how far along it is, and the Project page shows what the tokens would cost."],
   ['brief', 'Shared brief and memory', 'Every agent reads the project brief, team memory and skills when it starts. Search finds anything the team has said or done.'],
-  ['git', 'Conflicts and GitHub', "See merge conflicts before they happen, and connect your GitHub repository for branches, checks and pull requests, all in Studio's github tab."],
+  ['git', 'Conflicts and GitHub', "See merge conflicts before they happen, and connect your GitHub repository for branches, checks and pull requests, all in the Project page."],
 ];
 const TOUR = [
-  { el: '#rail .navlist', t: 'Pages', p: 'Overview is what is running and what needs you. Activity shows everything as it happens, Tasks is the board, Studio holds the brief, timeline, gallery and builds, and Settings holds the team, usage and health.' },
+  { el: '#rail .navlist', t: 'Pages', p: 'Overview is what is running and what needs you. Activity shows everything as it happens, Tasks is the board, Project holds the brief, timeline, gallery and builds, and Settings holds the team, usage and health.' },
   { el: '#team', t: 'Who is working', p: 'What each person and their agent are doing, and how much usage they have left. Click someone to see only their activity.' },
   { el: '#feed', t: 'Activity', p: 'Prompts, agent steps and replies, and messages, newest at the bottom.', view: 'activity' },
   { el: '#composer', t: 'New request', p: "Send work to the team, and one agent splits it up by remaining usage, or to one person's agent." },
