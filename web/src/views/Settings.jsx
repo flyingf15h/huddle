@@ -14,6 +14,7 @@ import Editors from '../components/Editors.jsx';
 export const TABS = [['team', 'team'], ['integrations', 'integrations'], ['rules', 'rules'], ['notify', 'notifications'], ['look', 'appearance'], ['data', 'data & audit']];
 const ROLE = { owner: 'Owner', member: 'Member', viewer: 'Viewer' };
 const KINDS = { approval: 'Needs approval', stuck: 'Task stuck', done: 'Request done', failed: 'Something failed', member: 'Someone joined', budget: 'Budget alert', cost: 'Cost spike or forecast', digest: 'Daily digest' };
+const gone = (p) => !p.online && p.lastSeen && p.lastSeen < Date.now() - 7 * 864e5;
 const lines = (t) => t.split('\n').map(x => x.trim()).filter(Boolean);
 const iAmDemo = () => !!store.get('huddle.demo.' + auth.project);
 const groupOf = (e) => e.action === 'command' ? 'commands' : ['owner', 'invite', 'invite-revoke', 'join', 'remove', 'role', 'github', 'account'].includes(e.action) ? 'access' : 'changes';
@@ -34,7 +35,7 @@ export default function Settings({ tab }) {
   const ps = S.projectSettings || {};
   const [pol, setPol] = useState({ allow: '', deny: '', priv: '', sharing: 'full', delivery: 'merge', test: '' });
   const [nUrl, setNUrl] = useState(''), [nEvents, setNEvents] = useState(Object.fromEntries(Object.keys(KINDS).map(k => [k, k !== 'done']))), [repoText, setRepoText] = useState(''), [repoToken, setRepoToken] = useState('');
-  const [ret, setRet] = useState({ activityDays: '', messageDays: '', auditDays: '', taskDays: '' }), [delName, setDelName] = useState(''), [title, setTitle] = useState(null);
+  const [ret, setRet] = useState({ activityDays: '', messageDays: '', auditDays: '', taskDays: '' }), [delName, setDelName] = useState(''), [title, setTitle] = useState(null), [addingChan, setAddingChan] = useState(false);
   const owner = isOwner();
   const say = (k, t, bad) => setMsg(m => ({ ...m, [k]: t ? { t, bad } : null }));
   const run = (k, fn) => async (...a) => { say(k, ''); try { await fn(...a); } catch (e) { say(k, "Couldn't save: " + e.message, true); } };
@@ -138,14 +139,14 @@ export default function Settings({ tab }) {
             ) : !S.account.user && (S.account.email || S.account.github) ? (
               <div className="panel"><h3>sign in</h3><p className="pdesc">Sign in on the home screen to keep projects across browsers.</p><div className="pbody"><button onClick={goHome}>Go to the home screen</button></div></div>
             ) : null}
-            {owner && people().some(p => !p.online) && <div className="panel"><h3>people who left</h3><p className="pdesc">Remove someone from the team list. Their past work stays.</p>
-              <div className="plist">{people().filter(p => !p.online).map(p => (
+            {owner && people().some(gone) && <div className="panel"><h3>people who left</h3><p className="pdesc">Not seen for a week. Removing them keeps their past work.</p>
+              <div className="plist">{people().filter(gone).map(p => (
                 <div className="srow" key={p.name}><span className="grow"><b>{dn(p.name)}</b><span className="sub">last seen {ago(p.lastSeen)}</span></span>
                   <button className="ghost" onClick={() => forgetName(p.name)}>remove</button></div>))}</div>
               <div className="pactions"><M k="names" /></div></div>}
-            {!iAmDemo() && <div className="panel"><h3>project name</h3><p className="pdesc">What everyone sees. Invites and joined folders keep working.</p>
-              <div className="pactions" style={{ paddingTop: 12 }}><M k="title" /><input value={title ?? prettyProject(auth.project)} onChange={(e) => setTitle(e.target.value)} aria-label="Project name" style={{ width: 240 }} /><button disabled={title === null} onClick={saveTitle}>Rename</button></div></div>}
-            <div className="panel"><h3>leave this project</h3><p className="pdesc">{iAmDemo() ? 'Removes the demo from your projects.' : soleOwner ? "You're the only owner. Make someone else an owner first." : S.me.accounts && S.me.via === 'member' ? 'Your access ends right away. Your past work stays.' : 'Removes it from this browser. The shared invite still opens it.'} Run <code>huddle leave</code> to disconnect your computer too.</p>
+            <div className="panel"><h3>this project</h3>
+              {!iAmDemo() && <Rule name="name" sub="invites and joined folders keep working"><span style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><M k="title" /><input value={title ?? prettyProject(auth.project)} onChange={(e) => setTitle(e.target.value)} aria-label="Project name" style={{ width: 200 }} /><button disabled={title === null} onClick={saveTitle}>Rename</button></span></Rule>}
+              <p className="pdesc">{iAmDemo() ? 'Removes the demo from your projects.' : soleOwner ? "You're the only owner. Make someone else an owner first." : S.me.accounts && S.me.via === 'member' ? 'Your access ends right away. Your past work stays.' : 'Removes it from this browser. The shared invite still opens it.'} Run <code>huddle leave</code> to disconnect your computer too.</p>
               <div className="pactions" style={{ paddingTop: 12 }}><M k="leave" /><button className="danger" disabled={soleOwner} onClick={leave}>Leave {prettyProject(auth.project)}</button></div></div>
           </>
         )}
@@ -213,29 +214,29 @@ export default function Settings({ tab }) {
             <div className="panel"><h3>team channels</h3><p className="pdesc">Slack, Discord or any webhook, when something needs a person.</p>
               <div className="plist">{(ps.notify || []).map(n => <div className="srow" key={n.id}><span className="pill acc">{({ slack: 'Slack', discord: 'Discord', generic: 'Webhook' })[n.kind] || n.kind}</span><span className="grow">{n.label}<span className="sub">{n.events.map(e => KINDS[e] || e).join(' · ')}</span></span>{owner && <button className="ghost" onClick={() => removeChannel(n.id)}>Remove</button>}</div>)}
                 {!(ps.notify || []).length && <div className="srow muted">No channels yet.</div>}</div>
-              {(ps.notify || []).length > 0 && owner && <div className="pactions"><span className="small">{msg.chan && msg.chan.t}</span><button onClick={testChannel}>Send a test</button></div>}</div>
-            {owner && <div className="panel"><h3>add a channel</h3><div className="pbody fieldset">
+              {owner && !addingChan && <div className="pactions"><span className="small">{msg.chan && msg.chan.t}</span>{(ps.notify || []).length > 0 && <button onClick={testChannel}>Send a test</button>}<button className="primary" onClick={() => setAddingChan(true)}>Add a channel</button></div>}
+            {owner && addingChan && <><div className="pbody fieldset">
               <div><label htmlFor="nu">Webhook URL</label><input type="url" id="nu" value={nUrl} onChange={(e) => setNUrl(e.target.value)} placeholder="https://hooks.slack.com/services/…" /><div className="hintline">a Slack incoming webhook, a Discord webhook, or any URL that takes JSON</div></div>
               <div><span className="lbl2">Send when</span><div className="checks">{Object.entries(KINDS).map(([k, l]) => <label key={k}><input type="checkbox" checked={!!nEvents[k]} onChange={(e) => setNEvents({ ...nEvents, [k]: e.target.checked })} />{l}</label>)}</div></div></div>
-              <div className="pactions"><span className="small err">{msg.chan && msg.chan.bad ? msg.chan.t : ''}</span><button className="primary" onClick={addChannel} disabled={!nUrl.trim()}>Add channel</button></div></div>}
+              <div className="pactions"><span className="small err">{msg.chan && msg.chan.bad ? msg.chan.t : ''}</span><button onClick={() => setAddingChan(false)}>Cancel</button><button className="primary" onClick={async () => { await addChannel(); if (nUrl.trim()) setAddingChan(false); }} disabled={!nUrl.trim()}>Add channel</button></div></>}</div>
           </>
         )}
 
         {tab === 'data' && (
           <>
-            <div className="panel"><h3>what huddle keeps</h3><p className="pdesc">The board, messages, agent activity (secrets removed), shared files, memory, usage and the audit log. Never used for training.</p></div>
+            <p className="small muted" style={{ marginTop: 0 }}>Huddle keeps the board, messages, agent activity (secrets removed), shared files, memory, usage and the audit log. Never used for training.</p>
             {owner && (
               <>
-                <div className="panel"><h3>export</h3><p className="pdesc">Everything as one JSON file, without secrets.</p><div className="pbody"><button onClick={() => download('export', prettyProject(auth.project) + '-export.json')}>download the project</button></div></div>
-                <div className="panel"><h3>how long it's kept</h3><p className="pdesc">In days. Empty keeps it forever.</p><div className="pbody fieldset">
+                <div className="panel"><h3>project data</h3>
+                  <Rule name="export" sub="everything as one JSON file, without secrets"><button onClick={() => download('export', prettyProject(auth.project) + '-export.json')}>Download</button></Rule>
+                  <p className="pdesc">How long it's kept, in days. Empty keeps it forever.</p><div className="pbody fieldset">
                   <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>{[['activityDays', 'Agent activity'], ['messageDays', 'Messages'], ['auditDays', 'Audit log'], ['taskDays', 'Finished tasks']].map(([k, l]) => <div key={k}><label htmlFor={'r' + k}>{l} (days)</label><input id={'r' + k} type="number" min="1" max="3650" value={ret[k]} onChange={(e) => setRet({ ...ret, [k]: e.target.value })} style={{ width: 120 }} placeholder="Forever" /></div>)}</div></div>
                   <div className="pactions"><M k="ret" /><button className="primary" onClick={saveRetention}>Save</button></div></div>
               </>
             )}
-            <div className="panel"><h3>your data</h3><p className="pdesc">Erase your prompts, replies, messages and usage. Your tasks stay.</p>
-              <div className="pactions" style={{ paddingTop: 12 }}><M k="erase" /><button className="danger" onClick={eraseMe}>Erase my activity</button></div></div>
-            {S.account.user && <div className="panel"><h3>your account</h3><p className="pdesc">{S.account.user.email || S.account.user.login}</p>
-              <div className="pactions" style={{ paddingTop: 12 }}><a href="/api/me/export" download>Download my account data</a><button className="danger" onClick={deleteAccount}>Delete my account</button></div></div>}
+            <div className="panel"><h3>your data</h3>
+              <Rule name="your activity" sub="erase your prompts, replies, messages and usage; your tasks stay"><span style={{ display: 'flex', gap: 8, alignItems: 'center' }}><M k="erase" /><button className="danger" onClick={eraseMe}>Erase</button></span></Rule>
+              {S.account.user && <Rule name="your account" sub={S.account.user.email || S.account.user.login}><span style={{ display: 'flex', gap: 10, alignItems: 'center' }}><a href="/api/me/export" download>Download</a><button className="danger" onClick={deleteAccount}>Delete</button></span></Rule>}</div>
             {owner && <div className="panel" style={{ borderColor: 'var(--bad)' }}><h3>delete this project</h3><p className="pdesc">Removes everything from the server for everyone. Can't be undone. Type <b>{prettyProject(auth.project)}</b> to confirm.</p>
               <div className="pactions" style={{ paddingTop: 12 }}><span className="small err">{msg.del && msg.del.t}</span><input value={delName} onChange={(e) => setDelName(e.target.value)} placeholder={prettyProject(auth.project)} aria-label="Project name" style={{ width: 200 }} /><button className="danger" disabled={delName !== prettyProject(auth.project) && delName !== auth.project} onClick={deleteProject}>Delete project</button></div></div>}
           </>

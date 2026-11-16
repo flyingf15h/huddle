@@ -9,12 +9,13 @@ import GitHub from './GitHub.jsx';
 import Usage from './Usage.jsx';
 import Health from './Health.jsx';
 
-const BASE = [['brief', 'brief'], ['timeline', 'timeline'], ['gallery', 'gallery'], ['usage', 'usage'], ['github', 'github']];
+const BASE = [['brief', 'brief'], ['timeline', 'timeline'], ['gallery', 'gallery'], ['usage', 'usage']];
 
 export default function Studio() {
   useS();
   // health only shows up when something went wrong in the last day
-  const TABS = S.problems.some(x => x.at > Date.now() - 86400000) || S.studioTab === 'health' ? [...BASE, ['health', 'health']] : BASE;
+  // github only once a repo is connected (settings → integrations connects one)
+  const TABS = [...BASE, ...((S.projectSettings || {}).repo || S.studioTab === 'github' ? [['github', 'github']] : []), ...(S.problems.some(x => x.at > Date.now() - 86400000) || S.studioTab === 'health' ? [['health', 'health']] : [])];
   const tab = TABS.some(([k]) => k === S.studioTab) ? S.studioTab : 'brief';
   return (
     <SubPage tabs={TABS} tab={tab} onPick={(k) => (S.studioTab = k)} label="Project">

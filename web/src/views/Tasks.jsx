@@ -36,8 +36,7 @@ export default function Tasks() {
   return (
     <main data-main className="tview" onKeyDown={onKey}>
       <div className="tbar">
-        <div className="seg sm" role="group" aria-label="Whose">{[['all', 'Everyone'], ['mine', 'Mine'], ['none', 'Unassigned']].map(([k, l]) => <button key={k} className={who === k ? 'on' : ''} onClick={() => setWho(k)}>{l}</button>)}</div>
-        <select aria-label="Person" value={['all', 'mine', 'none'].includes(who) ? '' : who} onChange={(e) => setWho(e.target.value || 'all')}><option value="">Anyone</option>{team.map(n => <option key={n} value={n}>{dn(n)}</option>)}</select>
+        <select aria-label="Whose tasks" value={who} onChange={(e) => setWho(e.target.value)}><option value="all">Everyone</option><option value="mine">Mine</option><option value="none">Unassigned</option>{team.filter(n => n !== myName()).map(n => <option key={n} value={n}>{dn(n)}</option>)}</select>
         <input type="search" placeholder="Filter tasks" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Filter tasks" />
       </div>
       <WaitingPlans />

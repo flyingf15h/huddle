@@ -17,7 +17,7 @@ const topModel = (s) => Object.entries(s.models).sort((a, b) => (b[1].input + b[
 export default function Usage() {
   useS();
   const [stats, setStats] = useState(null), [since, setSince] = useState(0), [costs, setCosts] = useState(null), [err, setErr] = useState(''), [range, setRange] = useState(30), [tip, setTip] = useState(null);
-  const [budget, setBudget] = useState(''), [alertPct, setAlertPct] = useState(80), [prices, setPrices] = useState(''), [msg, setMsg] = useState(''), [showTable, setShowTable] = useState(false), [al, setAl] = useState(null);
+  const [budget, setBudget] = useState(''), [alertPct, setAlertPct] = useState(80), [prices, setPrices] = useState(''), [msg, setMsg] = useState(''), [showTable, setShowTable] = useState(false), [al, setAl] = useState(null), [showAll, setShowAll] = useState(false), [editBudget, setEditBudget] = useState(false);
   const budgetSet = useRef(false);
 
   async function load() {
@@ -64,15 +64,11 @@ export default function Usage() {
       <div id="statsview" style={{ flex: 1, overflowY: 'auto', padding: '16px 20px 28px' }}>
         <p className="small faint" style={{ marginTop: 0 }} title="Counted by each person's huddle hooks: numbers only, nothing of what was said. People on a plan aren't billed per token, so this is the value of the work, not a bill.">API-equivalent cost, counted since {new Date(since).toLocaleDateString()}.</p>
         <div className="tiles">
-          <div className="tile"><div className="k">cost this month</div><div className="v">{money(costs.monthSpend)}</div></div>
-          <div className="tile"><div className="k">{costs.budget ? 'monthly budget' : 'cost, all time'}</div><div className="v">{costs.budget ? money(costs.budget.monthly) : money(costs.total)}</div>
+          <div className="tile"><div className="k">cost this month</div><div className="v">{money(costs.monthSpend)}</div><div className="small faint">{costs.budget ? `of ${money(costs.budget.monthly)} budget` : `${money(costs.total)} all time`}</div>
             {costs.budget && <div className="progress" style={{ maxWidth: 'none', marginTop: 6 }} role="progressbar" aria-valuenow={Math.round(budgetPct)} aria-valuemin={0} aria-valuemax={100} aria-label="Budget used"><span style={{ width: budgetPct + '%', background: budgetPct >= 100 ? 'var(--bad)' : budgetPct >= costs.budget.alertPct ? 'var(--warn)' : 'var(--ok)' }}></span></div>}</div>
           {costs.trend && costs.trend.projected != null && <div className="tile"><div className="k">month on course for</div><div className="v">{money(costs.trend.projected)}</div>{costs.budget && costs.trend.projected > costs.budget.monthly && <div className="small" style={{ color: 'var(--bad)' }}>over budget</div>}</div>}
           {costs.trend && costs.trend.avg > 0 && <div className="tile"><div className="k">cost today</div><div className="v">{money(costs.trend.today)}</div><div className="small faint">usually {money(costs.trend.avg)}{costs.trend.today > costs.trend.avg * 1.5 ? ', running high' : ''}</div></div>}
-          <div className="tile"><div className="k">agent time {spanWord()}</div><div className="v">{fmtDur(sum(p => inSpan(p.s.days, 'activeMs')))}</div></div>
-          <div className="tile"><div className="k">prompts {spanWord()}</div><div className="v">{fmtNum(sum(p => inSpan(p.s.days, 'turns')))}</div></div>
-          <div className="tile"><div className="k">input tokens {spanWord()}</div><div className="v">{fmtNum(sum(p => inSpan(p.s.days, 'tokens') - inSpan(p.s.days, 'output')))}</div><div className="small faint">what the agents read</div></div>
-          <div className="tile"><div className="k">output tokens {spanWord()}</div><div className="v">{fmtNum(sum(p => inSpan(p.s.days, 'output')))}</div><div className="small faint">what the agents wrote</div></div>
+          <div className="tile"><div className="k">agent time {spanWord()}</div><div className="v">{fmtDur(sum(p => inSpan(p.s.days, 'activeMs')))}</div><div className="small faint">{fmtNum(sum(p => inSpan(p.s.days, 'turns')))} prompts</div></div>
         </div>
 
         <div className="panel"><h3>Cost per day</h3>
@@ -98,23 +94,24 @@ export default function Usage() {
 
         {costs.tasks.length > 0 && (
           <div className="panel"><h3>Most expensive tasks</h3><div className="plist">
-            {costs.tasks.slice(0, 8).map(t => <button key={t.id} className="srow" style={{ width: '100%', textAlign: 'left', borderRadius: 0, background: 'none', borderLeft: 0, borderRight: 0, borderBottom: 0 }} data-nav onClick={() => go('tasks', { task: t.id })}><span className="grow">{t.title}<span className="sub">{t.owner ? dn(t.owner) : 'Unassigned'} · {t.status}</span></span><span className="num">{money(t.cost)}</span><span className="small faint">{fmtNum(t.tokens)} tokens</span></button>)}</div></div>
+            {costs.tasks.slice(0, 5).map(t => <button key={t.id} className="srow" style={{ width: '100%', textAlign: 'left', borderRadius: 0, background: 'none', borderLeft: 0, borderRight: 0, borderBottom: 0 }} data-nav onClick={() => go('tasks', { task: t.id })}><span className="grow">{t.title}<span className="sub">{t.owner ? dn(t.owner) : 'Unassigned'} · {t.status}</span></span><span className="num">{money(t.cost)}</span><span className="small faint">{fmtNum(t.tokens)} tokens</span></button>)}</div></div>
         )}
 
-        <div className="statswrap"><table className="stats">
-          <thead><tr><th>Person</th><th>Cost</th><th>Conversations</th><th>Time with agents</th><th>Prompts</th><th>Input tokens</th><th>Output tokens</th><th>Requests for others</th><th>Last {SPARK} days</th></tr></thead>
+        <button className="link small" style={{ margin: '4px 0 8px' }} onClick={() => setShowAll(!showAll)}>{showAll ? "Hide everyone's numbers" : "Show everyone's numbers"}</button>
+        {showAll && <div className="statswrap"><table className="stats">
+          <thead><tr><th>Person</th><th>Cost</th><th>Time with agents</th><th>Prompts</th><th>Tokens in / out</th><th>Last {SPARK} days</th></tr></thead>
           <tbody>{people.map(({ name, s, own, all, cost }) => { const m = topModel(s); return (
             <tr key={name}><td><span className="who"><Avatar name={name} sm /><span>{dn(name)}<span className="sub">{m ? m[0] : 'no model usage yet'} · {ago(s.last)}</span></span></span></td>
-              <td>{money(cost)}</td><td>{s.conversations}</td><td>{fmtDur(own)}</td><td>{fmtNum(s.turns)}</td>
-              <td title={`new ${fmtNum(tokenSum(s, 'input'))} · cache read ${fmtNum(tokenSum(s, 'cacheRead'))} · cache write ${fmtNum(tokenSum(s, 'cacheWrite'))}`}>{fmtNum(all - tokenSum(s, 'output'))}</td><td>{fmtNum(tokenSum(s, 'output'))}</td>
-              <td title={`${fmtDur(s.requestMs || 0)} on requests from others`}>{s.requests || 0}</td>
-              <td><span className="spark" title={`time with agents, last ${SPARK} days`}>{spark(s.days).map(b => <i key={b.k} style={{ height: b.h + '%' }} title={`${b.k}: ${fmtDur(b.v)}`}></i>)}</span></td></tr>); })}</tbody></table></div>
+              <td>{money(cost)}</td><td title={`plus ${fmtDur(s.requestMs || 0)} on ${s.requests || 0} requests from others`}>{fmtDur(own)}</td><td title={`${s.conversations} conversations`}>{fmtNum(s.turns)}</td>
+              <td title={`in: new ${fmtNum(tokenSum(s, 'input'))} · cache read ${fmtNum(tokenSum(s, 'cacheRead'))} · cache write ${fmtNum(tokenSum(s, 'cacheWrite'))}`}>{fmtNum(all - tokenSum(s, 'output'))} / {fmtNum(tokenSum(s, 'output'))}</td>
+              <td><span className="spark" title={`time with agents, last ${SPARK} days`}>{spark(s.days).map(b => <i key={b.k} style={{ height: b.h + '%' }} title={`${b.k}: ${fmtDur(b.v)}`}></i>)}</span></td></tr>); })}</tbody></table></div>}
 
-        {missing.length > 0 && <div className="panel" style={{ marginTop: 16 }}><h3>No usage from</h3><div className="plist">{missing.map(m => <div className="srow" key={m.name}><Avatar name={m.name} sm /><span className="grow"><b>{dn(m.name)}</b><span className="sub">{m.why}</span></span></div>)}</div></div>}
+        {missing.length > 0 && <p className="small muted">No usage yet from {missing.map((m, i) => <span key={m.name} title={m.why} style={{ borderBottom: '1px dotted currentColor', cursor: 'help' }}>{i ? ', ' : ''}{dn(m.name)}</span>)}. Hover a name for why.</p>}
 
         {isOwner() && (
-          <div className="panel" style={{ marginTop: 16 }}><h3>Budget and prices</h3><p className="pdesc">Owners get a notification when the month's cost passes the alert line and again at 100%. List prices for Claude models are built in; add your own for other models or a negotiated rate.</p>
-            <div className="pbody fieldset">
+          <div className="panel" style={{ marginTop: 16 }}><h3>Budget and alerts</h3>
+            <div className="pactions" style={{ paddingTop: 12, justifyContent: 'space-between' }}><span className="small muted">{costs.budget ? `${money(costs.budget.monthly)} a month, alert at ${costs.budget.alertPct}%` : 'No budget set.'}</span><button onClick={() => setEditBudget(!editBudget)}>{editBudget ? 'Close' : 'Edit'}</button></div>
+            {editBudget && <><p className="pdesc">Owners are notified when the month passes the alert line and again at 100%. Claude list prices are built in; add your own for other models.</p><div className="pbody fieldset">
               <div style={{ display: 'flex', gap: 10, alignItems: 'end', flexWrap: 'wrap' }}><div><label htmlFor="bud">Monthly budget ($)</label><input id="bud" type="number" min="0" step="10" value={budget} onChange={(e) => setBudget(e.target.value)} placeholder="No budget" /></div><div><label htmlFor="bpct">Alert at (%)</label><input id="bpct" type="number" min="10" max="99" value={alertPct} onChange={(e) => setAlertPct(e.target.value)} /></div></div>
               <div><label htmlFor="prc">Custom prices</label><textarea id="prc" value={prices} onChange={(e) => setPrices(e.target.value)} placeholder="gpt-5.5-codex: 1.25, 10" spellCheck={false} /><div className="hintline">One model per line: <code>name: input, output, cache read, cache write</code>, dollars per million tokens.</div></div>
               {al && <div><span className="lbl2">Cost alerts</span>
@@ -123,7 +120,7 @@ export default function Usage() {
                   <label><input type="checkbox" checked={!!al.forecast} onChange={(e) => setAl({ ...al, forecast: e.target.checked })} />The month is on course to pass the budget</label>
                   <label><input type="checkbox" checked={!!al.task} onChange={(e) => setAl({ ...al, task: e.target.checked })} />One task costs more than $<input type="number" min="0.5" style={{ width: 70, margin: '0 4px' }} value={al.taskUsd} onChange={(e) => setAl({ ...al, taskUsd: e.target.value })} aria-label="Task dollars" /></label></div>
                 <div className="hintline">Owners are told in the bell, by email and in any Slack or webhook channel that listens for cost alerts.</div></div>}
-            </div><div className="pactions"><span className={'small' + (msg && msg !== 'Saved.' ? ' err' : '')}>{msg}</span><button className="primary" onClick={saveCost}>Save</button></div></div>
+            </div><div className="pactions"><span className={'small' + (msg && msg !== 'Saved.' ? ' err' : '')}>{msg}</span><button className="primary" onClick={saveCost}>Save</button></div></>}</div>
         )}
       </div>
     </main>
