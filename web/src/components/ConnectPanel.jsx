@@ -35,7 +35,7 @@ export default function ConnectPanel() {
       </div>
       <p className="small muted" style={{ marginTop: 6 }}>You're watching in the browser. To work with your own Claude, do this once on your computer. You need Node 18 or newer, git and Claude Code.</p>
       <ol style={{ paddingLeft: 20, margin: '12px 0 0' }}>
-        <li>Open a terminal in your copy of the project{repo ? <> (no copy yet? <code>git clone https://github.com/{repo}</code>, then <code>cd</code> into it)</> : ' (the folder you normally start Claude in)'}.</li>
+        <li>Open a terminal in your copy of the project{repo ? <> (no copy yet? <code>git clone https://github.com/{repo}</code>, then <code>cd</code> into it)</> : <>. No copy yet? Open a new empty folder: huddle brings the team's code</>}.</li>
         <li>Join the huddle from that folder:<Cmd text={join} k="join" /></li>
         <li>Check it worked. Every line should have a tick:<Cmd text={doctor} k="doctor" /></li>
         <li>Start Claude in that same folder with <code>claude</code>. This box goes away once your computer shows up.</li>

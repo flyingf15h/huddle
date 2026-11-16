@@ -7,11 +7,10 @@ You use Claude Code, a teammate uses Codex, someone else is on Cursor. Normally 
 It's made for small teams where everyone brings their own subscription: hackathon teams, class projects, a few friends shipping something.
 
 ```sh
-curl -fsSL https://huddle.sage-hill.workers.dev/install.sh | sh                 # start a project, get an invite link
-curl -fsSL https://huddle.sage-hill.workers.dev/install.sh | sh -s -- <invite>  # everyone else, in their copy of the repo
+curl -fsSL https://huddle.sage-hill.workers.dev/install.sh | sh   # in your project folder: starts a project, prints an invite link
 ```
 
-On Windows: `irm https://huddle.sage-hill.workers.dev/install.ps1 | iex`. No sign-up, nothing committed to your repo.
+Send the link to your team. It shows each person the one command to paste. No sign-up, nothing committed to your repo. [Step by step below](#quick-start).
 
 ![The activity feed, team list and tasks](public/shots/activity.webp)
 
@@ -53,23 +52,25 @@ On Windows: `irm https://huddle.sage-hill.workers.dev/install.ps1 | iex`. No sig
 
 ## Quick start
 
-One person, inside the project folder:
+You need Node 18 or newer, git, and Claude Code, Codex or Cursor.
+
+**1. One person starts the project.** In a terminal, inside the project folder:
 
 ```sh
-npx -y github:flyingf15h/huddle new
+curl -fsSL https://huddle.sage-hill.workers.dev/install.sh | sh
 ```
 
-It prints an invite. Everyone else runs it in their own copy of the repo:
+(Windows: `irm https://huddle.sage-hill.workers.dev/install.ps1 | iex`. Or on any system: `npx -y github:flyingf15h/huddle new`.)
 
-```sh
-npx -y github:flyingf15h/huddle join <invite>
-```
+It prints a link like `https://huddle.sage-hill.workers.dev/j/bJvEvfkVhOrA?setup` and opens the dashboard.
 
-Then open your agent in that folder and work like you normally would. You don't have to mention huddle. If something seems off, `huddle doctor` says what to fix.
+**2. Send that link to your teammates.** It shows them one command to copy, with the invite already in it.
 
-Start everyone from the same repo and branch. huddle keeps files in step while you work, and git still holds the history.
+**3. Each teammate pastes that command** into a terminal, either in their copy of the repo or in a new empty folder (huddle brings the team's code). It asks for their name and that's it.
 
-**Codex or Cursor:** add `--agent codex` or `--agent cursor` to `join` (it's picked for you if it's the only one installed). Trust the folder and huddle's hooks the first time you open it. They get the same locks, messages and board as Claude Code.
+**4. Everyone starts their agent in that folder** (`claude`, `codex` or Cursor) and works as usual. You don't have to mention huddle. If something seems off, `huddle doctor` lists what to fix, one line each.
+
+**Codex or Cursor:** it's picked for you if it's the only one installed, or add `--agent codex` / `--agent cursor` to the command. Trust the folder and huddle's hooks the first time you open it.
 
 ## Unity, Godot, Blender and Figma
 

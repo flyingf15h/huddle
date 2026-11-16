@@ -50,7 +50,7 @@ export default function InviteDialog() {
           </>
         ) : (
           <>
-            <p>Have a teammate run this in their copy of the project:</p>
+            <p>Have a teammate run this in their copy of the project, or in a new empty folder (huddle brings the code):</p>
             <div className="cmd"><code>{cmd}</code><button onClick={() => copy(cmd, 'cmd')}>{copied === 'cmd' ? 'Copied' : 'Copy'}</button></div>
           </>
         )}

@@ -147,7 +147,8 @@ const joinCommand = (code, server) => `npx -y github:flyingf15h/huddle join ${co
 // the invite however it was given: a short code (12 characters), a dashboard link with one, or a long invite
 async function resolveInvite(text, flags = {}) {
   text = String(text || '').trim();
-  const link = /^(https?:\/\/[^/#\s]+)[^#\s]*#(?:[^#\s]*&)?invite=([\w-]+)/.exec(text);
+  // …/app#invite=CODE, …?invite=CODE or the /j/CODE link that `new` and the Invite dialog hand out
+  const link = /^(https?:\/\/[^/#?\s]+)[^#?\s]*[#?&](?:[^#\s]*&)?invite=([\w-]+)/.exec(text) || /^(https?:\/\/[^/#?\s]+)\/j\/([\w-]{12})\b/.exec(text);
   const words = link ? [link[2]] : text.split(/\s+/);
   const short = words.find(w => /^[A-Za-z0-9][\w-]{11}$/.test(w));
   if (short) {
@@ -473,6 +474,7 @@ function installMcp(root, dir, projectRoot) {
   procs.spawnSync('claude', ['mcp', 'remove', '-s', 'local', 'huddle'], { cwd: root, stdio: 'ignore' });
   const r = procs.spawnSync('claude', ['mcp', 'add-json', '-s', 'local', 'huddle', spec], { cwd: root, encoding: 'utf8' });
   if (r.status === 0) return true;
+  if (r.error && r.error.code === 'ENOENT') return false; // Claude Code isn't installed yet: join says what to do
   console.log(`\nCouldn't register the MCP server automatically (${r.error ? r.error.code : (r.stderr || '').trim()}). Run this in ${root}:`);
   console.log(`  claude mcp add-json -s local huddle '${spec}'`);
   return false;
@@ -552,12 +554,10 @@ async function cmdNew({ pos, flags }) {
   const code = await shortInvite({ server, token: r.token, project: r.project, name: 'invite', root: process.cwd() });
   console.log(`created project ${r.project.replace(/-[0-9a-f]{6,8}$/, '')}
 
-Send your teammates this link (it opens the project in their browser):
-  ${server}/j/${code}
-To connect their Claude, they run this in their copy of the project (it asks for their name;
-${server}/j/${code}?setup shows the steps):
-  ${joinCommand(code, server)}
-Anyone with the invite can join and see the project, so only send it to your team.`);
+Invite your team by sending them this link. It shows them the one command to run:
+  ${server}/j/${code}?setup
+(Or send the command itself: ${joinCommand(code, server)})
+Anyone with the link can join and see the project, so only send it to your team.`);
   if (flags['no-join']) return;
   console.log('');
   await cmdJoin({ pos: [encodeInvite(server, r.token, r.project)], flags });
@@ -579,6 +579,7 @@ async function pickName(flags, root) {
 }
 
 // what huddle needs on this computer, said up front instead of failing halfway
+const onPath = (cmd) => (process.env.PATH || '').split(path.delimiter).some(d => d && fs.existsSync(path.join(d, process.platform === 'win32' ? cmd + '.cmd' : cmd)));
 const hasTool = (cmd) => procs.spawnSync(cmd, ['--version'], { encoding: 'utf8', windowsHide: true }).status === 0;
 function checkTools(agent) {
   if (agent === 'codex' && !hasTool('codex')) console.log('! Codex isn\'t installed here yet. Install it with: npm install -g @openai/codex');
@@ -602,6 +603,15 @@ async function cmdJoin({ pos, flags }) {
   let inv;
   try { inv = await resolveInvite(pos.join(' '), flags); } catch { need(false, 'That invite looks broken. Ask for a fresh one (Invite people on the dashboard, or `huddle invite`).'); }
   const root = path.resolve(flags.dir || process.cwd());
+  // the one-liner gets pasted into whatever terminal is open, often the home folder: never make that the project
+  const where = `Run it inside your copy of the project, or in a new empty folder (huddle brings the team's code):\n  mkdir ${inv.project.replace(/-[0-9a-f]{6,8}$/, '')} && cd ${inv.project.replace(/-[0-9a-f]{6,8}$/, '')}`;
+  need(root !== os.homedir() && root !== path.parse(root).root, `You're in ${root}, which isn't a project folder.\n${where}\nthen paste the same command again.`);
+  if (!gitx.isRepo(root) && !fs.existsSync(path.join(root, CONFIG_DIR))) {
+    const files = fs.readdirSync(root).filter(f => !f.startsWith('.'));
+    if (files.length && process.stdin.isTTY && !flags.yes && !(await yes(`${root} isn't a git repository and has ${files.length} file${files.length === 1 ? '' : 's'} in it. Use it as the project folder?`, 'n'))) {
+      console.log(where); return closeAsk();
+    }
+  }
   const agent = await pickAgent(flags, root);
   checkTools(agent);
   let name = await pickName(flags, root);
@@ -641,7 +651,7 @@ async function cmdJoin({ pos, flags }) {
   // (a personal token opens the dashboard as this person; it's never swapped for the shared invite)
   const code = inv.token.startsWith('hm_') ? encodeInvite(inv.server, inv.token, inv.project) : await shortInvite(cfg);
   console.log(`
-✓ joined "${inv.project.replace(/-[0-9a-f]{6,8}$/, '')}" as ${name}${mcp ? '' : ' (the huddle tools need registering by hand, see above)'}
+✓ joined "${inv.project.replace(/-[0-9a-f]{6,8}$/, '')}" as ${name}${mcp || !hasTool('claude') ? '' : ' (the huddle tools need registering by hand, see above)'}
   Dashboard: ${inv.server}/app#invite=${code}${inv.token.startsWith('hm_') ? '\n  (that link is yours alone: it opens the project as you)' : ''}`);
   // game projects: scenes and art merge properly in this clone (Unity's merger, no text merges of binaries)
   const merge = require('./apps').setupMerge(root);
@@ -666,6 +676,10 @@ not your conversation (huddle sharing full changes that).`);
 Next: run \`claude\` in this folder. It's in the huddle and already knows who's working on what.
 Your Claude can help the team while you're away (change that with /autopilot). Teammates see which tools it runs,
 not your conversation (huddle sharing full changes that).${fs.existsSync(path.join(root, 'CLAUDE.md')) ? '\nTo share your CLAUDE.md with the team without committing it: huddle project --set CLAUDE.md' : ''}`);
+  if (agent === 'claude' && !hasTool('claude')) console.log(`
+! One step left: Claude Code isn't installed on this computer. Install it, then paste the same join command again:
+    npm install -g @anthropic-ai/claude-code`);
+  if (!onPath('huddle')) console.log(`\n(\`huddle\` isn't a command on this computer yet. Where these steps say \`huddle ...\`, type \`npx -y github:flyingf15h/huddle ...\`.)`);
   try { require('./shared').writeShared(root, await new Client(cfg, identity(cfg, 'join')).get('shared')); } catch {}
   if (!flags['no-sync']) {
     console.log('');
@@ -714,8 +728,9 @@ async function syncCopy(cfg, flags = {}) {
 
   if (!gitx.isRepo(root)) {
     const files = fs.readdirSync(root).filter(f => !['.huddle', '.claude', '.git'].includes(f));
-    console.log('This folder is not a git repository. huddle uses git to merge different versions and to let people work on separate branches.');
-    if (!(choice || await yes('Set it up with git now?'))) {
+    if (files.length) console.log('This folder is not a git repository. huddle uses git to merge different versions and to let people work on separate branches.');
+    else console.log('Getting the team\'s code into this folder …');
+    if (files.length && !(choice || await yes('Set it up with git now?'))) {
       console.log('OK. Live editing, locks and chat still work; run `git init` and `huddle sync` later for merging.');
       return closeAsk();
     }
