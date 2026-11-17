@@ -66,9 +66,18 @@ const idleLimit = (p) => (/^huddle-demo-/.test(p.name) ? DEMO_IDLE_DELETE_MS : I
 const SWEEP_MS = 60 * 1000;
 const MSGS_BYTES = 1024 * 1024;
 
-const json = (obj, status = 200) => new Response(JSON.stringify(obj), {
-  status, headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' },
+// On every answer: no sniffing, no framing by other sites, and no referrer (a link opened from the
+// dashboard must never carry an invite or token along).
+const SECURE = { 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer', 'x-frame-options': 'DENY' };
+const HTML = { 'content-type': 'text/html; charset=utf-8', ...SECURE, 'content-security-policy': "frame-ancestors 'none'; base-uri 'self'; object-src 'none'", 'strict-transport-security': 'max-age=31536000' };
+const json = (obj, status = 200, extra) => new Response(JSON.stringify(obj), {
+  status, headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*', 'cache-control': 'no-store', ...SECURE, ...extra },
 });
+
+// One project can't be hammered from one address: far above what a team's agents and dashboards
+// send (a busy session is a few requests a second), low enough to stop a runaway loop from running
+// up the bill. Counted in memory per project instance.
+const PROJECT_RATE = { max: 1800, windowMs: 60 * 1000 };
 
 async function hmac(secret, text) {
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
@@ -96,7 +105,7 @@ export default {
       if (!env.HUDDLE_SECRET) throw httpError(500, 'server is missing HUDDLE_SECRET');
       // the app is the main page; /app stays for links people already have
       if (request.method === 'GET' && ['/', '/index.html', '/app', '/app/'].includes(url.pathname)) {
-        return new Response(dashboard, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+        return new Response(dashboard, { headers: HTML });
       }
       if (url.pathname === '/health') return json({ ok: true, open: true });
       if (url.pathname === '/status') {
@@ -106,7 +115,7 @@ export default {
         try { await indexGet(env, 'status:probe'); doCheck = { name: 'Project storage (Durable Objects)', ok: true, ms: Date.now() - t0 }; }
         catch (e) { doCheck = { name: 'Project storage (Durable Objects)', ok: false, error: e.message }; }
         return new Response(statusPage({ server: url.host, version: env.HUDDLE_VERSION || null, github: accounts.githubConfigured(acctCfg(env)),
-          email: accounts.emailConfigured(acctCfg(env)), checks: [{ name: 'API', ok: true }, doCheck] }), { headers: { 'content-type': 'text/html; charset=utf-8' } });
+          email: accounts.emailConfigured(acctCfg(env)), checks: [{ name: 'API', ok: true }, doCheck] }), { headers: HTML });
       }
       if (url.pathname.startsWith('/auth/') || url.pathname.startsWith('/api/me')) {
         if (request.method === 'POST') await limited(env, request, 'auth');
@@ -337,6 +346,17 @@ export class HuddleProject extends DurableObject {
     const name = request.headers.get('x-huddle-project');
     const ep = url.pathname.split('/').pop();
     try {
+      const from = request.headers.get('cf-connecting-ip');
+      if (from && ep !== 'ws') {
+        const t = now();
+        if (!this.hits || t - this.hits.at > PROJECT_RATE.windowMs) this.hits = { at: t, n: new Map() };
+        const n = (this.hits.n.get(from) || 0) + 1;
+        this.hits.n.set(from, n);
+        if (n > PROJECT_RATE.max) {
+          if (n === PROJECT_RATE.max + 1) console.warn(JSON.stringify({ level: 'warn', message: 'project rate limit reached', project: name }));
+          return json({ error: 'too many requests; slow down and try again in a minute' }, 429, { 'retry-after': String(Math.ceil((this.hits.at + PROJECT_RATE.windowMs - t) / 1000)) });
+        }
+      }
       const p = await this.load(name);
       p.sweep();
       let cred = { kind: 'none' };
@@ -362,7 +382,10 @@ export class HuddleProject extends DurableObject {
       this.flushOutbox(p);
       return json(out);
     } catch (e) {
-      return json({ error: e.message }, e.code >= 400 && e.code < 600 ? e.code : 500);
+      const status = e.code >= 400 && e.code < 600 ? e.code : 500;
+      // failures inside a project never reach the outer handler, so they are logged here (route shape only)
+      if (status >= 500) console.error(JSON.stringify({ level: 'error', route: '/api/p/:project/' + ep, method: request.method, message: String(e.message).slice(0, 300), stack: String(e.stack || '').split('\n').slice(0, 4).join(' | ') }));
+      return json({ error: status === 500 && !e.code ? 'internal error' : e.message }, status);
     }
   }
 

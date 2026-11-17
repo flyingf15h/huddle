@@ -176,22 +176,24 @@ function createServer(opts = {}) {
     req.on('close', () => { p.waiters.delete(w); clearInterval(ping); });
   }
 
+  // no sniffing, no framing by other sites, and no referrer (a link opened from the dashboard must never carry a token along)
+  const SECURE = { 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer', 'x-frame-options': 'DENY' };
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
     const send = (code, obj) => {
       if (res.headersSent) return;
-      res.writeHead(code, { 'content-type': 'application/json' });
+      res.writeHead(code, { 'content-type': 'application/json', 'cache-control': 'no-store', ...SECURE });
       res.end(JSON.stringify(obj));
     };
     try {
       // the app is the main page; /app stays for links people already have
       if (req.method === 'GET' && ['/', '/index.html', '/app', '/app/'].includes(url.pathname)) {
-        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', ...SECURE, 'content-security-policy': "frame-ancestors 'none'; base-uri 'self'; object-src 'none'" });
         return res.end(dashboard);
       }
       if (url.pathname === '/health') return send(200, { ok: true, open });
       if (url.pathname === '/status') {
-        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', ...SECURE, 'content-security-policy': "frame-ancestors 'none'; base-uri 'self'; object-src 'none'" });
         return res.end(statusPage({ ok: true, server: 'self-hosted', since: started, projects: projects.size, github: accounts.githubConfigured(acctCfg), email: accounts.emailConfigured(acctCfg) }));
       }
       const origin = `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}`;

@@ -78,6 +78,7 @@ header.wide { padding-top: 14px; }
 #statusline .grow { flex: 1; }
 #statusline .sconn::before { content: "● "; color: var(--faint); }
 #statusline .sconn.live::before { color: var(--ok); }
+#statusline .sconn.reconnecting, #statusline .sconn.offline { color: var(--warn, inherit); }
 @media (max-width: 760px) { #statusline { display: none; } .toptabs { display: none; } }
 
 /* ---------- sidebar ---------- */

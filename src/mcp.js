@@ -10,111 +10,112 @@ const gitx = require('./git');
 const board = require('./board');
 const autopilot = require('./autopilot');
 const { notify, noteFor } = require('./notify');
+const { RULES } = require('./rules');
 
-const INSTRUCTIONS = `huddle connects you with other Claude agents working on the same project from other machines.
-- Files are locked automatically when you edit them; files another agent is editing are read-only for you and edits to them get refused.
-- Before a bigger change, call huddle_status to see who is doing what, and huddle_set_status to say what you're taking on, so work doesn't overlap.
-- Talk to the other agents with huddle_send. Messages to you arrive in your context automatically; huddle_inbox fetches them on demand.
-- If you need a locked file, ask its holder, watch it with huddle_view, or block with huddle_wait.
-- Locks are released when your turn ends. Use huddle_lock with hold=true to reserve files across turns, and huddle_unlock when done.
-- Folder locks: huddle_lock on a folder ("src/pages/") gives you everything inside it until you release it; nobody else can edit there, and nobody can lock a folder or file that overlaps it.
-- Hand-off: when your user wraps up or you pass work on, call huddle_handoff with where you left off and what comes next. The team and the next session see it.
-- Autopilot (huddle_autopilot): "full" (default) runs requests and started tasks in the background and answers other Claudes; "requests" runs only what is sent to this person directly; "off" runs nothing.
-- Only do work your user asked for. A request for a plan, ideas or an answer is not a request to build: plan with huddle_plan (it waits until someone starts it) and do not hand out or start tasks. huddle_distribute is only for work your user wants done now.
-- Your name: your person can name you (e.g. "Pip") so the team can tell the Claudes apart. If your user asks you to take a name, or what you are called, use huddle_name.
-- Branches: people on the same git branch share a live working copy and locks; people on different branches work independently and merge later (huddle_branches, huddle_merge). Your commits are shared automatically at the end of each turn.
-- Team board: goals (huddle_ask_team) are split into tasks with huddle_plan; mark tasks with huddle_update_task. Split so different people touch different files.
-- Team knowledge lives in huddle, not git: PROJECT.md (goals, conventions, architecture, who owns what; huddle_project), memory notes (huddle_remember / huddle_recall / huddle_forget) and skills (huddle_save_skill). Save anything another agent would otherwise rediscover the hard way: gotchas, decisions and their reasons, how to build/run/test. Keep memories short and specific; put repeatable multi-step procedures in a skill.`;
+const INSTRUCTIONS = RULES;
+
+// Every description here is sent to the model in every session of every person on the
+// team, so each one says what the tool is for and nothing the rules above already say.
+const str = { type: 'string' }, bool = { type: 'boolean' };
+const strs = { type: 'array', items: str };
+const obj = (properties = {}, required) => ({ type: 'object', properties, ...(required ? { required } : {}) });
+const EFFORT = { type: 'string', enum: ['light', 'medium', 'heavy'] };
+const PATHS = { ...strs, description: 'files or folders ("src/ui/") it works in; locked for whoever does it' };
 
 const TOOLS = [
   { name: 'huddle_status', description: 'Who is online, what they are working on, which files are locked and recent file activity.',
-    inputSchema: { type: 'object', properties: {} } },
-  { name: 'huddle_set_status', description: 'Tell the other agents what you are working on (shown next to your name; every other Claude is told when it changes). Call it once when you start a new piece of work, with a summary under 12 words.',
-    inputSchema: { type: 'object', properties: { status: { type: 'string' } }, required: ['status'] } },
-  { name: 'huddle_send', description: 'Send a chat message to the other agents. Leave "to" empty to message everyone, or give an agent name.',
-    inputSchema: { type: 'object', properties: { text: { type: 'string' }, to: { type: 'string', description: 'agent name or id; omit for everyone' } }, required: ['text'] } },
-  { name: 'huddle_inbox', description: 'Read unread messages sent to you or to everyone. Set wait_seconds to block until a message arrives (useful when waiting on a reply).',
-    inputSchema: { type: 'object', properties: { wait_seconds: { type: 'number', minimum: 0, maximum: 600 } } } },
-  { name: 'huddle_lock', description: 'Lock files or folders before editing so nobody else changes them. Editing already locks files automatically; use this to reserve several files up front, or a whole folder (end the path with "/", e.g. "src/pages/"): only you can edit inside it until you release it, and locks can never overlap. hold=true keeps a file lock after your turn ends (folder locks always stay until released or your session ends).',
-    inputSchema: { type: 'object', properties: { paths: { type: 'array', items: { type: 'string' } }, note: { type: 'string', description: 'what you are doing with them' }, hold: { type: 'boolean' } }, required: ['paths'] } },
-  { name: 'huddle_handoff', description: 'Leave a short hand-off note for the team and your next session: where you left off and what comes next (two or three lines). Call it when your user wraps up or you hand work over. Your latest note replaces earlier ones from this session.',
-    inputSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] } },
-  { name: 'huddle_unlock', description: 'Release your locks so other agents can edit. Omit paths to release everything you hold (folders too).',
-    inputSchema: { type: 'object', properties: { paths: { type: 'array', items: { type: 'string' } } } } },
-  { name: 'huddle_wait', description: 'Block until a file locked by someone else is released, then lock it for you (unless lock=false).',
-    inputSchema: { type: 'object', properties: { path: { type: 'string' }, timeout_seconds: { type: 'number', minimum: 1, maximum: 600 }, lock: { type: 'boolean' } }, required: ['path'] } },
-  { name: 'huddle_project', description: "Read the team's shared PROJECT.md (the project brief every agent starts with), or replace it by passing new_text. Pass the base_version you read to avoid overwriting someone else's edit.",
-    inputSchema: { type: 'object', properties: { new_text: { type: 'string', description: 'full new contents; omit to just read' }, base_version: { type: 'number' } } } },
-  { name: 'huddle_remember', description: 'Save a short note to the shared team memory so every agent (now and in future sessions) knows it. Same title updates the existing note.',
-    inputSchema: { type: 'object', properties: { title: { type: 'string', description: 'short, specific, e.g. "tests need DATABASE_URL set"' }, text: { type: 'string', description: 'the fact, plus why it matters' } }, required: ['title', 'text'] } },
+    inputSchema: obj() },
+  { name: 'huddle_set_status', description: 'Tell the team what you are working on, in under 12 words. Call once per new piece of work.',
+    inputSchema: obj({ status: str }, ['status']) },
+  { name: 'huddle_send', description: 'Message the other agents: everyone, or one agent with "to".',
+    inputSchema: obj({ text: str, to: { ...str, description: 'agent name; omit for everyone' } }, ['text']) },
+  { name: 'huddle_inbox', description: 'Read unread messages. wait_seconds blocks until one arrives (for waiting on a reply).',
+    inputSchema: obj({ wait_seconds: { type: 'number', minimum: 0, maximum: 600 } }) },
+  { name: 'huddle_lock', description: 'Reserve files, or a whole folder (path ending in "/"), so only you can edit them. Editing already locks single files; locks cannot overlap. hold=true keeps file locks after your turn ends; folder locks stay until released.',
+    inputSchema: obj({ paths: strs, note: { ...str, description: 'what you are doing with them' }, hold: bool }, ['paths']) },
+  { name: 'huddle_handoff', description: 'Leave a two or three line note for the team and your next session: where you left off and what comes next. Replaces your earlier note from this session.',
+    inputSchema: obj({ text: str }, ['text']) },
+  { name: 'huddle_unlock', description: 'Release your locks. Omit paths to release everything you hold.',
+    inputSchema: obj({ paths: strs }) },
+  { name: 'huddle_wait', description: 'Block until a file someone else locked is released, then lock it for you (unless lock=false).',
+    inputSchema: obj({ path: str, timeout_seconds: { type: 'number', minimum: 1, maximum: 600 }, lock: bool }, ['path']) },
+  { name: 'huddle_project', description: "Read the team's shared PROJECT.md, or replace it with new_text. Pass the base_version you read so you don't overwrite someone else's edit.",
+    inputSchema: obj({ new_text: { ...str, description: 'full new contents; omit to read' }, base_version: { type: 'number' } }) },
+  { name: 'huddle_remember', description: 'Save a short note to the shared team memory. The same title updates the note.',
+    inputSchema: obj({ title: { ...str, description: 'short and specific, e.g. "tests need DATABASE_URL set"' }, text: { ...str, description: 'the fact, and why it matters' } }, ['title', 'text']) },
   { name: 'huddle_recall', description: 'Search the shared team memory. Omit query to list everything.',
-    inputSchema: { type: 'object', properties: { query: { type: 'string' } } } },
-  { name: 'huddle_search', description: "Search the team's history: requests and tasks, messages, what other agents were asked and replied, memory, hand-off notes and teammates' shared code. Use it to find past decisions (\"what did we decide about refunds\") or who worked on something.",
-    inputSchema: { type: 'object', properties: { query: { type: 'string' }, kinds: { type: 'string', description: 'optional, comma-separated: tasks, messages, activity, knowledge, code' } }, required: ['query'] } },
-  { name: 'huddle_forget', description: 'Delete a shared memory that turned out wrong or outdated (by id or exact title).',
-    inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } },
-  { name: 'huddle_save_skill', description: "Share a skill with every agent: a reusable procedure installed into everyone's .claude/skills/. Same name updates it.",
-    inputSchema: { type: 'object', properties: { name: { type: 'string', description: 'kebab-case' }, description: { type: 'string', description: 'when an agent should use it' }, instructions: { type: 'string', description: 'the SKILL.md body (markdown)' } }, required: ['name', 'description', 'instructions'] } },
+    inputSchema: obj({ query: str }) },
+  { name: 'huddle_search', description: "Search the team's history: tasks, messages, what other agents were asked and replied, memory, hand-offs and teammates' shared code. For past decisions, or who worked on something.",
+    inputSchema: obj({ query: str, kinds: { ...str, description: 'optional, comma-separated: tasks, messages, activity, knowledge, code' } }, ['query']) },
+  { name: 'huddle_forget', description: 'Delete a shared memory that is wrong or outdated, by id or exact title.',
+    inputSchema: obj({ id: str }, ['id']) },
+  { name: 'huddle_save_skill', description: "Share a reusable procedure as a skill, installed into every agent's skills folder. The same name updates it.",
+    inputSchema: obj({ name: { ...str, description: 'kebab-case' }, description: { ...str, description: 'when to use it' }, instructions: { ...str, description: 'the SKILL.md body' } }, ['name', 'description', 'instructions']) },
   { name: 'huddle_delete_skill', description: 'Remove a shared skill from every agent.',
-    inputSchema: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] } },
-  { name: 'huddle_activity', description: "See what the other agents' Claude sessions are doing: their prompts, replies and tool calls, newest last. Useful before starting work that might overlap, or to follow up on someone's progress.",
-    inputSchema: { type: 'object', properties: { agent: { type: 'string', description: 'agent name; omit for everyone' }, limit: { type: 'number', minimum: 1, maximum: 200 } } } },
-  { name: 'huddle_branches', description: "Everyone's published git branches, how each compares with yours (ahead/behind/diverged), and who is on which branch. Fetches the latest first.",
-    inputSchema: { type: 'object', properties: {} } },
-  { name: 'huddle_publish', description: 'Share your current branch (its commits) with the team right now, instead of waiting for the end of your turn.',
-    inputSchema: { type: 'object', properties: {} } },
-  { name: 'huddle_merge', description: "Merge someone's branch into your current branch, e.g. ref='alex/main' or 'alex' (their branch with the same name as yours, else their newest). On conflicts it lists the files; resolve them, then commit.",
-    inputSchema: { type: 'object', properties: { ref: { type: 'string', description: 'person/branch or person' } }, required: ['ref'] } },
-  { name: 'huddle_board', description: 'The team board: goals people gave the team and the tasks they were split into, with owners and status.',
-    inputSchema: { type: 'object', properties: {} } },
-  { name: 'huddle_ask_team', description: "Give the whole team (every agent) a goal, or one person's Claude a task with to=name. Use when your user wants to hand work to the team. title: 2 to 6 plain words naming the outcome, as the team will see it (no \"From …\" preamble, names, ids or parentheses). For a quick question to someone's Claude, use huddle_send instead.",
-    inputSchema: { type: 'object', properties: { title: { type: 'string' }, text: { type: 'string' }, to: { type: 'string' }, start: { type: 'boolean', description: 'true only if your user wants the team to build it now; otherwise the plan waits for a go' } }, required: ['title', 'text'] } },
-  { name: 'huddle_claim_goal', description: 'Claim the planning of a team goal. Only one agent wins; if you do, split the goal into tasks and call huddle_plan.',
-    inputSchema: { type: 'object', properties: { goal_id: { type: 'string' } }, required: ['goal_id'] } },
-  { name: 'huddle_plan', description: "Record the plan for a goal you claimed. The plan waits: nothing runs until someone starts it (Start in the dashboard, or start=true here when your user explicitly says to build it now; goal_id + start=true alone starts a saved plan). Tasks: tasks with owners (agent names; balance the work, include yourself, avoid two people editing the same files) and optional dependencies (after = indexes of earlier tasks in this list).",
-    inputSchema: { type: 'object', properties: {
-      goal_id: { type: 'string' }, title: { type: 'string', description: '2 to 5 plain words naming the whole request' }, summary: { type: 'string' },
-      start: { type: 'boolean', description: 'true only if your user explicitly asked for the work to start now, not just to plan it' },
-      tasks: { type: 'array', items: { type: 'object', properties: { title: { type: 'string' }, detail: { type: 'string' }, owner: { type: 'string', description: 'leave empty (with an effort) to let huddle assign by remaining usage; empty without an effort leaves it for anyone' }, paths: { type: 'array', items: { type: 'string' }, description: 'files or folders ("src/ui/") it works in; locked for whoever does it from the start' }, effort: { type: 'string', enum: ['light', 'medium', 'heavy'] }, after: { type: 'array', items: { type: 'number' } } }, required: ['title'] } },
-    }, required: ['goal_id'] } },
-  { name: 'huddle_distribute', description: "Only when your user asked for the work to be done now (not for a plan or ideas). Split your user's request into parts and hand them out across the team's Claudes in one step. Each part needs a title (under 7 plain words saying the outcome, like \"Fix login redirect\"; no names, ids or parentheses), a detail saying what to change and what done looks like, and an effort (light, medium, heavy). Parts without an owner are assigned by huddle: heavier ones go to whoever has the most of their 5-hour Claude window left. Set keep_for_me on the parts you will do yourself in this session. The others start on their own right away.",
-    inputSchema: { type: 'object', properties: {
-      title: { type: 'string', description: '2 to 5 plain words naming the whole request, like "Dashboard cleanup"' },
-      summary: { type: 'string', description: 'one or two lines: what the whole request is' },
-      tasks: { type: 'array', items: { type: 'object', properties: {
-        title: { type: 'string' }, detail: { type: 'string' }, effort: { type: 'string', enum: ['light', 'medium', 'heavy'] },
-        owner: { type: 'string', description: 'only when it has to be one person' }, keep_for_me: { type: 'boolean' }, paths: { type: 'array', items: { type: 'string' }, description: 'files or folders ("src/ui/") it works in; locked for whoever does it from the start' }, 
-        after: { type: 'array', items: { type: 'number' }, description: 'indexes of earlier parts this one needs first' } }, required: ['title', 'effort'] } },
-    }, required: ['summary', 'tasks'] } },
-  { name: 'huddle_approve', description: "Commands your person's background Claudes needed but weren't allowed to run. Omit id to list the waiting ones. Approve one (by id) only when your user says so; the task then runs again with that exact command allowed. deny=true says no.",
-    inputSchema: { type: 'object', properties: { id: { type: 'string' }, deny: { type: 'boolean' } } } },
-  { name: 'huddle_checks', description: "How finished background work is checked before it merges: the project's test command (run in the work's own worktree; Sonnet gets one try to fix failures, and failing work stays on its branch) and whether a Sonnet Claude reviews each change first. Omit both to see the current settings.",
-    inputSchema: { type: 'object', properties: { test_command: { type: 'string', description: 'e.g. "npm test"; empty string to go back to guessing' }, review: { type: 'boolean' } } } },
+    inputSchema: obj({ name: str }, ['name']) },
+  { name: 'huddle_activity', description: "What the other agents' sessions are doing: prompts, replies and tool calls, newest last.",
+    inputSchema: obj({ agent: { ...str, description: 'agent name; omit for everyone' }, limit: { type: 'number', minimum: 1, maximum: 200 } }) },
+  { name: 'huddle_branches', description: "Everyone's published git branches, how each compares with yours, and who is on which. Fetches first.",
+    inputSchema: obj() },
+  { name: 'huddle_publish', description: 'Share your current branch with the team now instead of at the end of your turn.',
+    inputSchema: obj() },
+  { name: 'huddle_merge', description: "Merge someone's branch into yours. On conflicts it lists the files; resolve them, then commit.",
+    inputSchema: obj({ ref: { ...str, description: '"alex/main", or "alex" for their branch named like yours' } }, ['ref']) },
+  { name: 'huddle_board', description: 'The team board: goals and the tasks they were split into, with owners and status.',
+    inputSchema: obj() },
+  { name: 'huddle_ask_team', description: "Give the team a goal, or one person's Claude a task with to=name, when your user wants to hand work over. For a quick question use huddle_send.",
+    inputSchema: obj({ title: { ...str, description: '2 to 6 plain words naming the outcome; no names or ids' }, text: str, to: str, start: { ...bool, description: 'true only if your user wants it built now; otherwise the plan waits for a go' } }, ['title', 'text']) },
+  { name: 'huddle_claim_goal', description: 'Claim the planning of a team goal. Only one agent wins; if you do, split it into tasks with huddle_plan.',
+    inputSchema: obj({ goal_id: str }, ['goal_id']) },
+  { name: 'huddle_plan', description: 'Record the plan for a goal you claimed. Nothing runs until someone starts it; goal_id with start=true alone starts a saved plan. Give different people different files.',
+    inputSchema: obj({
+      goal_id: str, title: { ...str, description: '2 to 5 plain words naming the whole request' }, summary: str,
+      start: { ...bool, description: 'true only if your user explicitly asked for the work to start now' },
+      tasks: { type: 'array', items: obj({ title: str, detail: str, owner: { ...str, description: 'agent name; empty with an effort lets huddle assign by remaining usage' }, paths: PATHS, effort: EFFORT, after: { type: 'array', items: { type: 'number' }, description: 'indexes of earlier tasks it needs first' } }, ['title']) },
+    }, ['goal_id']) },
+  { name: 'huddle_distribute', description: "Only when your user asked for work to be done now. Split their request into parts and hand them to the team's Claudes in one step; the parts start right away. Parts without an owner go to whoever has the most Claude usage left.",
+    inputSchema: obj({
+      title: { ...str, description: '2 to 5 plain words naming the whole request' },
+      summary: { ...str, description: 'one or two lines' },
+      tasks: { type: 'array', items: obj({
+        title: { ...str, description: 'under 7 plain words saying the outcome, e.g. "Fix login redirect"' },
+        detail: { ...str, description: 'what to change and what done looks like' }, effort: EFFORT,
+        owner: { ...str, description: 'only when it has to be one person' }, keep_for_me: { ...bool, description: 'you do this part yourself in this session' }, paths: PATHS,
+        after: { type: 'array', items: { type: 'number' }, description: 'indexes of earlier parts it needs first' } }, ['title', 'effort']) },
+    }, ['summary', 'tasks']) },
+  { name: 'huddle_approve', description: "Commands your person's background Claudes were not allowed to run. Omit id to list them. Approve one only when your user says so; deny=true says no.",
+    inputSchema: obj({ id: str, deny: bool }) },
+  { name: 'huddle_checks', description: 'How background work is checked before it merges: the test command, and whether a Claude reviews each change. Omit both to see the settings.',
+    inputSchema: obj({ test_command: { ...str, description: 'e.g. "npm test"; empty string to go back to guessing' }, review: bool }) },
   { name: 'huddle_claim_task', description: 'Take an unassigned task from the board (only one agent can win it).',
-    inputSchema: { type: 'object', properties: { task_id: { type: 'string' } }, required: ['task_id'] } },
-  { name: 'huddle_update_task', description: 'Update a task: status todo|doing|done|blocked, an optional note (what you did, or why blocked), reassign with owner, or rename it with title (2 to 6 plain words).',
-    inputSchema: { type: 'object', properties: { task_id: { type: 'string' }, status: { type: 'string', enum: ['todo', 'doing', 'done', 'blocked'] }, note: { type: 'string' }, owner: { type: 'string' }, title: { type: 'string' } }, required: ['task_id'] } },
-  { name: 'huddle_autopilot', description: "See or change this person's autopilot setting: 'full' (default, active: answers messages from the other Claudes while the person is away, runs requests and assigned tasks as background Claudes, plans team goals), 'requests' (only what is sent to this person's Claude directly), or 'off' (everything waits for the person). Omit mode to see the current setting.",
-    inputSchema: { type: 'object', properties: { mode: { type: 'string', enum: ['off', 'requests', 'full', 'on'] } } } },
-  { name: 'huddle_name', description: "See or change the name your person gave you (their Claude), e.g. \"Pip\". The team sees it on the dashboard and can send you work with to=<name>. Only change it when your user asks; an empty name removes it.",
-    inputSchema: { type: 'object', properties: { name: { type: 'string' } } } },
-  { name: 'huddle_view', description: "See the live shared version of a file, including another agent's in-progress edits, with who changed it and when.",
-    inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] } },
-  { name: 'huddle_claim_feature', description: 'Claim the specific feature or subsystem you are working on, e.g. "inventory: drag and drop" or "boss fight: phase 2 attacks", with the few files it touches. They are locked for you until you release the claim or your session ends, and teammates see the claim by name. Keep it narrow: a handful of files, never a whole level, system or shared folder, so others can still work on the rest of it.',
-    inputSchema: { type: 'object', properties: { feature: { type: 'string' }, paths: { type: 'array', items: { type: 'string' }, description: 'files it touches (up to 12), or a small folder that only this feature uses' } }, required: ['feature', 'paths'] } },
-  { name: 'huddle_release_feature', description: 'Release a feature you claimed (its files unlock). Omit feature to release all your claims.',
-    inputSchema: { type: 'object', properties: { feature: { type: 'string' } } } },
-  { name: 'huddle_share_image', description: "Put an image in the team's gallery: a screenshot, a render, concept art, a Figma export. Screenshots from Unity, Godot, Blender and Figma tools go there automatically; use this for any other image file.",
-    inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'png, jpg, webp or gif, under 900 KB' }, caption: { type: 'string' } }, required: ['path'] } },
-  { name: 'huddle_share_build', description: "Add a playable build to the team's Builds page: a link to a web build, an itch.io page, a download. Call it whenever you make a build someone can try.",
-    inputSchema: { type: 'object', properties: { url: { type: 'string' }, title: { type: 'string', description: 'e.g. "Prototype 3, boss fight playable"' }, platform: { type: 'string', description: 'web, windows, mac, linux, android…' }, notes: { type: 'string', description: 'what changed, what to try' } }, required: ['url', 'title'] } },
-  { name: 'huddle_timeline', description: "Read the team's timeline (goals with deadlines, and the plan to reach them). Pass plan to replace the plan, or done with a goal's name to mark it done.",
-    inputSchema: { type: 'object', properties: { plan: { type: 'string', description: 'the full new plan, plain lines under each goal' }, done: { type: 'string', description: 'name of a goal that is now done' } } } },
+    inputSchema: obj({ task_id: str }, ['task_id']) },
+  { name: 'huddle_update_task', description: 'Update a task: its status, a note (what you did, or why it is blocked), a new owner, or a new title (2 to 6 plain words).',
+    inputSchema: obj({ task_id: str, status: { type: 'string', enum: ['todo', 'doing', 'done', 'blocked'] }, note: str, owner: str, title: str }, ['task_id']) },
+  { name: 'huddle_autopilot', description: "See or change what this person's Claude does on its own: 'full' (default) answers other Claudes and runs requests and assigned tasks in the background, 'requests' runs only what is sent to this person directly, 'off' runs nothing.",
+    inputSchema: obj({ mode: { type: 'string', enum: ['off', 'requests', 'full', 'on'] } }) },
+  { name: 'huddle_name', description: 'See or change the name your person gave you, e.g. "Pip". Change it only when your user asks; an empty name removes it.',
+    inputSchema: obj({ name: str }) },
+  { name: 'huddle_view', description: "The live shared version of a file, including another agent's in-progress edits, with who changed it and when.",
+    inputSchema: obj({ path: str }, ['path']) },
+  { name: 'huddle_claim_feature', description: 'Claim the feature you are working on, e.g. "inventory: drag and drop", with the few files it touches; they stay locked for you until you release it. Keep it narrow: never a whole level, system or shared folder.',
+    inputSchema: obj({ feature: str, paths: { ...strs, description: 'up to 12 files, or a small folder only this feature uses' } }, ['feature', 'paths']) },
+  { name: 'huddle_release_feature', description: 'Release a feature you claimed. Omit feature to release all of them.',
+    inputSchema: obj({ feature: str }) },
+  { name: 'huddle_share_image', description: "Put an image in the team's gallery: a screenshot, render or concept art. Editor screenshots go there on their own.",
+    inputSchema: obj({ path: { ...str, description: 'png, jpg, webp or gif, under 900 KB' }, caption: str }, ['path']) },
+  { name: 'huddle_share_build', description: "Add a build people can try to the team's Builds page: a web build, an itch.io page, a download link.",
+    inputSchema: obj({ url: str, title: { ...str, description: 'e.g. "Prototype 3, boss fight playable"' }, platform: str, notes: { ...str, description: 'what changed, what to try' } }, ['url', 'title']) },
+  { name: 'huddle_timeline', description: "Read the team's timeline: goals with deadlines and the plan to reach them. plan replaces the plan; done marks a goal done.",
+    inputSchema: obj({ plan: { ...str, description: 'the full new plan, plain lines under each goal' }, done: { ...str, description: "a goal's name" } }) },
 ];
+
+// Tools only a studio project needs (game and art teams). Left out of the list for everyone
+// else; they still work if called.
+const STUDIO_TOOLS = new Set(['huddle_claim_feature', 'huddle_release_feature', 'huddle_share_image', 'huddle_share_build', 'huddle_timeline']);
 
 function runMcp() {
   const cfg = loadConfig(process.env.CLAUDE_PROJECT_DIR || process.cwd());
-  let client = null, sync = null, setupError = null;
+  let client = null, sync = null, setupError = null, hello = null;
   try {
     client = new Client(cfg || {}, identity(cfg));
     // always report the branch we're on right now (people switch branches mid-session)
@@ -124,7 +125,7 @@ function runMcp() {
   const log = (msg) => process.stderr.write(`[huddle] ${msg}\n`);
   if (client) {
     const key = cfg.clone ? null : ownerKey(cfg);
-    client.post('hello', { build: build(), tool: ['codex', 'cursor', 'pi'].includes(process.env.HUDDLE_AGENT) ? process.env.HUDDLE_AGENT : ['codex', 'cursor', 'pi'].includes(cfg.agent) ? cfg.agent : 'claude', ...(key ? { keyHash: sha(key) } : {}) }).catch(e => log(e.message));
+    hello = client.post('hello', { build: build(), tool: ['codex', 'cursor', 'pi'].includes(process.env.HUDDLE_AGENT) ? process.env.HUDDLE_AGENT : ['codex', 'cursor', 'pi'].includes(cfg.agent) ? cfg.agent : 'claude', ...(key ? { keyHash: sha(key) } : {}) }).catch(e => { log(e.message); return null; });
     // an open sync socket already keeps us online on the hosted server
     const beat = setInterval(() => { if (!(sync && sync.wsOpen)) client.post('hello', {}).catch(() => {}); }, 45000);
     beat.unref();
@@ -165,6 +166,15 @@ function runMcp() {
     }
   });
 
+  // a project is a studio once it uses an editor (Unity, Blender…) or has a timeline; when we
+  // can't tell (server unreachable, nothing cached), every tool is listed
+  async function isStudio() {
+    const s = hello && await Promise.race([hello, new Promise(r => setTimeout(r, 1500, null))]);
+    const uses = (ps, tl) => !!((ps && ps.apps && ps.apps.length) || (tl && ((tl.milestones || []).length || tl.plan)));
+    if (s) return uses(s.projectSettings, s.timeline);
+    try { return uses(JSON.parse(fs.readFileSync(path.join(cfg.root, '.huddle', 'project-settings.json'), 'utf8'))); } catch { return true; }
+  }
+
   async function handle(msg) {
     switch (msg.method) {
       case 'initialize':
@@ -172,7 +182,7 @@ function runMcp() {
           capabilities: { tools: {} }, serverInfo: { name: 'huddle', version: require('../package.json').version },
           instructions: INSTRUCTIONS };
       case 'ping': return {};
-      case 'tools/list': return { tools: TOOLS };
+      case 'tools/list': return { tools: await isStudio() ? TOOLS : TOOLS.filter(t => !STUDIO_TOOLS.has(t.name)) };
       case 'tools/call': {
         const { name, arguments: args = {} } = msg.params;
         if (!client) return text(`huddle isn't set up: ${setupError}`, true);

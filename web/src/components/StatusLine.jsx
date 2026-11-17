@@ -19,7 +19,7 @@ export default function StatusLine() {
       <span>{running} running{waiting ? <> · <em>{waiting} waiting on you</em></> : ''}</span>
       <span className="grow"></span>
       <span className="spansw" role="group" aria-label="Stats cover">stats {[['day', 'today'], ['week', 'week']].map(([k, l]) => <button key={k} className={S.span === k ? 'on' : ''} aria-pressed={S.span === k} onClick={() => setSpan(k)}>{l}</button>)}</span>
-      <span className={'sconn ' + S.conn}>{S.conn === 'live' ? 'live' : S.conn === 'connecting' ? 'connecting' : 'reconnecting'}</span>
+      <span className={'sconn ' + S.conn} role="status" title={S.conn === 'live' ? 'Changes show up as they happen' : 'Not connected: what you see may be out of date'}>{S.conn === 'live' ? 'live' : S.conn === 'connecting' ? 'connecting' : S.conn === 'offline' ? 'offline, will reconnect' : 'reconnecting'}</span>
     </footer>
   );
 }

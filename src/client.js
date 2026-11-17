@@ -114,7 +114,7 @@ class Client {
     this.agent = agent;
     this.base = `${cfg.server}/api/p/${encodeURIComponent(cfg.project)}`;
   }
-  async req(method, ep, body, { timeout = 10000, query = '' } = {}) {
+  async req(method, ep, body, { timeout = this.timeout || 10000, query = '' } = {}) {
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), timeout);
     try {

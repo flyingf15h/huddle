@@ -6,6 +6,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { loadConfig, identity, Client, relPath, hashFile, sha, formatMessages, ago, build, CONFIG_DIR } = require('./client');
 const shared = require('./shared');
+const { RULES } = require('./rules');
 const gitx = require('./git');
 const board = require('./board');
 const { requestTitle } = require('./core');
@@ -20,6 +21,8 @@ const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'apply
 // which coding agent ran this hook: set by the hook command (--agent codex) or the MCP server's env
 const agentKind = () => (['codex', 'cursor', 'pi'].includes(process.env.HUDDLE_AGENT) ? process.env.HUDDLE_AGENT : 'claude');
 const INBOX_EVERY_MS = 10 * 1000;
+const ACTIVITY_EVERY_MS = 4 * 1000;   // tool calls in a burst reach the feed together, not one request each
+const OFFLINE_MS = 30 * 1000;         // after the server can't be reached, tool calls stop trying for this long
 
 function withNotice(text, obj) { return { ...(obj || {}), systemMessage: text }; }
 function out(obj) { if (obj) process.stdout.write(JSON.stringify(obj)); }
@@ -122,16 +125,27 @@ function digest(client, cfg, st, r) {
   return d;
 }
 
+// Activity waiting to be sent: a burst of tool calls is shared in one request. It's kept in the
+// session's state, so the next hook (a tool call, the next prompt, the end of the turn) sends it.
+function hold(st, items) { st.data.outbox = [...(st.data.outbox || []), ...items].slice(-200); st.save(); }
+function held(st) { const o = st.data.outbox || []; if (o.length) { st.data.outbox = []; st.save(); } return o; }
+
 // mid-turn check (PostToolUse), at most every INBOX_EVERY_MS
 async function inbox(client, cfg, items) {
   const st = sessionState(cfg, client.agent);
   if (Date.now() - (st.data.inboxAt || 0) < INBOX_EVERY_MS) {
-    if (items.length) await client.post('activity', { items }).catch(() => {});
+    if (!items.length) return '';
+    if (Date.now() - (st.data.activityAt || 0) < ACTIVITY_EVERY_MS) { hold(st, items); return ''; }
+    const all = [...held(st), ...items];
+    st.data.activityAt = Date.now();
+    st.save();
+    await client.post('activity', { items: all }).catch(() => {});
     return '';
   }
-  st.data.inboxAt = Date.now();
+  const all = [...held(st), ...items];
+  st.data.inboxAt = st.data.activityAt = Date.now();
   st.save();
-  const d = digest(client, cfg, st, await turn(client, st, { items }));
+  const d = digest(client, cfg, st, await turn(client, st, { items: all }));
   return [d.mail, d.team, ...d.news].filter(Boolean).join('\n\n');
 }
 
@@ -334,7 +348,7 @@ const PRIVATE_PROMPT = /^\s*(private\s*:|#private\b|\(private\))/i;
 function pendingActivity(input, cfg, st) {
   const level = sharingLevel(cfg);
   if (level === 'off') return [];
-  const items = newActivity(input, st, level);
+  const items = [...held(st), ...newActivity(input, st, level)];
   st.save();
   return st.data.private ? [] : clean(items); // a private turn: read past it, share nothing
 }
@@ -345,8 +359,8 @@ async function shareStop(input, client, cfg) {
   const level = sharingLevel(cfg);
   if (level === 'off') return;
   const st = sessionState(cfg, client.agent);
-  if (st.data.private) { newActivity(input, st, level); st.save(); return; }
-  const items = newActivity(input, st, level);
+  if (st.data.private) { held(st); newActivity(input, st, level); st.save(); return; }
+  const items = [...held(st), ...newActivity(input, st, level)];
   const reply = String(input.last_assistant_message || '').trim();
   if (reply && level === 'full' && !items.some(it => it.kind === 'text' && it.text === reply)) {
     items.push({ kind: 'text', text: reply });
@@ -632,18 +646,11 @@ const handlers = {
       `You are "${client.agent.name}" in huddle project "${client.cfg.project}", shared with other AI coding agents (Claude Code and Codex) working in the same codebase from other machines.\n` +
       (nameLine(s, client.agent.name) ? nameLine(s, client.agent.name) + '\n' : '') +
       (linked ? `The huddle project is the folder ./${path.relative(here, cfg.root)} (work and run git there). Only files inside it are shared with the team; other folders here are yours alone.\n` : '') +
-      'Rules: before you edit a file it is locked for you automatically; files other agents are editing are read-only and edits to them will be refused. ' +
-      'For work that spans a whole folder, lock the folder with huddle_lock (e.g. "viewer/src/pages/"): nobody else can edit inside it until you release it, and nobody can lock a folder that overlaps one someone else holds. ' +
-      'If an edit is refused, work on something else, message the holder with huddle_send, look at their live copy with huddle_view, or block with huddle_wait. ' +
-      'When you start a new piece of work, call huddle_set_status once with a one-sentence summary of it for your teammates (under 12 words, e.g. "Adding search to the parts library"); it is what the team and the dashboard show for you, and other Claudes are told whenever it changes. Skip it for follow-ups on the same work. ' +
-      'You are told when another Claude\'s work changes; check huddle_status before larger changes so you do not overlap. ' +
-      'When you finish a board task, mark it done with huddle_update_task, or write "closes <task id>" in the commit that finishes it. ' +
-      'When your user wraps up or you hand work over, leave a two-line note with huddle_handoff: where you left off and what comes next (huddle writes one from your status and commits if you don\'t). ' +
-      'Messages from other agents show up in your context automatically.\n' +
-      'The team shares knowledge through huddle instead of git: the PROJECT.md brief (huddle_project), memory notes (huddle_remember / huddle_recall) and skills (huddle_save_skill). ' +
-      'When you learn something another agent would otherwise have to rediscover (a gotcha, a decision, how to run or test something), save it.\n\n' +
+      // Claude Code already has the rules as the huddle MCP server's instructions; saying them twice costs
+      // every session a few hundred tokens. Other agents get them here.
+      (agentKind() === 'claude' ? '\n' : RULES + '\n\n') +
       (plan ? plan + '\n\n' : '') +
-      'Claim the specific feature you are working on with huddle_claim_feature (e.g. "inventory: drag and drop", with the few files it touches), and release it when done. Keep claims narrow: never a whole level, system or folder of shared work, so teammates can still build other parts of it.\n\n' +
+      (plan || editors.length ? 'Claim the specific feature you are working on with huddle_claim_feature (e.g. "inventory: drag and drop", with the few files it touches), and release it when done. Keep claims narrow: never a whole level, system or folder of shared work, so teammates can still build other parts of it.\n\n' : '') +
       (editors.length ? `This project uses ${editors.map(id => apps.APPS[id].label).join(' and ')} through MCP. Files you change through the editor (scenes, prefabs, assets, .blend files) are locked for you when they reach disk, like edits; a file a teammate holds must not be changed or saved from the editor. Save the scene or file when a step is done so teammates get it.\n\n` : '') +
       teamSummary(s, client.agent) + '\n' + branchSummary(s, client, cfg) + '\n\n' +
       (recentHandoffs(handoffs, client.agent.name) ? recentHandoffs(handoffs, client.agent.name) + '\n\n' : '') +
@@ -846,13 +853,32 @@ async function runHook(event, flags = {}) {
   if (!cfg) return;
   const h = handlers[event];
   if (!h) { process.stderr.write(`huddle: unknown hook ${event}\n`); return; }
+  // When the server can't be reached, the hooks around every tool call stop trying for a while, so
+  // an outage costs one wait instead of one per tool call. Prompts and turn ends still try, and the
+  // first thing that gets through ends it.
+  const offFile = path.join(cfg.root, CONFIG_DIR, 'offline.json');
+  let off = null;
+  try { off = JSON.parse(fs.readFileSync(offFile, 'utf8')); } catch {}
+  if (off && (event === 'pre' || event === 'post') && Date.now() < off.until) {
+    if (event === 'pre' && cfg.failClosed) out(deny(`huddle server unavailable, so edits are blocked (failClosed is on): ${off.error}`));
+    return;
+  }
   try {
     // a request clone takes its locks on its person's branch, so it and everyone there stay out of each other's files
     const client = new Client(cfg, { ...identity(cfg), branch: cfg.clone ? cfg.clone.branch : gitx.currentBranch(cfg.root) });
-    out(await h(input, client, cfg));
+    if (event === 'pre' || event === 'post') client.timeout = 6000; // these run around every tool call
+    const res = await h(input, client, cfg);
+    if (off) {
+      try { fs.rmSync(offFile, { force: true }); } catch {}
+      if (off.told) return out(withNotice(['huddle: back online; locks and sharing are working again', res && res.systemMessage].filter(Boolean).join('\n'), res));
+    }
+    out(res);
   } catch (e) {
+    const down = /can't reach|timed out/.test(e.message);
+    if (down) { try { fs.writeFileSync(offFile, JSON.stringify({ until: Date.now() + OFFLINE_MS, error: e.message, told: true })); } catch {} }
     if (event === 'pre' && cfg.failClosed) out(deny(`huddle server unavailable, so edits are blocked (failClosed is on): ${e.message}`));
-    else out({ systemMessage: `huddle: ${e.message}` });
+    // said once per outage, not on every tool call
+    else if (!down || !(off && off.told)) out({ systemMessage: `huddle: ${e.message}${down ? '. Working offline for now: files are not locked or shared until it is back.' : ''}` });
     await reportProblem(cfg, event, e).catch(() => {});
   }
 }

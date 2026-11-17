@@ -51,12 +51,26 @@ export const S = reactive({
 export const myName = () => (S.aliases && S.aliases[auth.name]) || auth.name;
 const me = () => ({ id: 'human:' + (auth.name || 'guest'), name: auth.name || 'guest', kind: 'human', host: 'dashboard' });
 
-export function api(ep, body) {
-  return fetch(`/api/p/${encodeURIComponent(auth.project)}/${ep}`, {
-    method: body ? 'POST' : 'GET',
-    headers: { ...(auth.token && auth.token !== 'account' ? { authorization: 'Bearer ' + auth.token } : {}), 'content-type': 'application/json' },
-    body: body ? JSON.stringify({ agent: me(), ...body }) : undefined,
-  }).then(r => r.json().then(j => { if (!r.ok) throw Object.assign(new Error(j.error || r.status), { status: r.status }); return j; }));
+// a request that hangs gives up after 30 s, and one the server asked to slow down is tried once more
+export async function api(ep, body, again = true) {
+  let r;
+  try {
+    r = await fetch(`/api/p/${encodeURIComponent(auth.project)}/${ep}`, {
+      method: body ? 'POST' : 'GET',
+      headers: { ...(auth.token && auth.token !== 'account' ? { authorization: 'Bearer ' + auth.token } : {}), 'content-type': 'application/json' },
+      body: body ? JSON.stringify({ agent: me(), ...body }) : undefined,
+      signal: AbortSignal.timeout ? AbortSignal.timeout(30000) : undefined,
+    });
+  } catch (e) {
+    throw Object.assign(new Error(navigator.onLine === false ? 'You are offline. Try again once you are back.' : "Can't reach huddle right now. Try again in a moment."), { offline: true });
+  }
+  if (r.status === 429 && again) {
+    await new Promise(ok => setTimeout(ok, Math.min(10, +r.headers.get('retry-after') || 2) * 1000));
+    return api(ep, body, false);
+  }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(j.error || (r.status === 429 ? 'Too many requests. Wait a moment and try again.' : r.status >= 500 ? 'huddle had a problem. Try again in a moment.' : 'Request failed (' + r.status + ')')), { status: r.status });
+  return j;
 }
 
 // ---------- the address bar: #p=<project>&v=<view> ----------
@@ -305,10 +319,30 @@ function toast(n) {
 }
 export const readNotes = (ids) => api('notes-read', ids ? { ids } : {}).then(() => { for (const n of S.notes) if (!ids || ids.includes(n.id)) n.read = true; }).catch(() => {});
 
-let wsWorks = null;
+// everything the feed shows, read fresh: on open, and again after the connection dropped
+async function loadFeed() {
+  const [msgs, act, board, hand] = await Promise.all([api('messages?limit=200'), api('activity?limit=500'), api('board'), api('handoffs?limit=30').catch(() => ({ handoffs: [] }))]);
+  if (board) S.board = board;
+  S.entries = [
+    ...msgs.messages.map(m => ({ kind: 'msg', who: m.fromName, at: m.at, to: m.to, text: m.text })),
+    ...act.activity.map(fromActivity),
+    ...(board ? board.goals.map(g => ({ kind: 'goal', who: g.byName, at: g.at, goal: g })) : []),
+    ...hand.handoffs.map(h => fromEvent({ type: 'handoff', at: h.at, handoff: h })[0]),
+  ].sort((a, b) => a.at - b.at);
+}
+
+let wsWorks = null, tries = 0, retry = null, dropped = false;
+// retry now instead of waiting out the backoff, when the network or the tab comes back
+const retryNow = () => { if (retry && navigator.onLine !== false && !document.hidden) { clearTimeout(retry); retry = null; connect(); } };
 function connect() {
   const qs = `${auth.token && auth.token !== 'account' ? 'token=' + encodeURIComponent(auth.token) + '&' : ''}since=999999999`;
-  const live = (on) => { S.conn = on ? 'live' : 'reconnecting'; };
+  const live = (on) => {
+    S.conn = on ? 'live' : navigator.onLine === false ? 'offline' : 'reconnecting';
+    if (!on) { dropped = true; return; }
+    tries = 0;
+    // what happened while the line was down never arrives as events, so read it again
+    if (dropped) { dropped = false; loadFeed().catch(() => {}); loadShared().catch(() => {}); loadNotes(); for (const fn of listeners) fn({ type: 'reconnected' }); }
+  };
   if (wsWorks !== false && 'WebSocket' in window) {
     const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/p/${encodeURIComponent(auth.project)}/ws?${qs}`);
     let opened = false, ping;
@@ -322,7 +356,7 @@ function connect() {
       clearInterval(ping); live(false);
       if (e.code === 4004) { S.fatal = 'This project was deleted.'; return; }
       if (!opened && wsWorks === null) { wsWorks = false; return connect(); }
-      setTimeout(connect, 2000);
+      retry = setTimeout(() => { retry = null; connect(); }, Math.min(30000, 1500 * 2 ** tries++) + Math.random() * 500);
     };
     return;
   }
@@ -411,16 +445,12 @@ export async function startProject() {
   setHash();
   await loadMe();
   document.title = `${prettyProject(auth.project)} · huddle`;
-  const [msgs, act, board, hand] = await Promise.all([api('messages?limit=200'), api('activity?limit=500'), api('board'), api('handoffs?limit=30').catch(() => ({ handoffs: [] }))])
-    .catch(() => [{ messages: [] }, { activity: [] }, null, { handoffs: [] }]);
-  if (board) S.board = board;
-  S.entries = [
-    ...msgs.messages.map(m => ({ kind: 'msg', who: m.fromName, at: m.at, to: m.to, text: m.text })),
-    ...act.activity.map(fromActivity),
-    ...(board ? board.goals.map(g => ({ kind: 'goal', who: g.byName, at: g.at, goal: g })) : []),
-    ...hand.handoffs.map(h => fromEvent({ type: 'handoff', at: h.at, handoff: h })[0]),
-  ].sort((a, b) => a.at - b.at);
+  // a failed first read counts as a drop, so the feed fills in as soon as the connection is live
+  await loadFeed().catch(() => { dropped = true; });
   connect();
+  addEventListener('online', retryNow);
+  addEventListener('offline', () => { if (S.conn !== 'live') S.conn = 'offline'; });
+  document.addEventListener('visibilitychange', retryNow);
   loadShared().catch(() => {});
   loadNotes();
   loadConflicts();
