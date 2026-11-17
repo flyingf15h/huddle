@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { S, api, go, myName, myTool, dn, people, usageOf, toolOf } from '../lib/state.js';
 import { useS } from '../lib/store.js';
 import { ago } from '../lib/words.js';
-import { titleOf, stuckReason, decide, runAgain, canDecide } from '../lib/tasks.js';
+import { unplanned, titleOf, stuckReason, decide, runAgain, canDecide } from '../lib/tasks.js';
 
 const short = (t) => ago(t).replace(/ ago$/, '').replace(/^just now$/, 'now').replace(/ minutes?/, 'm').replace(/ hours?/, 'h').replace(/ days?/, 'd');
 const STATUS = { doing: ['working', 'a'], todo: ['queued', ''], blocked: ['blocked', 'w'], done: ['merged', 'g'] };
@@ -118,7 +118,15 @@ export default function Overview() {
               </button>
             );
           })}
-          {!tasks.length && <div className="quiet">nothing on the board. <button className="link" onClick={() => { go('activity'); }}>send a request</button></div>}
+          {unplanned().slice(0, 4).map(g => (
+            <button className="r5" key={g.id} data-nav onClick={() => go('activity')} title={g.text}>
+              <span className="t"><span className="tl">{g.text}</span><small>{g.status === 'planning' ? 'being split into tasks' : 'an agent picks it up at its next step'}</small></span>
+              <span className="st"><i></i>{g.status === 'planning' ? 'planning' : 'waiting'}</span>
+              <span className="who">{g.planner ? dn(g.planner) : '--'}</span>
+              <span className="tm">{short(g.at)}</span>
+            </button>
+          ))}
+          {!tasks.length && !unplanned().length && <div className="quiet">nothing on the board. <button className="link" onClick={() => { go('activity'); }}>send a request</button></div>}
         </Pane>
 
         {bg.length > 0 && <Pane title={`background claudes (${bg.length})`} className="p-bg">

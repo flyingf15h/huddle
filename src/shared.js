@@ -125,15 +125,16 @@ function briefing(shared) {
 }
 
 // What changed since `seen` (a signature), phrased for the agent's context.
-function describeChanges(seen, shared) {
+function describeChanges(seen, shared, me) {
   if (!seen) return '';
   const out = [];
-  if (shared.doc && shared.doc.version > (seen.doc || 0)) {
+  // what this agent wrote itself is not news to it
+  if (shared.doc && shared.doc.version > (seen.doc || 0) && shared.doc.byName !== me) {
     out.push(`${shared.doc.byName} updated the shared PROJECT.md (now v${shared.doc.version}). Re-read .huddle/shared/PROJECT.md if it affects your work.`);
   }
   for (const m of shared.memories) {
     const before = seen.memories && seen.memories[m.id];
-    if (before === m.at) continue;
+    if (before === m.at || m.byName === me) continue;
     out.push(`${before ? 'Updated' : 'New'} shared memory from ${m.byName}: ${m.title}: ${oneLine(m.text, 600)}`);
   }
   for (const id of Object.keys(seen.memories || {})) {
@@ -141,7 +142,7 @@ function describeChanges(seen, shared) {
   }
   for (const s of shared.skills) {
     const before = seen.skills && seen.skills[s.name];
-    if (before === s.version) continue;
+    if (before === s.version || s.byName === me) continue;
     out.push(`${before ? 'Updated' : 'New'} shared skill "${s.name}" from ${s.byName}: ${oneLine(s.description, 200)}`);
   }
   for (const name of Object.keys(seen.skills || {})) {

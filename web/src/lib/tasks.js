@@ -6,6 +6,8 @@ export const COLUMNS = [['todo', 'queued'], ['doing', 'working'], ['blocked', 'b
 export const RUN_WORD = { ok: 'Finished', retrying: 'Retried', crashed: 'Crashed', failed: 'Failed', limit: 'Usage limit', waiting: 'Waiting' };
 export const runPill = (o) => (o === 'ok' ? 'ok' : o === 'retrying' ? 'warn' : o === 'limit' ? 'acc' : 'bad');
 export const titleOf = (t) => bestTitle(t.title, t.detail);
+// requests nobody has split into tasks yet: shown as waiting, so a new request never looks lost
+export const unplanned = () => S.board.goals.filter(g => ['open', 'planning'].includes(g.status) && !S.board.tasks.some(t => t.goalId === g.id));
 export const goalOf = (t) => S.board.goals.find(g => g.id === t.goalId) || null;
 export const waitsOn = (t) => (t.after || []).map(id => S.board.tasks.find(x => x.id === id)).filter(x => x && x.status !== 'done');
 export const stuckReason = (t) => stuckReasonRaw(t).replace(/[\s.,;:]+$/, '');

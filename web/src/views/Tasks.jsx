@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { S, go, myName, dn, people, isOwner, api } from '../lib/state.js';
 import { useS } from '../lib/store.js';
 import { ago, statusWord, EFFORT_WORD, fmtDur } from '../lib/words.js';
-import { COLUMNS, titleOf, goalOf, waitsOn, checks, stuckReason, money, RUN_WORD, runPill, setStatus, runAgain, markDone, editTask, comment, deleteTask } from '../lib/tasks.js';
+import { unplanned, COLUMNS, titleOf, goalOf, waitsOn, checks, stuckReason, money, RUN_WORD, runPill, setStatus, runAgain, markDone, editTask, comment, deleteTask } from '../lib/tasks.js';
 import Avatar from '../components/Avatar.jsx';
 import Icon from '../components/Icon.jsx';
 import Resizer from '../components/Resizer.jsx';
@@ -47,6 +47,9 @@ export default function Tasks() {
             <section key={k} className={'col' + (over === k ? ' drop' : '')} aria-label={label}
               onDragOver={(e) => { e.preventDefault(); setOver(k); }} onDragLeave={() => setOver(over === k ? null : over)} onDrop={(e) => { e.preventDefault(); drop(k); }}>
               <h3><span className={'dot ' + k} aria-hidden="true"></span><span className="cl">{label}</span><span className="count">{shown.filter(t => t.status === k).length}</span></h3>
+              {k === 'todo' && unplanned().map(g => (
+                <div className="quiet" key={g.id} title={g.text} style={{ padding: '6px 8px' }}>{g.text.length > 70 ? g.text.slice(0, 70) + '…' : g.text}<br /><small>{g.status === 'planning' ? `${dn(g.planner || '') || 'an agent'} is splitting it into tasks` : 'waiting for an agent to plan it'}</small></div>
+              ))}
               {byCol[k].map(t => {
                 const x = titleOf(t), gg = goalOf(t);
                 return (

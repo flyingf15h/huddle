@@ -242,7 +242,7 @@ function runMcp() {
         await client.post('status', { status: a.status });
         return 'status set';
       case 'huddle_send': {
-        const r = await client.post('message', { text: a.text, to: a.to || null });
+        const r = await client.post('message', { text: a.text, to: a.to || null, strict: true });
         return `sent to ${r.message.to || 'everyone'}`;
       }
       case 'huddle_inbox': {
@@ -328,9 +328,16 @@ function runMcp() {
       }
       case 'huddle_wait': {
         const p = rel(a.path);
-        const timeout = Math.min(Number(a.timeout_seconds || 300), 600);
-        const r = await client.post('wait-unlock', { path: p, branch: me.branch, timeout }, { timeout: (timeout + 15) * 1000 });
-        if (!r.free) return `${p} is still locked by ${r.lock.holderName}${r.lock.dir ? ` (the ${r.lock.path} folder)` : ''} after ${timeout}s`;
+        const timeout = Math.max(1, Math.min(Number(a.timeout_seconds || a.timeout || 300), 600));
+        // a server holds one wait for a minute at most, so ask again until the time is up
+        const from = Date.now();
+        let r;
+        for (;;) {
+          const left = Math.ceil(timeout - (Date.now() - from) / 1000);
+          r = await client.post('wait-unlock', { path: p, branch: me.branch, timeout: Math.max(1, left) }, { timeout: (left + 15) * 1000 });
+          if (r.free || (Date.now() - from) / 1000 >= timeout - 1) break;
+        }
+        if (!r.free) return `${p} is still locked by ${r.lock.holderName}${r.lock.dir ? ` (the ${r.lock.path} folder)` : ''} after ${Math.round((Date.now() - from) / 1000)}s. Work on something else, or message them with huddle_send.`;
         if (a.lock === false) return `${p} is free`;
         const l = await client.post('lock', { path: p, branch: me.branch, baseHash: hashFile(path.join(cfg.root, p)) });
         if (!l.ok) return `${p} was grabbed by ${l.lock.holderName} first`;

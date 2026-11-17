@@ -1605,7 +1605,22 @@ async function main() {
   };
   if (!cmd || cmd === 'help' || cmd === '--help' || cmd === '-h') return console.log(HELP);
   if (cmd === '--version' || cmd === '-v') return console.log(require('../package.json').version);
-  need(cmds[cmd], `unknown command "${cmd}"\n\n${HELP}`);
+  if (!cmds[cmd]) {
+    // the nearest real command, not the whole manual
+    const dist = (a, b) => { const d = Array.from({ length: a.length + 1 }, (_, i) => [i]); for (let j = 1; j <= b.length; j++) d[0][j] = j; for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); return d[a.length][b.length]; };
+    const near = Object.keys(cmds).filter(c => !c.startsWith('_') && !['hook', 'mcp'].includes(c)).map(c => [c.startsWith(cmd) ? 0 : dist(cmd, c), c]).sort((x, y) => x[0] - y[0])[0];
+    need(false, `huddle: no command called "${cmd}".${near && near[0] <= 2 ? ` Did you mean \`huddle ${near[1]}\`?` : ''} Run \`huddle help\` to see them all.`);
+  }
+  // --help never runs the command: it shows that command's part of the help
+  if ((args.flags.help || args.flags.h) && !['hook', 'mcp'].includes(cmd)) {
+    const lines = HELP.split('\n'), out = [];
+    for (let i = 0; i < lines.length; i++) {
+      if (!new RegExp(`^  huddle ${cmd.replace(/[^\w-]/g, '')}( |$)`).test(lines[i])) continue;
+      out.push(lines[i]);
+      while (lines[i + 1] && /^ {4,}\S/.test(lines[i + 1])) out.push(lines[++i]);
+    }
+    return console.log(out.length ? out.join('\n') : HELP);
+  }
   try { await cmds[cmd](args); }
   catch (e) { console.error(`huddle: ${e.message}`); process.exit(1); }
 }

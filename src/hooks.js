@@ -107,7 +107,7 @@ function digest(client, cfg, st, r) {
   if (r.state && st.data.team) d.team = teamDelta(r.state, me, st);
   if (r.shared) {
     shared.writeShared(cfg.root, r.shared);
-    const change = st.data.shared && shared.describeChanges(st.data.shared, r.shared);
+    const change = st.data.shared && shared.describeChanges(st.data.shared, r.shared, client.agent.name);
     if (change) d.news.push(change);
     st.data.shared = shared.signature(r.shared);
   }
@@ -420,7 +420,7 @@ function teamDelta(s, me, st) {
     return all.length ? 'huddle: what the other Claudes are doing:\n' + all.join('\n') : '';
   }
   const out = [];
-  for (const [id, x] of Object.entries(now)) if (!before[id] || before[id].line !== x.line || before[id].who !== x.who) out.push(`- ${x.who}: ${x.line}`);
+  for (const [id, x] of Object.entries(now)) if (!before[id] || before[id].line !== x.line || before[id].who !== x.who) out.push(`- ${x.who}: ${x.line !== 'no status yet' ? x.line : before[id] ? 'no longer editing anything' : 'came online'}`);
   for (const [id, x] of Object.entries(before)) if (!now[id]) out.push(`- ${x.who}: ${id.startsWith('away:') ? 'released its files' : 'stopped (went offline)'}`);
   return out.length ? 'huddle: what the other Claudes are doing changed:\n' + out.join('\n') : '';
 }
@@ -495,7 +495,11 @@ function distributeNote(s, me) {
 }
 
 function teamSummary(s, me) {
-  const others = s.agents.filter(a => a.online && a.id !== me.id && a.kind !== 'watcher');
+  // not me at my own terminal or dashboard, and one line per person and computer
+  const seen = new Set();
+  const others = s.agents.filter(a => a.online && a.id !== me.id && a.kind !== 'watcher' && !(a.kind === 'human' && a.name === me.name))
+    .sort((x, y) => (y.status ? 1 : 0) - (x.status ? 1 : 0))
+    .filter(a => { const k = a.name + '|' + (a.host || '') + '|' + (a.kind === 'human' ? 'h' : 'a') + '|' + (a.status || ''); if (seen.has(k)) return false; seen.add(k); return true; });
   const lines = [];
   lines.push(others.length
     ? 'Other agents online: ' + others.map(a => `${a.name}${a.kind === 'agent' && aiNameOf(s, a.name) ? ` (their Claude is called ${aiNameOf(s, a.name)})` : ''}${a.host ? ' on ' + a.host : ''}${a.status ? ` ("${a.status}")` : ''}`).join('; ')
@@ -621,7 +625,7 @@ const handlers = {
     st.data.edited = [];
     st.data.editorLocked = [];
     st.save();
-    if (gitx.isRepo(cfg.root)) await Promise.race([gitx.fetchAll(client, cfg.root).then(() => gitx.reportConflicts(client, cfg.root)).catch(() => {}), new Promise(r => setTimeout(r, 4000))]);
+    if (gitx.isRepo(cfg.root)) await Promise.race([gitx.fetchAll(client, cfg.root).then(() => gitx.reportConflicts(client, cfg.root)).catch(() => {}), new Promise(r => setTimeout(r, 4000).unref())]); // unref: a finished fetch must not leave the hook waiting out the timer
     // shown to the person in their terminal, so they can see this session is in the huddle
     const others = [...new Set(s.agents.filter(a => a.online && a.name !== client.agent.name && a.kind !== 'human').map(a => a.name))];
     const mode = ((s.settings || {})[client.agent.name] || {}).autopilot || 'full';

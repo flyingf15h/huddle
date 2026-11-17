@@ -632,6 +632,16 @@ const routes = {
     const a = p.touch(b.agent);
     const text = String(b.text || '').trim();
     if (!text) throw httpError(400, 'text required');
+    // an agent that misspells a name hears so, instead of a message nobody ever gets
+    if (b.strict && b.to && !String(b.to).includes('#')) {
+      const who = personFor(p, b.to);
+      const known = new Set([...Object.values(p.agents).map(x => x.name), ...Object.keys(p.settings || {}), ...Object.keys(p.aliases || {})].filter(Boolean).map(n => n.toLowerCase()));
+      if (!known.has(String(who).toLowerCase())) {
+        const people = [...new Set(Object.values(p.agents).filter(x => x.kind !== 'watcher' && x.name !== a.name).map(x => x.name))].slice(0, 20);
+        throw httpError(404, `nobody in this project is called "${String(b.to).slice(0, 60)}"` + (people.length ? `. People here: ${people.join(', ')}` : '. You are the only one here so far'));
+      }
+      b.to = canonicalName(p, who);
+    }
     const m = { id: crypto.randomBytes(6).toString('hex'), from: a.id, fromName: a.name,
       to: personFor(p, b.to) || null, text: text.slice(0, 20000), at: now() };
     // a Claude's automatic answer: it never starts another background run, so two Claudes can't loop
