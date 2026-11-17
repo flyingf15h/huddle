@@ -32,6 +32,7 @@ const ok = (m) => console.log('✓ ' + m);
 
   try {
     const made = await (await fetch(`${base}/api/new`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'acct' }) })).json();
+    assert.ok(made.project, `the server made a project (${made.error || 'no answer'})`);
     const P = made.project, shared = made.token;
     const as = (tok) => (method, ep, body) => call(tok, method, ep, body, P);
     const s = as(shared);

@@ -549,7 +549,7 @@ async function cmdNew({ pos, flags }) {
     r = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(r.error || `HTTP ${res.status}`);
   } catch (e) {
-    need(false, `couldn't create a project on ${server}: ${e.cause ? e.cause.code || e.message : e.message}`);
+    need(false, e.message === 'fetch failed' ? `Can't reach ${server}. Check the address and your internet connection, then try again.` : `couldn't create a project on ${server}: ${e.message}`);
   }
   const code = await shortInvite({ server, token: r.token, project: r.project, name: 'invite', root: process.cwd() });
   console.log(`created project ${r.project.replace(/-[0-9a-f]{6,8}$/, '')}
@@ -1264,8 +1264,12 @@ async function cmdHandoff({ pos }) {
 
 async function cmdSend({ pos, flags }) {
   need(pos.length, 'usage: huddle send <text> [--to NAME]');
-  await humanClient('human').post('message', { text: pos.join(' '), to: flags.to || null });
-  console.log('sent');
+  const c = humanClient('human');
+  const r = await c.post('message', { text: pos.join(' '), to: flags.to || null, strict: true });
+  if (r.message.to) return console.log(`sent to ${r.message.to}. Their Claude sees it at its next step.`);
+  const s = await c.get('state').catch(() => null);
+  const on = s ? new Set(s.agents.filter(a => a.online && a.name !== c.agent.name && ['agent', 'autopilot'].includes(a.kind)).map(a => a.name)).size : null;
+  console.log(`sent to everyone${on === null ? '' : on ? ` (${on} other ${on === 1 ? 'Claude' : 'Claudes'} online)` : ' (nobody else is online; they see it when they start)'}`);
 }
 
 async function cmdInbox({ flags }) {

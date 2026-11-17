@@ -266,7 +266,9 @@ class Project {
     const name = a && a.rawName === agent.name ? a.name : canonicalName(this, agent.name);
     const fresh = !a || !this.online(a);
     if (!a) {
-      a = this.agents[agent.id] = { id: agent.id, readSeq: this.seq, joined: now(), status: '' };
+      // a person reading from a new place (first `huddle inbox`, a new browser) still gets what was sent to them today
+      const sent = agent.kind === 'human' && name ? this.messages.find(m => m.to === name && m.from !== agent.id && m.at > now() - 864e5) : null;
+      a = this.agents[agent.id] = { id: agent.id, readSeq: sent ? sent.seq - 1 : this.seq, joined: now(), status: '' };
     }
     a.rawName = agent.name;
     a.name = name || a.name || agent.id;

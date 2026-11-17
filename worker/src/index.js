@@ -55,7 +55,7 @@ const RATES = {
 };
 async function limited(env, request, group, extra = '') {
   const [max, windowMs] = RATES[group];
-  if (!(await allow(env, `${group}:${extra || clientIp(request)}`, max, windowMs))) throw httpError(429, 'too many requests from your address, try again in a few minutes');
+  if (!(await allow(env, `${group}:${extra || clientIp(request)}`, max, windowMs))) throw httpError(429, windowMs >= 3600000 ? 'too many from your address in the last hour, try again later' : 'too many requests from your address, try again in a few minutes');
 }
 
 // tighter than the self-hosted defaults: the free plan has 5 GB for everyone
